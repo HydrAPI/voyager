@@ -14,5 +14,8 @@ mod icons;
 mod scroll;
 mod folders;
 mod iconlabel;
+mod pane;
+mod columns;
+mod info;
 
 fn main() {}
