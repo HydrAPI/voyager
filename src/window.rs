@@ -256,8 +256,8 @@ impl AppWindow {
         path_area.set_hexpand(true);
         path_area.pack_start(&loc_toggle, false, false, 0);
         locbar.pack_start(&path_area, true, true, 0);
-        let path_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        path_box.style_context().add_class("linked");
+        // Separate buttons 3 px apart, as Caja's path bar.
+        let path_box = gtk::Box::new(gtk::Orientation::Horizontal, 3);
         let path_scroll = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
         path_scroll.set_policy(gtk::PolicyType::External, gtk::PolicyType::Never);
         path_scroll.add(&path_box);
@@ -2118,7 +2118,9 @@ impl AppWindow {
         let crumbs = self.crumbs.borrow().clone();
         for c in crumbs.iter() {
             let b = gtk::ToggleButton::new();
-            let bx = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+            // Caja's classes: the theme pads them as buttons with text.
+            b.style_context().add_class("text-button");
+            let bx = gtk::Box::new(gtk::Orientation::Horizontal, 2);
             let (icon, label) = if c.equal(&home) {
                 (Some("user-home"), "Home".to_string())
             } else if c.uri() == "trash:///" {
@@ -2133,6 +2135,7 @@ impl AppWindow {
                 (None, util::display_name(c))
             };
             if let Some(i) = icon {
+                b.style_context().add_class("image-button");
                 bx.pack_start(&gtk::Image::from_icon_name(Some(i), gtk::IconSize::Menu), false, false, 0);
             }
             let l = gtk::Label::new(Some(&label));
@@ -2143,11 +2146,20 @@ impl AppWindow {
             b.set_focus_on_click(false);
             let is_active = c.equal(f);
             b.set_active(is_active);
+            let bold = pango::AttrList::new();
+            bold.insert(pango::AttrInt::new_weight(pango::Weight::Bold));
             if is_active {
                 active_btn = Some(b.clone());
-                let attrs = pango::AttrList::new();
-                attrs.insert(pango::AttrInt::new_weight(pango::Weight::Bold));
-                l.set_attributes(Some(&attrs));
+                l.set_attributes(Some(&bold));
+            } else {
+                // Room for the name in bold, as in Caja: a button keeps its
+                // width when its folder becomes the open one.
+                let layout = l.create_pango_layout(Some(&label));
+                let normal = layout.pixel_size().0;
+                layout.set_attributes(Some(&bold));
+                let wide = layout.pixel_size().0;
+                l.set_margin_start((wide - normal) / 2);
+                l.set_margin_end((wide - normal + 1) / 2);
             }
             let w = Rc::downgrade(self);
             let target = c.clone();
