@@ -9,5 +9,7 @@ mod util;
 mod testutil;
 mod clipboard;
 mod ops;
+mod thumbnailers;
+mod icons;
 
 fn main() {}
