@@ -19,5 +19,6 @@ mod columns;
 mod info;
 mod props;
 mod sidebar;
+mod bulkrename;
 
 fn main() {}
