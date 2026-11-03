@@ -1522,13 +1522,25 @@ impl Pane {
     }
 
     /// Calls `f` when the pointer moves into this pane's file view.
-    pub fn connect_pointer_enter(&self, f: impl Fn() + 'static) {
+    /// Calls `f` with true when the pointer comes over the pane's view,
+    /// false when it leaves it.
+    pub fn connect_pointer_hover(&self, f: impl Fn(bool) + 'static) {
         let f = Rc::new(f);
         for view in [self.icon_view.clone().upcast::<gtk::Widget>(), self.tree_view.clone().upcast()] {
-            view.add_events(gdk::EventMask::ENTER_NOTIFY_MASK);
-            let f = f.clone();
-            view.connect_enter_notify_event(move |_, _| {
-                f();
+            view.add_events(gdk::EventMask::ENTER_NOTIFY_MASK | gdk::EventMask::LEAVE_NOTIFY_MASK);
+            // Moving between the view's own windows isn't coming or leaving.
+            let f1 = f.clone();
+            view.connect_enter_notify_event(move |_, ev| {
+                if ev.detail() != gdk::NotifyType::Inferior {
+                    f1(true);
+                }
+                glib::Propagation::Proceed
+            });
+            let f2 = f.clone();
+            view.connect_leave_notify_event(move |_, ev| {
+                if ev.detail() != gdk::NotifyType::Inferior {
+                    f2(false);
+                }
                 glib::Propagation::Proceed
             });
         }

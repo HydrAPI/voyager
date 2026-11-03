@@ -33,6 +33,9 @@ pub struct Settings {
     pub action_shell: String,
     /// In split view, the pane under the mouse pointer gets focus.
     pub focus_follows_mouse: bool,
+    /// How long (ms) the pointer has to stay over a pane before it takes the
+    /// focus: passing over it on the way elsewhere doesn't count.
+    pub focus_follows_mouse_delay: i32,
     /// New tabs go at the end of the tab bar (else right after the current one).
     pub tabs_at_end: bool,
     /// Button groups at the right end of the location bar.
@@ -190,6 +193,7 @@ impl Default for Settings {
             toolbar_text: false,
             action_shell: "sh".into(),
             focus_follows_mouse: false,
+            focus_follows_mouse_delay: 300,
             tabs_at_end: true,
             show_zoom_buttons: true,
             show_view_buttons: true,
@@ -317,6 +321,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     b!(toolbar_text);
     st!(action_shell);
     b!(focus_follows_mouse);
+    i!(focus_follows_mouse_delay);
     b!(tabs_at_end);
     b!(show_zoom_buttons);
     b!(show_view_buttons);
@@ -481,6 +486,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_boolean(g, "toolbar_text", s.toolbar_text);
     kf.set_string(g, "action_shell", &s.action_shell);
     kf.set_boolean(g, "focus_follows_mouse", s.focus_follows_mouse);
+    kf.set_integer(g, "focus_follows_mouse_delay", s.focus_follows_mouse_delay);
     kf.set_boolean(g, "tabs_at_end", s.tabs_at_end);
     kf.set_boolean(g, "show_zoom_buttons", s.show_zoom_buttons);
     kf.set_boolean(g, "show_view_buttons", s.show_view_buttons);

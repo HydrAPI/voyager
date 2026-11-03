@@ -1134,6 +1134,15 @@ impl AppWindow {
             config::update(|s| s.show_sidebar = v);
             w.sidebar.widget.set_visible(v);
         });
+        self.add_toggle("focus-follows-mouse", s.focus_follows_mouse, |_, v| {
+            config::update(|s| s.focus_follows_mouse = v);
+            // One setting: every window's switch shows it.
+            for w in all_windows() {
+                if let Some(a) = w.window.lookup_action("focus-follows-mouse").and_downcast::<gio::SimpleAction>() {
+                    a.set_state(&v.to_variant());
+                }
+            }
+        });
         self.add_toggle("show-statusbar", s.show_statusbar, |w, v| {
             config::update(|s| s.show_statusbar = v);
             w.statusbar.set_visible(v);
@@ -1502,18 +1511,37 @@ impl AppWindow {
                 }
             }
         });
-        // In split view, the pane under the pointer can take focus.
+        // In split view, the pane under the pointer can take focus, once the
+        // pointer has stayed there a moment: passing over it on the way to
+        // the side pane, say, doesn't count.
         {
             let wp = Rc::downgrade(&pane);
-            pane.connect_pointer_enter(move || {
-                let Some(p) = wp.upgrade() else { return };
-                if !config::with(|s| s.focus_follows_mouse) {
+            let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::default();
+            pane.connect_pointer_hover(move |inside| {
+                if let Some(id) = pending.borrow_mut().take() {
+                    id.remove();
+                }
+                if !inside || !config::with(|s| s.focus_follows_mouse) {
                     return;
                 }
-                let (Some(s), Some(nb)) = (owner_of(&p), notebook_of(p.root.upcast_ref())) else { return };
-                // Not while typing a location or a new name.
-                if s.split_on() && nb != s.active() && !util::is_editable_focused(s.window.upcast_ref()) {
-                    p.grab_focus();
+                let wp = wp.clone();
+                let focus = move || {
+                    let Some(p) = wp.upgrade() else { return };
+                    let (Some(s), Some(nb)) = (owner_of(&p), notebook_of(p.root.upcast_ref())) else { return };
+                    // Not while typing a location or a new name.
+                    if s.split_on() && nb != s.active() && !util::is_editable_focused(s.window.upcast_ref()) {
+                        p.grab_focus();
+                    }
+                };
+                let delay = config::with(|s| s.focus_follows_mouse_delay).max(0) as u64;
+                if delay == 0 {
+                    focus();
+                } else {
+                    let done = pending.clone();
+                    *pending.borrow_mut() = Some(glib::timeout_add_local_once(std::time::Duration::from_millis(delay), move || {
+                        done.borrow_mut().take();
+                        focus();
+                    }));
                 }
             });
         }
@@ -3197,13 +3225,19 @@ impl AppWindow {
         indent(&b, tabs.upcast_ref());
         head(&b, "Split View");
         let ffm = check("_Focus the pane under the mouse pointer");
-        ffm.set_tooltip_text(Some("With two panes open (F3), moving the pointer over a pane makes it the active one, without clicking"));
-        ffm.set_active(s.focus_follows_mouse);
-        ffm.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.focus_follows_mouse = v);
-        });
+        ffm.set_tooltip_text(Some("With two panes open (F3), moving the pointer over a pane makes it the active one, without clicking (Shift+F3 switches this)"));
+        ffm.set_action_name(Some("win.focus-follows-mouse"));
         indent(&b, ffm.upcast_ref());
+        let delay = gtk::SpinButton::with_range(0.0, 2000.0, 50.0);
+        delay.set_value(s.focus_follows_mouse_delay as f64);
+        delay.set_tooltip_text(Some("How long the pointer has to stay over a pane before it becomes the active one, so passing over it on the way elsewhere (the side pane, say) doesn't change the active pane"));
+        delay.connect_value_changed(|d| {
+            let v = d.value_as_int();
+            config::update(|s| s.focus_follows_mouse_delay = v);
+        });
+        ffm.bind_property("active", &delay, "sensitive").sync_create().build();
+        let after = inline(&b, "After the pointer rests on it for", &[delay.upcast_ref(), gtk::Label::new(Some("ms")).upcast_ref()]);
+        after.set_margin_start(after.margin_start() + 24);
         head(&b, "Trash");
         let confirm = check("Ask before moving files to the T_rash");
         confirm.set_active(s.confirm_trash);
