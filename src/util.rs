@@ -1,0 +1,572 @@
+//! Small helpers: formatting, naming, dialogs, launching.
+
+use gio::prelude::*;
+use gtk::prelude::*;
+
+/// Sizes in IEC units (KiB, MiB: powers of 1024) instead of SI (kB, MB).
+/// A process-wide flag, as file operations format sizes on their own thread.
+static IEC_UNITS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_iec_units(on: bool) {
+    IEC_UNITS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn format_size(n: u64) -> String {
+    let flags = if IEC_UNITS.load(std::sync::atomic::Ordering::Relaxed) { glib::FormatSizeFlags::IEC_UNITS } else { glib::FormatSizeFlags::DEFAULT };
+    glib::format_size_full(n, flags).to_string()
+}
+
+pub fn format_time(t: i64) -> String {
+    if t <= 0 {
+        return String::new();
+    }
+    let Ok(dt) = glib::DateTime::from_unix_local(t) else {
+        return String::new();
+    };
+    let Some((today, yesterday)) = recent_days() else {
+        return String::new();
+    };
+    let fmt = if dt.ymd() == today {
+        "Today %H:%M"
+    } else if dt.ymd() == yesterday {
+        "Yesterday %H:%M"
+    } else {
+        "%-d %b %Y %H:%M"
+    };
+    dt.format(fmt).map(|s| s.trim().to_string()).unwrap_or_default()
+}
+
+/// (year, month, day)
+type Date = (i32, i32, i32);
+
+/// Today's and yesterday's dates, looked up once a minute: a folder's
+/// listing formats thousands of times.
+fn recent_days() -> Option<(Date, Date)> {
+    type Days = Option<(i64, Date, Date)>;
+    thread_local! {
+        static DAYS: std::cell::Cell<Days> = const { std::cell::Cell::new(None) };
+    }
+    let now = glib::DateTime::now_local().ok()?;
+    if let Some((at, today, yesterday)) = DAYS.with(|d| d.get()) {
+        if now.to_unix() - at < 60 && now.ymd() == today {
+            return Some((today, yesterday));
+        }
+    }
+    let days = (now.ymd(), now.add_days(-1).ok()?.ymd());
+    DAYS.with(|d| d.set(Some((now.to_unix(), days.0, days.1))));
+    Some(days)
+}
+
+pub fn format_time_long(t: i64) -> String {
+    glib::DateTime::from_unix_local(t)
+        .ok()
+        .and_then(|d| d.format("%A, %-d %B %Y, %H:%M:%S").ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "Unknown".into())
+}
+
+/// Split "archive.tar.gz" into ("archive", ".tar.gz"), "photo.jpg" into ("photo", ".jpg").
+/// Hidden files without another dot have no extension.
+pub fn split_ext(name: &str) -> (&str, &str) {
+    let lower = name.to_lowercase();
+    for multi in [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lz"] {
+        if lower.ends_with(multi) && name.len() > multi.len() {
+            let i = name.len() - multi.len();
+            return (&name[..i], &name[i..]);
+        }
+    }
+    match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    }
+}
+
+/// A name in `dir` that doesn't exist yet: "name", "name (2)", ...
+pub fn unique_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
+    if !dir.child(name).query_exists(gio::Cancellable::NONE) {
+        return name.to_string();
+    }
+    let (stem, ext) = if is_dir { (name, "") } else { split_ext(name) };
+    for i in 2.. {
+        let cand = format!("{stem} ({i}){ext}");
+        if !dir.child(&cand).query_exists(gio::Cancellable::NONE) {
+            return cand;
+        }
+    }
+    unreachable!()
+}
+
+/// Name for a copy pasted into the same folder: "a (copy).txt", "a (copy 2).txt", ...
+pub fn copy_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
+    let (stem, ext) = if is_dir { (name, "") } else { split_ext(name) };
+    let first = format!("{stem} (copy){ext}");
+    if !dir.child(&first).query_exists(gio::Cancellable::NONE) {
+        return first;
+    }
+    for i in 2.. {
+        let cand = format!("{stem} (copy {i}){ext}");
+        if !dir.child(&cand).query_exists(gio::Cancellable::NONE) {
+            return cand;
+        }
+    }
+    unreachable!()
+}
+
+pub fn display_name(file: &gio::File) -> String {
+    if let Ok(info) = file.query_info(
+        "standard::display-name",
+        gio::FileQueryInfoFlags::NONE,
+        gio::Cancellable::NONE,
+    ) {
+        return info.display_name().to_string();
+    }
+    file.basename()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| file.uri().to_string())
+}
+
+/// Human readable location for the title / properties.
+pub fn pretty_location(file: &gio::File) -> String {
+    match file.path() {
+        Some(p) => {
+            let s = p.to_string_lossy().to_string();
+            if let Some(home) = dirs_home() {
+                if s == home {
+                    return "~".into();
+                }
+            }
+            s
+        }
+        None => glib::Uri::unescape_string(file.uri().as_str(), None::<&str>)
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| file.uri().to_string()),
+    }
+}
+
+pub fn dirs_home() -> Option<String> {
+    Some(glib::home_dir().to_string_lossy().to_string())
+}
+
+pub fn home_file() -> gio::File {
+    gio::File::for_path(glib::home_dir())
+}
+
+pub fn error_dialog(parent: Option<&gtk::Window>, title: &str, detail: &str) {
+    let d = gtk::MessageDialog::new(
+        parent,
+        gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
+        gtk::MessageType::Error,
+        gtk::ButtonsType::Close,
+        title,
+    );
+    d.set_secondary_text(Some(detail));
+    d.connect_response(|d, _| d.close());
+    d.show();
+}
+
+/// Find the first program on $PATH out of the candidates.
+pub fn find_program(cands: &[&str]) -> Option<String> {
+    cands
+        .iter()
+        .find(|c| glib::find_program_in_path(c).is_some())
+        .map(|s| s.to_string())
+}
+
+pub fn spawn_in_dir(argv: &[String], dir: Option<&std::path::Path>) -> Result<(), String> {
+    let mut cmd = std::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..]);
+    if let Some(d) = dir {
+        cmd.current_dir(d);
+    }
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    // Reap it when it exits so it doesn't linger as a zombie.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
+/// argv to run `program` in a new window of `term`, keeping the path as one argument.
+pub fn terminal_run_argv(term: &str, program: &str) -> Vec<String> {
+    let name = std::path::Path::new(term)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let mut argv = vec![term.to_string()];
+    match name.as_str() {
+        "gnome-terminal" => argv.push("--".into()),
+        "mate-terminal" | "xfce4-terminal" => argv.push("-x".into()),
+        "kitty" => {}
+        _ => argv.push("-e".into()),
+    }
+    argv.push(program.to_string());
+    argv
+}
+
+pub fn terminal_command() -> Option<String> {
+    if let Ok(t) = std::env::var("TERMINAL") {
+        if glib::find_program_in_path(&t).is_some() {
+            return Some(t);
+        }
+    }
+    find_program(&[
+        "mate-terminal",
+        "x-terminal-emulator",
+        "xfce4-terminal",
+        "gnome-terminal",
+        "tilix",
+        "konsole",
+        "alacritty",
+        "kitty",
+        "xterm",
+    ])
+}
+
+pub fn archiver_command() -> Option<String> {
+    find_program(&["engrampa", "file-roller", "xarchiver"])
+}
+
+pub fn is_archive(ctype: &str) -> bool {
+    const T: &[&str] = &[
+        "application/zip",
+        "application/x-tar",
+        "application/x-compressed-tar",
+        "application/x-bzip-compressed-tar",
+        "application/x-xz-compressed-tar",
+        "application/x-zstd-compressed-tar",
+        "application/x-7z-compressed",
+        "application/vnd.rar",
+        "application/x-rar",
+        "application/gzip",
+        "application/x-bzip",
+        "application/x-xz",
+        "application/x-lzma",
+        "application/x-cpio",
+        "application/x-rpm",
+        "application/vnd.debian.binary-package",
+        "application/x-deb",
+        "application/x-iso9660-image",
+        "application/java-archive",
+    ];
+    T.contains(&ctype)
+}
+
+// Some backends (phones over MTP) leave attributes out of a GFileInfo, and
+// its getters warn about that ("GFileInfo created without …"). These check
+// first and fall back on the name.
+
+/// The item's name, if the info has it.
+fn info_name(info: &gio::FileInfo) -> Option<String> {
+    info.has_attribute("standard::name").then(|| info.name().to_string_lossy().to_string())
+}
+
+/// Hidden: as reported, or else a name starting with a dot.
+pub fn info_is_hidden(info: &gio::FileInfo) -> bool {
+    if info.has_attribute("standard::is-hidden") {
+        return info.is_hidden();
+    }
+    info_name(info).is_some_and(|n| n.starts_with('.'))
+}
+
+/// Backup file: as reported, or else a name ending in "~".
+pub fn info_is_backup(info: &gio::FileInfo) -> bool {
+    if info.has_attribute("standard::is-backup") {
+        return info.is_backup();
+    }
+    info_name(info).is_some_and(|n| n.ends_with('~'))
+}
+
+pub fn info_is_symlink(info: &gio::FileInfo) -> bool {
+    info.has_attribute("standard::is-symlink") && info.is_symlink()
+}
+
+/// The content type: as reported, or else guessed from the name.
+pub fn info_content_type(info: &gio::FileInfo) -> Option<String> {
+    if info.has_attribute("standard::content-type") {
+        return info.content_type().map(|s| s.to_string());
+    }
+    info_name(info).map(|n| guess_content_type(&n))
+}
+
+/// The content type for a file name. (gio-rs passes an empty slice as
+/// zero bytes of data, which makes every guess "application/x-zerosize";
+/// no data at all has to be NULL.)
+fn guess_content_type(name: &str) -> String {
+    use glib::translate::*;
+    unsafe {
+        let p = gio::ffi::g_content_type_guess(name.to_glib_none().0, std::ptr::null(), 0, std::ptr::null_mut());
+        glib::GString::from_glib_full(p).to_string()
+    }
+}
+
+/// Bookmarks are shared with Caja / GTK file chooser.
+pub fn bookmarks_file() -> std::path::PathBuf {
+    glib::user_config_dir().join("gtk-3.0").join("bookmarks")
+}
+
+pub fn read_bookmarks() -> Vec<(String, String)> {
+    std::fs::read_to_string(bookmarks_file())
+        .map(|text| parse_bookmarks(&text))
+        .unwrap_or_default()
+}
+
+/// (URI, label) of each line of a bookmarks file; without a label, the
+/// URI's file name.
+fn parse_bookmarks(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let (uri, label) = match l.split_once(' ') {
+                Some((u, n)) => (u.to_string(), n.to_string()),
+                None => (l.to_string(), String::new()),
+            };
+            let label = if label.is_empty() {
+                let f = gio::File::for_uri(&uri);
+                f.basename()
+                    .map(|b| b.to_string_lossy().to_string())
+                    .unwrap_or_else(|| uri.clone())
+            } else {
+                label
+            };
+            (uri, label)
+        })
+        .collect()
+}
+
+pub fn add_bookmark(uri: &str) -> std::io::Result<bool> {
+    add_bookmark_to(&bookmarks_file(), uri)
+}
+
+/// Adds `uri` to the bookmarks file `path`; false if it's there already.
+fn add_bookmark_to(path: &std::path::Path, uri: &str) -> std::io::Result<bool> {
+    let existing = std::fs::read_to_string(path).unwrap_or_default();
+    if existing
+        .lines()
+        .any(|l| l.split(' ').next() == Some(uri))
+    {
+        return Ok(false);
+    }
+    if let Some(p) = path.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    let mut out = existing;
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str(uri);
+    out.push('\n');
+    std::fs::write(path, out)?;
+    Ok(true)
+}
+
+/// Minimal shell-style glob: * ? and [abc].
+pub fn glob_match(pat: &[char], s: &[char]) -> bool {
+    // On a mismatch only the last "*" takes one more character: trying every
+    // split for every "*" takes exponential time with a few of them.
+    let (mut p, mut i) = (0, 0);
+    // The pattern position after the last "*", and the text position it's up to.
+    let mut star: Option<(usize, usize)> = None;
+    while i < s.len() {
+        if pat.get(p) == Some(&'*') {
+            p += 1;
+            star = Some((p, i));
+            continue;
+        }
+        if let Some(len) = pat.get(p..).and_then(|rest| glob_one(rest, s[i])) {
+            p += len;
+            i += 1;
+            continue;
+        }
+        let Some((sp, si)) = star else { return false };
+        p = sp;
+        i = si + 1;
+        star = Some((sp, i));
+    }
+    pat[p..].iter().all(|c| *c == '*')
+}
+
+/// Whether the first element of `pat` (a character, "?" or a "[set]")
+/// matches `c`: how many pattern characters it took, or None.
+fn glob_one(pat: &[char], c: char) -> Option<usize> {
+    match *pat.first()? {
+        '?' => Some(1),
+        '[' => match pat.iter().position(|x| *x == ']') {
+            Some(end) if end > 1 => pat[1..end].contains(&c).then_some(end + 1),
+            _ => (c == '[').then_some(1),
+        },
+        p => (p == c).then_some(1),
+    }
+}
+
+/// Whether a text field has the focus (an entry, or the multi-line rename
+/// editor of the icon views): its keys (Ctrl+A, Delete, Backspace, …) are
+/// then for the text, not the window's shortcuts.
+pub fn is_editable_focused(win: &gtk::Window) -> bool {
+    win.focused_widget()
+        .map(|w| w.is::<gtk::Editable>() || w.is::<gtk::TextView>())
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testutil::TestDir;
+
+    fn glob(p: &str, s: &str) -> bool {
+        glob_match(&p.chars().collect::<Vec<_>>(), &s.chars().collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn globs() {
+        assert!(glob("*.jpg", "photo.jpg"));
+        assert!(!glob("*.jpg", "photo.jpeg"));
+        assert!(glob("*", "") && glob("*", "anything"));
+        assert!(glob("", "") && !glob("", "x"));
+        assert!(glob("IMG_????.*", "IMG_0042.png"));
+        assert!(!glob("IMG_????.*", "IMG_42.png"));
+        assert!(!glob("?", ""));
+        assert!(glob("[ab]*", "beta") && !glob("[ab]*", "gamma"));
+        assert!(glob("a*b*c", "aXXbYYc") && !glob("a*b*c", "aXXbYY"));
+        assert!(glob("*.tar.*", "x.tar.gz"));
+        assert!(glob("ünï*", "ünïcode"));
+        // A "[" without a set is an ordinary character.
+        assert!(glob("[", "[") && glob("x[", "x[") && glob("[]", "[]"));
+    }
+
+    #[test]
+    fn glob_with_many_stars_is_quick() {
+        let name = "a".repeat(200);
+        let t = std::time::Instant::now();
+        assert!(!glob("*a*a*a*a*a*a*a*a*b", &name));
+        assert!(glob("*a*a*a*a*a*a*a*a*", &name));
+        assert!(t.elapsed() < std::time::Duration::from_secs(1), "took {:?}", t.elapsed());
+    }
+
+    #[test]
+    fn extensions() {
+        assert_eq!(split_ext("photo.jpg"), ("photo", ".jpg"));
+        assert_eq!(split_ext("a.b.c"), ("a.b", ".c"));
+        assert_eq!(split_ext("archive.tar.gz"), ("archive", ".tar.gz"));
+        assert_eq!(split_ext("Backup.TAR.XZ"), ("Backup", ".TAR.XZ"));
+        assert_eq!(split_ext("Fotos-Ünïcödé.tar.zst"), ("Fotos-Ünïcödé", ".tar.zst"));
+        assert_eq!(split_ext("notes"), ("notes", ""));
+        // A leading dot alone (hidden files) isn't an extension.
+        assert_eq!(split_ext(".bashrc"), (".bashrc", ""));
+        assert_eq!(split_ext(".config.bak"), (".config", ".bak"));
+        assert_eq!(split_ext(".tar.gz"), (".tar", ".gz"));
+        assert_eq!(split_ext(""), ("", ""));
+    }
+
+    #[test]
+    fn free_names() {
+        let t = TestDir::new("names");
+        let dir = gio::File::for_path(&t.0);
+        assert_eq!(unique_name(&dir, "a.txt", false), "a.txt");
+        t.file("a.txt", "");
+        assert_eq!(unique_name(&dir, "a.txt", false), "a (2).txt");
+        t.file("a (2).txt", "");
+        assert_eq!(unique_name(&dir, "a.txt", false), "a (3).txt");
+        t.file("b.tar.gz", "");
+        assert_eq!(unique_name(&dir, "b.tar.gz", false), "b (2).tar.gz");
+        std::fs::create_dir(t.0.join("my.folder")).unwrap();
+        // A folder's name has no extension.
+        assert_eq!(unique_name(&dir, "my.folder", true), "my.folder (2)");
+
+        assert_eq!(copy_name(&dir, "a.txt", false), "a (copy).txt");
+        t.file("a (copy).txt", "");
+        assert_eq!(copy_name(&dir, "a.txt", false), "a (copy 2).txt");
+        t.file("a (copy 2).txt", "");
+        assert_eq!(copy_name(&dir, "a.txt", false), "a (copy 3).txt");
+        assert_eq!(copy_name(&dir, "my.folder", true), "my.folder (copy)");
+        assert_eq!(copy_name(&dir, ".hidden", false), ".hidden (copy)");
+    }
+
+    #[test]
+    fn sizes() {
+        // One test for both units, as the setting is shared by the whole process.
+        assert_eq!(format_size(0), "0 bytes");
+        assert_eq!(format_size(1), "1 byte");
+        // GLib keeps number and unit together with a no-break space.
+        assert_eq!(format_size(1000), "1.0\u{a0}kB");
+        assert_eq!(format_size(1_500_000), "1.5\u{a0}MB");
+        set_iec_units(true);
+        let iec = [format_size(1000), format_size(1024), format_size(1_572_864)];
+        set_iec_units(false);
+        assert_eq!(iec, ["1000 bytes", "1.0\u{a0}KiB", "1.5\u{a0}MiB"]);
+    }
+
+    #[test]
+    fn times() {
+        assert_eq!(format_time(0), "");
+        assert_eq!(format_time(-5), "");
+        let now = glib::DateTime::now_local().unwrap();
+        assert!(format_time(now.to_unix()).starts_with("Today "));
+        assert!(format_time(now.add_days(-1).unwrap().to_unix()).starts_with("Yesterday "));
+        // 9 September 2001, 01:46:40 UTC: the 8th or 9th wherever we are.
+        assert!(format_time(1_000_000_000).contains("Sep 2001"));
+        assert!(format_time_long(1_000_000_000).contains("September 2001"));
+    }
+
+    #[test]
+    fn terminals() {
+        assert_eq!(terminal_run_argv("gnome-terminal", "/a b/run"), ["gnome-terminal", "--", "/a b/run"]);
+        assert_eq!(terminal_run_argv("/usr/bin/xfce4-terminal", "x"), ["/usr/bin/xfce4-terminal", "-x", "x"]);
+        assert_eq!(terminal_run_argv("mate-terminal", "x"), ["mate-terminal", "-x", "x"]);
+        assert_eq!(terminal_run_argv("kitty", "x"), ["kitty", "x"]);
+        assert_eq!(terminal_run_argv("xterm", "x"), ["xterm", "-e", "x"]);
+    }
+
+    #[test]
+    fn archives() {
+        assert!(is_archive("application/zip"));
+        assert!(is_archive("application/x-compressed-tar"));
+        assert!(!is_archive("text/plain"));
+        assert!(!is_archive("application/zip2"));
+    }
+
+    #[test]
+    fn info_fallbacks() {
+        let i = gio::FileInfo::new();
+        assert!(!info_is_hidden(&i) && !info_is_backup(&i) && !info_is_symlink(&i));
+        assert_eq!(info_content_type(&i), None);
+        // Without the attributes (MTP), the name decides.
+        i.set_name(".notes.txt~");
+        assert!(info_is_hidden(&i) && info_is_backup(&i));
+        i.set_name("photo.png");
+        assert!(!info_is_hidden(&i) && !info_is_backup(&i));
+        assert_eq!(info_content_type(&i).as_deref(), Some("image/png"));
+        // What the backend reports wins.
+        i.set_name(".x~");
+        i.set_is_hidden(false);
+        i.set_attribute_boolean("standard::is-backup", false);
+        assert!(!info_is_hidden(&i) && !info_is_backup(&i));
+        i.set_content_type("text/plain");
+        assert_eq!(info_content_type(&i).as_deref(), Some("text/plain"));
+        i.set_is_symlink(true);
+        assert!(info_is_symlink(&i));
+    }
+
+    #[test]
+    fn bookmarks() {
+        let b = parse_bookmarks("file:///home/u/Music\nfile:///home/u/My%20Docs Work stuff\n\nsftp://host/srv Server\n");
+        let want: Vec<(String, String)> = [
+            ("file:///home/u/Music", "Music"),
+            ("file:///home/u/My%20Docs", "Work stuff"),
+            ("sftp://host/srv", "Server"),
+        ]
+        .map(|(u, l)| (u.to_string(), l.to_string()))
+        .to_vec();
+        assert_eq!(b, want);
+        assert_eq!(parse_bookmarks("file:///a%20b")[0].1, "a b");
+
+        let t = TestDir::new("bookmarks");
+        let p = t.0.join("gtk-3.0").join("bookmarks");
+        assert!(add_bookmark_to(&p, "file:///a").unwrap());
+        assert!(!add_bookmark_to(&p, "file:///a").unwrap());
+        // A labelled line without a final newline.
+        std::fs::write(&p, "file:///a A").unwrap();
+        assert!(!add_bookmark_to(&p, "file:///a").unwrap());
+        assert!(add_bookmark_to(&p, "file:///ab").unwrap());
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "file:///a A\nfile:///ab\n");
+    }
+}
