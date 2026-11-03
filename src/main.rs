@@ -8,5 +8,6 @@ mod util;
 #[cfg(test)]
 mod testutil;
 mod clipboard;
+mod ops;
 
 fn main() {}
