@@ -12,5 +12,6 @@ mod ops;
 mod thumbnailers;
 mod icons;
 mod scroll;
+mod folders;
 
 fn main() {}
