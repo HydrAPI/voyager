@@ -13,5 +13,6 @@ mod thumbnailers;
 mod icons;
 mod scroll;
 mod folders;
+mod iconlabel;
 
 fn main() {}
