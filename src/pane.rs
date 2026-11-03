@@ -97,6 +97,10 @@ pub enum Event {
 /// Where a pane's events go (the window).
 type Handler = Rc<dyn Fn(Event)>;
 
+/// A rubber band's start (bin window coordinates) and the items selected
+/// before it (see Pane::trim_rubber_band).
+type Band = ((i32, i32), Vec<gtk::TreePath>);
+
 #[derive(Clone, Debug)]
 pub struct RowInfo {
     pub uri: String,
@@ -311,6 +315,23 @@ pub struct Pane {
     /// The icon view's cursor was moved with the keyboard: Caja then shows
     /// the focus around its name (not after a click).
     keyboard_focus: Cell<bool>,
+    /// Names are shown in the icon view (not at the smallest size).
+    labels_shown: Rc<Cell<bool>>,
+    /// The icon view's cells are hidden while GTK looks for the item
+    /// clicked (see ignore_items_once).
+    hit_off: Rc<Cell<bool>>,
+    /// The icon view's item a drag would drop into.
+    drop_path: Rc<RefCell<Option<gtk::TreePath>>>,
+    /// Where Shift+click selections in the icon views start.
+    range_anchor: Cell<Option<i32>>,
+    /// The selection a press on one of several selected items kept for a
+    /// drag, and that item: just it is selected if no drag follows. Then
+    /// the same, for a double click to open them all.
+    press_keep: RefCell<Option<(Vec<gtk::TreePath>, gtk::TreePath)>>,
+    released_keep: RefCell<Option<(Vec<gtk::TreePath>, gtk::TreePath)>>,
+    /// A rubber band in the icon view: where it started (bin window
+    /// coordinates) and what was selected before (see trim_rubber_band).
+    band: RefCell<Option<Band>>,
     /// The item being renamed in the icon view, whose name isn't drawn.
     edit_hidden: Rc<RefCell<Option<String>>>,
     tree_view: gtk::TreeView,
@@ -499,6 +520,9 @@ impl Pane {
         let captions = Rc::new(Cell::new(0u32));
         let thumb_size = Rc::new(Cell::new(64));
         let icon_columns = Rc::new(Cell::new(1));
+        let labels_shown = Rc::new(Cell::new(true));
+        let hit_off = Rc::new(Cell::new(false));
+        let drop_path: Rc<RefCell<Option<gtk::TreePath>>> = Rc::default();
         icon_view.pack_start(&icon_pix, false);
         CellLayoutExt::pack_start(&icon_view, &icon_text, false);
         icon_view.add_attribute(&icon_text, "text", COL_NAME as i32);
@@ -510,10 +534,13 @@ impl Pane {
             let captions = captions.clone();
             let columns = icon_columns.clone();
             let iv = icon_view.clone();
+            let (shown, hit_off, drop_path, label) = (labels_shown.clone(), hit_off.clone(), drop_path.clone(), label.clone());
             CellLayoutExt::set_cell_data_func(
                 &icon_view,
                 &icon_text,
                 Some(Box::new(move |_, cell, m, it| {
+                    cell.set_visible(shown.get() && !hit_off.get());
+                    label.set_drop_target(drop_path.borrow().as_ref().is_some_and(|d| m.path(it).as_ref() == Some(d)));
                     if hidden.borrow().as_deref().is_some_and(|u| m.gv::<String>(it, COL_URI as i32) == u) {
                         cell.set_property("text", "");
                         return;
@@ -521,15 +548,7 @@ impl Pane {
                     if iv.item_orientation() == gtk::Orientation::Horizontal {
                         return;
                     }
-                    let mut text = icon_label_text(m, it, captions.get());
-                    // Caja shows the last row's names whole: there's
-                    // nothing below for them to cover.
-                    let cols = columns.get().max(1);
-                    let last_row_start = (m.iter_n_children(None) - 1).max(0) / cols * cols;
-                    if m.path(it).and_then(|p| p.indices().first().copied()).is_some_and(|i| i >= last_row_start) {
-                        text.insert(0, crate::iconlabel::WHOLE);
-                    }
-                    cell.set_property("text", text);
+                    cell.set_property("text", icon_cell_text(m, it, captions.get(), columns.get()));
                 })),
             );
         }
@@ -538,10 +557,13 @@ impl Pane {
             let lsz = list_size.clone();
             let tsz = thumb_size.clone();
             let iv = icon_view.clone();
+            let (hit_off, drop_path, image) = (hit_off.clone(), drop_path.clone(), image.clone());
             CellLayoutExt::set_cell_data_func(
                 &icon_view,
                 &icon_pix,
                 Some(Box::new(move |_, cell, m, it| {
+                    cell.set_visible(!hit_off.get());
+                    image.set_drop_target(drop_path.borrow().as_ref().is_some_and(|d| m.path(it).as_ref() == Some(d)));
                     if iv.item_orientation() == gtk::Orientation::Horizontal {
                         cell.set_property("pixbuf", row_pixbuf(m, it, lsz.get().min(48)));
                         return;
@@ -752,6 +774,13 @@ impl Pane {
             fitted_width: Cell::new(0),
             icon_columns,
             keyboard_focus: Cell::new(false),
+            labels_shown,
+            hit_off,
+            drop_path,
+            range_anchor: Cell::new(None),
+            press_keep: RefCell::new(None),
+            released_keep: RefCell::new(None),
+            band: RefCell::new(None),
             edit_hidden,
             tree_view,
             list_pix,
@@ -1034,6 +1063,7 @@ impl Pane {
                 // draw_whole_labels): GTK only redraws the item itself.
                 iv.queue_draw();
                 if let Some(p) = w.upgrade() {
+                    p.trim_rubber_band();
                     p.emit(Event::Selection);
                 }
             });
@@ -1053,9 +1083,13 @@ impl Pane {
                     return glib::Propagation::Proceed;
                 };
                 p.keyboard_focus.set(false);
-                let (x, y) = ev.position();
-                let path = iv.path_at_pos(x as i32, y as i32);
+                // Clicks come in the bin window's coordinates.
+                let (bx, by) = ev.position();
+                let (ox, oy) = iv.convert_widget_to_bin_window_coords(0, 0);
+                let (x, y) = (bx as i32 - ox, by as i32 - oy);
+                let path = p.icon_hit(x, y);
                 match ev.button() {
+                    1 => p.icon_press(ev, iv.path_at_pos(bx as i32, by as i32).is_some(), path),
                     3 => {
                         iv.grab_focus();
                         match &path {
@@ -1101,6 +1135,24 @@ impl Pane {
                     }
                     _ => glib::Propagation::Proceed,
                 }
+            });
+        }
+        {
+            let w = w.clone();
+            iv.connect_button_release_event(move |iv, ev| {
+                // A press on one of several selected items without a drag:
+                // now just it is selected (see icon_press).
+                if let Some(p) = w.upgrade() {
+                    if ev.button() == 1 {
+                        p.band.borrow_mut().take();
+                        if let Some((keep, clicked)) = p.press_keep.borrow_mut().take() {
+                            iv.unselect_all();
+                            iv.select_path(&clicked);
+                            *p.released_keep.borrow_mut() = Some((keep, clicked));
+                        }
+                    }
+                }
+                glib::Propagation::Proceed
             });
         }
         {
@@ -1278,6 +1330,8 @@ impl Pane {
                 let w = w.clone();
                 view.connect_drag_begin(move |_, _| {
                     if let Some(p) = w.upgrade() {
+                        // The whole selection is dragged (see icon_press).
+                        p.press_keep.borrow_mut().take();
                         DRAG_SRC_DIR.with(|d| *d.borrow_mut() = Some(p.current().uri().to_string()));
                         p.tv_block.set(false);
                         p.tv_pending.borrow_mut().take();
@@ -1340,6 +1394,8 @@ impl Pane {
             {
                 let w = w.clone();
                 view.connect_drag_data_received(move |view, ctx, x, y, sel, _, time| {
+                    // The views' own handlers would insert rows into the model.
+                    view.stop_signal_emission_by_name("drag-data-received");
                     let Some(p) = w.upgrade() else { return };
                     let uris: Vec<String> = sel.uris().iter().map(|s| s.to_string()).collect();
                     let dest = p
@@ -1419,6 +1475,9 @@ impl Pane {
                     use gdk::keys::constants as k;
                     let nav = [k::Up, k::Down, k::Left, k::Right, k::Home, k::End, k::Page_Up, k::Page_Down, k::KP_Up, k::KP_Down, k::KP_Left, k::KP_Right];
                     if nav.contains(&ev.keyval()) {
+                        if !ev.state().contains(gdk::ModifierType::SHIFT_MASK) {
+                            p.range_anchor.set(None);
+                        }
                         p.keyboard_focus.set(true);
                         p.icon_view.queue_draw();
                     }
@@ -3008,7 +3067,7 @@ impl Pane {
                 iv.set_item_padding(4);
                 iv.set_column_spacing(4);
                 iv.set_spacing(2);
-                self.icon_text.set_visible(true);
+                self.labels_shown.set(true);
                 self.captions.set(0);
                 self.image.set_tint(false);
                 self.image.set_x_shift(0);
@@ -3034,7 +3093,7 @@ impl Pane {
                 // No names at the smallest size, a smaller font at the
                 // next, and at most three lines, then "…" (Caja's default
                 // text ellipsis limit).
-                self.icon_text.set_visible(size > 16);
+                self.labels_shown.set(size > 16);
                 self.label.set_style(3, if size <= 24 { -2 } else { 0 });
                 // The text starts at the icon's bottom, 1 px in.
                 self.icon_text.set_padding(self.icon_text.padding().0, 1);
@@ -3068,6 +3127,151 @@ impl Pane {
         }
         self.icon_view.queue_resize();
         self.tree_view.queue_draw();
+    }
+
+    /// Where Caja counts an icon view item as hit: its picture and its
+    /// name's text, as (x, y, width, height) in widget coordinates.
+    fn item_boxes(&self, path: &gtk::TreePath) -> Vec<(f64, f64, f64, f64)> {
+        let iv = &self.icon_view;
+        let mut boxes = vec![];
+        let (Some(model), true) = (iv.model(), iv.item_orientation() == gtk::Orientation::Vertical) else { return boxes };
+        let Some(it) = model.iter(path) else { return boxes };
+        if let Some(r) = iv.cell_rect(path, Some(&self.icon_pix)) {
+            let (_, w, h) = icon_view_pixbuf(&model, &it, self.icon_size.get(), self.thumb_size.get());
+            let left = r.x() + self.image.x_shift() + (r.width() - w) / 2;
+            boxes.push((left as f64, (r.y() + r.height() - h) as f64, w as f64, h as f64));
+        }
+        if self.labels_shown.get() {
+            if let Some(r) = iv.cell_rect(path, Some(&self.icon_text)) {
+                let text = icon_cell_text(&model, &it, self.captions.get(), self.icon_columns.get());
+                boxes.extend(self.label.text_box(iv.upcast_ref(), &r, &text, iv.path_is_selected(path)));
+            }
+        }
+        boxes
+    }
+
+    /// The icon view's item at (`x`, `y`) (widget coordinates), hit as
+    /// Caja hits items: on its picture or its name's text, not the room
+    /// around them, which GtkIconView counts as the item too.
+    fn icon_hit(&self, x: i32, y: i32) -> Option<gtk::TreePath> {
+        let iv = &self.icon_view;
+        let (bx, by) = iv.convert_widget_to_bin_window_coords(x, y);
+        let path = iv.path_at_pos(bx, by)?;
+        if iv.item_orientation() != gtk::Orientation::Vertical {
+            return Some(path);
+        }
+        let (x, y) = (x as f64, y as f64);
+        self.item_boxes(&path).iter().any(|(l, t, w, h)| x >= *l && x < l + w && y >= *t && y < t + h).then_some(path)
+    }
+
+    /// While a rubber band is drawn in the icon view: GtkIconView selects
+    /// the items whose room it touches, Caja those whose picture or name it
+    /// does. The others are unselected again (unless they were before).
+    fn trim_rubber_band(&self) {
+        let iv = &self.icon_view;
+        let Some((start, before)) = self.band.borrow().clone() else { return };
+        let Some(pointer) = iv.display().default_seat().and_then(|s| s.pointer()) else { return };
+        let Some(win) = iv.window() else { return };
+        let (_, px, py, _) = win.device_position(&pointer);
+        // The band's start is kept in the bin window's (scrolled) terms.
+        let (ox, oy) = iv.convert_widget_to_bin_window_coords(0, 0);
+        let (sx, sy) = ((start.0 - ox) as f64, (start.1 - oy) as f64);
+        let (l, t, r, b) = (sx.min(px as f64), sy.min(py as f64), sx.max(px as f64), sy.max(py as f64));
+        for path in iv.selected_items() {
+            let touched = self.item_boxes(&path).iter().any(|(x, y, w, h)| *x < r && x + w > l && *y < b && y + h > t);
+            if !touched && !before.contains(&path) {
+                iv.unselect_path(&path);
+            }
+        }
+    }
+
+    /// A left click in the icon views (`path`: the item hit, see icon_hit;
+    /// `over_item`: within an item's room all the same). What GTK would do
+    /// differently from Caja is done here.
+    fn icon_press(&self, ev: &gdk::EventButton, over_item: bool, path: Option<gtk::TreePath>) -> glib::Propagation {
+        let iv = &self.icon_view;
+        let state = ev.state();
+        let shift = state.contains(gdk::ModifierType::SHIFT_MASK);
+        let ctrl = state.contains(gdk::ModifierType::CONTROL_MASK);
+        let single = ev.event_type() == gdk::EventType::ButtonPress;
+        let Some(path) = path else {
+            if over_item {
+                // Beside an item's picture and name: empty space, as in Caja.
+                if !shift && !ctrl {
+                    iv.unselect_all();
+                }
+                self.ignore_items_once();
+            }
+            if single && iv.item_orientation() == gtk::Orientation::Vertical {
+                let (x, y) = ev.position();
+                let before = if ctrl || shift { iv.selected_items() } else { vec![] };
+                *self.band.borrow_mut() = Some(((x as i32, y as i32), before));
+            }
+            return glib::Propagation::Proceed;
+        };
+        let index = path.indices().first().copied().unwrap_or(0);
+        if !single {
+            // A double click on one of several selected items opens them all:
+            // the first click's release left just it selected.
+            if let Some((keep, clicked)) = self.released_keep.borrow_mut().take() {
+                if clicked == path {
+                    for k in &keep {
+                        iv.select_path(k);
+                    }
+                }
+            }
+            return glib::Propagation::Proceed;
+        }
+        self.released_keep.borrow_mut().take();
+        if shift {
+            // From the anchor to this item in their order, running on across
+            // the ends of rows (GTK selects the rectangle between them).
+            let cursor = iv.cursor().and_then(|(p, _)| p.indices().first().copied());
+            let anchor = self.range_anchor.get().or(cursor).unwrap_or(index);
+            self.range_anchor.set(Some(anchor));
+            if !ctrl {
+                iv.unselect_all();
+            }
+            for i in anchor.min(index)..=anchor.max(index) {
+                iv.select_path(&gtk::TreePath::from_indicesv(&[i]));
+            }
+            iv.set_cursor(&path, None::<&gtk::CellRenderer>, false);
+            iv.grab_focus();
+            return glib::Propagation::Stop;
+        }
+        self.range_anchor.set(Some(index));
+        if !ctrl && iv.path_is_selected(&path) && iv.selected_items().len() > 1 {
+            // GTK selects just this item on the press: keep all of them for
+            // a drag (the release narrows it down if none comes).
+            let keep = iv.selected_items();
+            *self.press_keep.borrow_mut() = Some((keep, path));
+            let w = self.me.borrow().clone();
+            glib::idle_add_local_full(glib::Priority::HIGH, move || {
+                if let Some(p) = w.upgrade() {
+                    if let Some((keep, _)) = p.press_keep.borrow().as_ref() {
+                        for k in keep {
+                            p.icon_view.select_path(k);
+                        }
+                    }
+                }
+                glib::ControlFlow::Break
+            });
+        }
+        glib::Propagation::Proceed
+    }
+
+    /// GtkIconView finds the item clicked by its cells: hidden while it
+    /// looks, the click is on empty space to it (deselecting, starting a
+    /// rubber band), shown again before anything is drawn.
+    fn ignore_items_once(&self) {
+        self.hit_off.set(true);
+        let w = self.me.borrow().clone();
+        glib::idle_add_local_full(glib::Priority::HIGH, move || {
+            if let Some(p) = w.upgrade() {
+                p.hit_off.set(false);
+            }
+            glib::ControlFlow::Break
+        });
     }
 
     /// Caja's columns in the icon view: as many as fit at 155 px (with 48
@@ -3122,14 +3326,15 @@ impl Pane {
     /// does (their own cells leave them out), and the keyboard's focus.
     fn draw_whole_labels(&self, cr: &gtk::cairo::Context) {
         let iv = &self.icon_view;
-        if iv.item_orientation() != gtk::Orientation::Vertical || !self.icon_text.is_visible() {
+        if iv.item_orientation() != gtk::Orientation::Vertical || !self.labels_shown.get() {
             return;
         }
         let (Some(model), Some((mut path, last))) = (iv.model(), iv.visible_range()) else { return };
         let editing = self.edit_hidden.borrow().clone();
         let cursor = iv.cursor().filter(|_| self.keyboard_focus.get() && iv.has_focus()).map(|(p, _)| p);
+        let drop = self.drop_path.borrow().clone();
         loop {
-            let selected = iv.path_is_selected(&path);
+            let selected = iv.path_is_selected(&path) || drop.as_ref() == Some(&path);
             let focused = !selected && cursor.as_ref() == Some(&path);
             if selected || focused {
                 if let Some(it) = model.iter(&path) {
@@ -3538,7 +3743,7 @@ impl Pane {
     fn drop_target(&self, x: i32, y: i32) -> Option<(gtk::TreePath, String)> {
         let path = match self.mode.get() {
             ViewMode::List | ViewMode::Columns => self.tree_view.dest_row_at_pos(x, y).and_then(|(p, _)| p),
-            _ => self.icon_view.dest_item_at_pos(x, y).map(|(p, _)| p),
+            _ => self.icon_hit(x, y),
         }?;
         let r = self.row_at_filter_path(&path)?;
         if !r.is_dir {
@@ -3562,6 +3767,13 @@ impl Pane {
             ViewMode::List | ViewMode::Columns => self
                 .tree_view
                 .set_drag_dest_row(path, gtk::TreeViewDropPosition::IntoOrBefore),
+            _ if self.icon_view.item_orientation() == gtk::Orientation::Vertical => {
+                // As Caja: the folder looks selected (see draw_whole_labels).
+                if self.drop_path.borrow().as_ref() != path {
+                    *self.drop_path.borrow_mut() = path.cloned();
+                    self.icon_view.queue_draw();
+                }
+            }
             _ => self
                 .icon_view
                 .set_drag_dest_item(path, gtk::IconViewDropPosition::DropInto),
@@ -3704,6 +3916,19 @@ fn mark_drawing(view: &gtk::Widget) {
         icons::set_drawing(false);
         Some(false.to_value())
     });
+}
+
+/// What an icon view's name cell shows: its label text (see
+/// icon_label_text), whole in the last row, as Caja shows it: there's
+/// nothing below for it to cover.
+fn icon_cell_text(m: &gtk::TreeModel, it: &gtk::TreeIter, captions: u32, columns: i32) -> String {
+    let mut text = icon_label_text(m, it, captions);
+    let cols = columns.max(1);
+    let last_row_start = (m.iter_n_children(None) - 1).max(0) / cols * cols;
+    if m.path(it).and_then(|p| p.indices().first().copied()).is_some_and(|i| i >= last_row_start) {
+        text.insert(0, crate::iconlabel::WHOLE);
+    }
+    text
 }
 
 /// An icon view label's text: the name, then the captions Caja shows at

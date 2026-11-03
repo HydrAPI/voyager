@@ -62,17 +62,17 @@ impl IconLabel {
         self.draw_over(widget, cr, area, text, false);
     }
 
-    fn draw_over(&self, widget: &gtk::Widget, cr: &gtk::cairo::Context, area: &gdk::Rectangle, text: &str, selected: bool) {
+    /// The box around a label's text (where it's drawn selected, and where
+    /// clicking hits it): (x, y, width, height) in `widget`. `whole`: the
+    /// name not cut to the line limit.
+    pub fn text_box(&self, widget: &gtk::Widget, area: &gdk::Rectangle, text: &str, whole: bool) -> Option<(f64, f64, f64, f64)> {
         let imp = self.imp();
         let p = imp.props();
         if p.wrap_width < 0 || text.is_empty() {
-            return;
+            return None;
         }
-        let ctx = widget.style_context();
-        let bg = ctx.lookup_color("theme_selected_bg_color").unwrap_or_else(|| gdk::RGBA::new(0.08, 0.33, 0.62, 1.0));
-        let layouts = imp.layouts(widget, text, selected);
-        let x = (area.x() + imp.x_shift.get()) as f64 + (area.width() - p.wrap_width) as f64 / 2.0;
-        let y = area.y() as f64 + p.ypad as f64;
+        let layouts = imp.layouts(widget, text, whole);
+        let (x, y) = self.text_origin(area);
         // Caja's box: the lines as laid out, 4 px more on the sides and 1
         // above and below.
         let (mut left, mut right) = (f64::MAX, f64::MIN);
@@ -82,7 +82,28 @@ impl IconLabel {
             right = right.max(x + (logical.x() + logical.width()) as f64);
         }
         let height = lines_height(&layouts);
-        let (bx, by, bw, bh) = (left - BOX_PAD_X, y - BOX_PAD_Y, right - left + 2.0 * BOX_PAD_X, height + BOX_PAD_Y + BOX_PAD_BOTTOM);
+        Some((left - BOX_PAD_X, y - BOX_PAD_Y, right - left + 2.0 * BOX_PAD_X, height + BOX_PAD_Y + BOX_PAD_BOTTOM))
+    }
+
+    /// Where a label's lines start in its cell's `area`.
+    fn text_origin(&self, area: &gdk::Rectangle) -> (f64, f64) {
+        let imp = self.imp();
+        let p = imp.props();
+        ((area.x() + imp.x_shift.get()) as f64 + (area.width() - p.wrap_width) as f64 / 2.0, area.y() as f64 + p.ypad as f64)
+    }
+
+    /// The item is where a drag would drop: drawn as selected, as in Caja
+    /// (set for each item before it's drawn).
+    pub fn set_drop_target(&self, on: bool) {
+        self.imp().drop_target.set(on);
+    }
+
+    fn draw_over(&self, widget: &gtk::Widget, cr: &gtk::cairo::Context, area: &gdk::Rectangle, text: &str, selected: bool) {
+        let Some((bx, by, bw, bh)) = self.text_box(widget, area, text, selected) else { return };
+        let ctx = widget.style_context();
+        let bg = ctx.lookup_color("theme_selected_bg_color").unwrap_or_else(|| gdk::RGBA::new(0.08, 0.33, 0.62, 1.0));
+        let layouts = self.imp().layouts(widget, text, selected);
+        let (x, y) = self.text_origin(area);
         ctx.save();
         if selected {
             cr.save().ok();
@@ -188,6 +209,15 @@ impl IconImage {
     pub fn set_x_shift(&self, px: i32) {
         self.imp().x_shift.set(px);
     }
+
+    pub fn x_shift(&self) -> i32 {
+        self.imp().x_shift.get()
+    }
+
+    /// See IconLabel::set_drop_target.
+    pub fn set_drop_target(&self, on: bool) {
+        self.imp().drop_target.set(on);
+    }
 }
 
 impl Default for IconImage {
@@ -239,11 +269,12 @@ mod imp {
         /// (max lines, font size change in points): see set_style.
         pub style: Cell<(i32, i32)>,
         pub x_shift: Cell<i32>,
+        pub drop_target: Cell<bool>,
     }
 
     impl Default for IconLabel {
         fn default() -> Self {
-            IconLabel { sizes: RefCell::default(), props: Cell::new(None), style: Cell::new((0, 0)), x_shift: Cell::new(0) }
+            IconLabel { sizes: RefCell::default(), props: Cell::new(None), style: Cell::new((0, 0)), x_shift: Cell::new(0), drop_target: Cell::new(false) }
         }
     }
 
@@ -429,7 +460,7 @@ mod imp {
             // Selected ones are drawn whole over what's below, after the
             // view (IconLabel::draw_selected).
             let text = self.text();
-            if flags.contains(gtk::CellRendererState::SELECTED) || text.is_empty() {
+            if flags.contains(gtk::CellRendererState::SELECTED) || self.drop_target.get() || text.is_empty() {
                 return;
             }
             let widget = widget.upcast_ref();
@@ -444,6 +475,7 @@ mod imp {
     pub struct IconImage {
         pub tint: Cell<bool>,
         pub x_shift: Cell<i32>,
+        pub drop_target: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -474,7 +506,7 @@ mod imp {
                 cell_area
             };
             let original = obj.property::<Option<gdk_pixbuf::Pixbuf>>("pixbuf");
-            let tinted = (self.tint.get() && flags.contains(gtk::CellRendererState::SELECTED))
+            let tinted = (self.tint.get() && (flags.contains(gtk::CellRendererState::SELECTED) || self.drop_target.get()))
                 .then(|| {
                     let color = widget.style_context().lookup_color("theme_selected_bg_color")?;
                     colorized(original.as_ref()?, &color)
