@@ -448,7 +448,23 @@ impl Worker {
                     });
                 }
             };
-            let res = match src.copy(&dst, flags, Some(&self.cancel), Some(&mut cb)) {
+            // Regular files between local paths (local disks, and network
+            // shares mounted by the kernel) are copied here, in pieces.
+            let pieces = if info.file_type() == gio::FileType::Regular && src.is_native() && dst.is_native() {
+                match (src.path(), dst.path()) {
+                    (Some(s), Some(d)) => copy_in_pieces(&s, &d, flags.contains(gio::FileCopyFlags::OVERWRITE), &self.cancel, &mut cb),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            let res = match pieces.map_or_else(|| src.copy(&dst, flags, Some(&self.cancel), Some(&mut cb)), |r| {
+                // GIO copies these along with the data.
+                if r.is_ok() {
+                    let _ = src.copy_attributes(&dst, gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::NOFOLLOW_SYMLINKS, Some(&self.cancel));
+                }
+                r
+            }) {
                 // Phones (MTP) often can't copy a file to another place on
                 // themselves ("could not copy object"), and GIO doesn't fall
                 // back for that error: copy the data through here instead.
@@ -457,6 +473,14 @@ impl Worker {
                 }
                 r => r,
             };
+            if let Err(e) = &res {
+                // GIO leaves what it wrote of a cancelled or failed copy
+                // (and a retry would then find it in the way). Only a file
+                // made here: one being replaced may still be the old one.
+                if !e.matches(gio::IOErrorEnum::Exists) && !flags.contains(gio::FileCopyFlags::OVERWRITE) {
+                    let _ = dst.delete(gio::Cancellable::NONE);
+                }
+            }
             match res {
                 Ok(()) => {
                     // libmtp creates every file it downloads as rwxr-----:
@@ -1375,6 +1399,92 @@ fn same_mtp_device(a: &gio::File, b: &gio::File) -> bool {
     device(a).is_some() && device(a) == device(b)
 }
 
+/// How much `copy_in_pieces` copies at a time: on a network share that
+/// copies on the server, a fraction of a second.
+const PIECE: usize = 32 * 1024 * 1024;
+
+/// Copies the file `src` to `dst` with copy_file_range, a piece at a time,
+/// reporting progress like GFile's copy does; None if that can't be used
+/// here (GIO copies then). File systems that copy on the server (SMB, NFS)
+/// do all of a file in one call otherwise, as GIO asks: nothing would show
+/// its progress, and it couldn't be paused or cancelled until it's done.
+/// Pausing happens in `progress`. With `overwrite` an existing `dst` is
+/// replaced, otherwise that fails with G_IO_ERROR_EXISTS. A copy that
+/// fails or is cancelled is removed.
+fn copy_in_pieces(src: &std::path::Path, dst: &std::path::Path, overwrite: bool, cancel: &gio::Cancellable, progress: &mut dyn FnMut(i64, i64)) -> Option<Result<(), glib::Error>> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    use std::os::unix::io::AsRawFd;
+    let io_error = |e: &std::io::Error| {
+        let code = unsafe { gio::ffi::g_io_error_from_errno(e.raw_os_error().unwrap_or(libc::EIO)) };
+        let kind = unsafe { <gio::IOErrorEnum as glib::translate::FromGlib<_>>::from_glib(code) };
+        glib::Error::new(kind, &e.to_string())
+    };
+    let input = std::fs::File::open(src).ok()?;
+    let meta = input.metadata().ok()?;
+    // The kernel copies only within one kind of file system: don't make
+    // (and remove again) a file on a network share just to find that out.
+    let parent = std::ffi::CString::new(dst.parent()?.as_os_str().as_encoded_bytes()).ok()?;
+    let (mut a, mut b) = unsafe { (std::mem::zeroed::<libc::statfs>(), std::mem::zeroed::<libc::statfs>()) };
+    if unsafe { libc::fstatfs(input.as_raw_fd(), &mut a) != 0 || libc::statfs(parent.as_ptr(), &mut b) != 0 } || a.f_type != b.f_type {
+        return None;
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).mode(meta.mode() & 0o7777);
+    if overwrite {
+        // Cut to the new length at the end: it's left as it was if this
+        // can't be used here.
+        options.create(true);
+    } else {
+        options.create_new(true);
+    }
+    let output = match options.open(dst) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            return Some(Err(glib::Error::new(gio::IOErrorEnum::Exists, &e.to_string())));
+        }
+        Err(e) => return Some(Err(io_error(&e))),
+    };
+    let total = meta.len() as i64;
+    let (mut off_in, mut off_out) = (0i64, 0i64);
+    // Closed first: SMB shares refuse to delete a file that's still open
+    // (EIO), and keep its name taken until it's closed.
+    let fail = |output: std::fs::File, r: Result<(), glib::Error>| {
+        drop(output);
+        let _ = std::fs::remove_file(dst);
+        Some(r)
+    };
+    loop {
+        let n = unsafe { libc::copy_file_range(input.as_raw_fd(), &mut off_in, output.as_raw_fd(), &mut off_out, PIECE, 0) };
+        if n < 0 {
+            let e = std::io::Error::last_os_error();
+            let unusable = matches!(e.raw_os_error(), Some(libc::EXDEV | libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP | libc::EBADF));
+            if unusable && off_out == 0 {
+                // Not here: GIO copies it another way.
+                drop(output);
+                if !overwrite {
+                    let _ = std::fs::remove_file(dst);
+                }
+                return None;
+            }
+            if e.raw_os_error() == Some(libc::EINTR) {
+                continue;
+            }
+            return fail(output, Err(io_error(&e)));
+        }
+        if n == 0 {
+            break;
+        }
+        progress(off_out, total);
+        if cancel.is_cancelled() {
+            return fail(output, Err(glib::Error::new(gio::IOErrorEnum::Cancelled, "Cancelled")));
+        }
+    }
+    if let Err(e) = output.set_len(off_out as u64) {
+        return fail(output, Err(io_error(&e)));
+    }
+    Some(Ok(()))
+}
+
 /// Copies `src`'s contents to `dst` by reading and writing them, reporting
 /// progress like GFile's copy does. With `overwrite` an existing `dst` is
 /// replaced, otherwise that fails with G_IO_ERROR_EXISTS.
@@ -1643,5 +1753,33 @@ mod tests {
         assert_eq!(asked.len(), 1);
         assert!(asked[0].starts_with("error:Cannot move"), "{asked:?}");
         assert_eq!(read(&s.0.join("d/f")), "f");
+    }
+
+    #[test]
+    fn copy_in_pieces_like_gio() {
+        let s = home_scratch("pieces");
+        let src = s.0.join("src.bin");
+        let data: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
+        fs::write(&src, &data).unwrap();
+        let none = gio::Cancellable::new();
+        let mut seen = vec![];
+        let dst = s.0.join("dst.bin");
+        assert!(copy_in_pieces(&src, &dst, false, &none, &mut |done, total| seen.push((done, total))).unwrap().is_ok());
+        assert_eq!(fs::read(&dst).unwrap(), data);
+        assert_eq!(seen.last(), Some(&(300_000, 300_000)));
+        // An existing file isn't replaced unless asked.
+        let r = copy_in_pieces(&src, &dst, false, &none, &mut |_, _| {}).unwrap();
+        assert!(r.unwrap_err().matches(gio::IOErrorEnum::Exists));
+        // Replacing a longer file leaves just the copy.
+        fs::write(&dst, vec![7u8; 500_000]).unwrap();
+        assert!(copy_in_pieces(&src, &dst, true, &none, &mut |_, _| {}).unwrap().is_ok());
+        assert_eq!(fs::read(&dst).unwrap(), data);
+        // A cancelled copy leaves nothing behind.
+        let cancelled = gio::Cancellable::new();
+        cancelled.cancel();
+        let gone = s.0.join("gone.bin");
+        let r = copy_in_pieces(&src, &gone, false, &cancelled, &mut |_, _| {}).unwrap();
+        assert!(r.unwrap_err().matches(gio::IOErrorEnum::Cancelled));
+        assert!(!gone.exists());
     }
 }
