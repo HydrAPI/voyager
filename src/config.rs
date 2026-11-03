@@ -623,11 +623,13 @@ mod tests {
 
     #[test]
     fn keybindings_round_trip() {
-        let mut s = Settings::default();
-        s.keybindings = vec![
-            ("copy".into(), vec!["<Control>c".into(), "<Control>Insert".into()]),
-            ("trash".into(), vec![]),
-        ];
+        let s = Settings {
+            keybindings: vec![
+                ("copy".into(), vec!["<Control>c".into(), "<Control>Insert".into()]),
+                ("trash".into(), vec![]),
+            ],
+            ..Settings::default()
+        };
         assert_eq!(from_keyfile(&to_keyfile(&s)).keybindings, s.keybindings);
     }
 

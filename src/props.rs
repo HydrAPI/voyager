@@ -460,19 +460,6 @@ fn parse_media_info(text: &str) -> Vec<(String, Vec<(String, String)>)> {
     sections
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn parse_media_info() {
-        let text = "General\nComplete name                            : /a/b c.mp4\nFormat                                   : MPEG-4\n\nVideo\nID                                       : 1\nFormat/Info                              : Advanced Video Codec : x\n\nEmpty\n";
-        let s = super::parse_media_info(text);
-        assert_eq!(s.len(), 2);
-        assert_eq!(s[0].0, "General");
-        assert_eq!(s[0].1, vec![("Complete name".into(), "/a/b c.mp4".into()), ("Format".into(), "MPEG-4".into())]);
-        assert_eq!(s[1].1[1], ("Format/Info".to_string(), "Advanced Video Codec : x".to_string()));
-    }
-}
-
 fn group_digits(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::new();
@@ -488,4 +475,17 @@ fn group_digits(n: u64) -> String {
 extern "C" {
     #[link_name = "getuid"]
     fn libc_getuid() -> u32;
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parse_media_info() {
+        let text = "General\nComplete name                            : /a/b c.mp4\nFormat                                   : MPEG-4\n\nVideo\nID                                       : 1\nFormat/Info                              : Advanced Video Codec : x\n\nEmpty\n";
+        let s = super::parse_media_info(text);
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[0].0, "General");
+        assert_eq!(s[0].1, vec![("Complete name".into(), "/a/b c.mp4".into()), ("Format".into(), "MPEG-4".into())]);
+        assert_eq!(s[1].1[1], ("Format/Info".to_string(), "Advanced Video Codec : x".to_string()));
+    }
 }
