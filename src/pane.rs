@@ -48,6 +48,12 @@ impl<O: IsA<gtk::TreeModel>> ModelGet for O {
     }
 }
 
+/// Compares two rows' text in column `col` where it is, without copying it.
+fn cmp_text(m: &gtk::TreeModel, a: &gtk::TreeIter, b: &gtk::TreeIter, col: u32) -> Ordering {
+    let (va, vb) = (m.value(a, col as i32), m.value(b, col as i32));
+    va.get::<&str>().unwrap_or("").cmp(vb.get::<&str>().unwrap_or(""))
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ViewMode {
     Icon,
@@ -473,11 +479,11 @@ impl Pane {
                 }
                 let o = match id {
                     1 => m.gv::<u64>(a, COL_SIZE as i32).cmp(&m.gv::<u64>(b, COL_SIZE as i32)),
-                    2 => m.gv::<String>(a, COL_TYPE as i32).cmp(&m.gv::<String>(b, COL_TYPE as i32)),
+                    2 => cmp_text(m, a, b, COL_TYPE),
                     3 => m.gv::<i64>(a, COL_MTIME as i32).cmp(&m.gv::<i64>(b, COL_MTIME as i32)),
                     _ => Ordering::Equal,
                 };
-                o.then_with(|| m.gv::<String>(a, COL_KEY as i32).cmp(&m.gv::<String>(b, COL_KEY as i32)))
+                o.then_with(|| cmp_text(m, a, b, COL_KEY))
             });
         }
 
@@ -566,13 +572,17 @@ impl Pane {
                 Some(Box::new(move |_, cell, m, it| {
                     cell.set_visible(!hit_off.get());
                     image.set_drop_target(drop_path.borrow().as_ref().is_some_and(|d| m.path(it).as_ref() == Some(d)));
+                    // GtkIconView measures every item, not just the ones in
+                    // sight: that needs only the room (a fixed size), the
+                    // picture is made when drawn.
+                    let drawn = icons::drawing();
                     if iv.item_orientation() == gtk::Orientation::Horizontal {
-                        cell.set_property("pixbuf", row_pixbuf(m, it, lsz.get().min(48)));
+                        cell.set_property("pixbuf", if drawn { row_pixbuf(m, it, lsz.get().min(48)) } else { None });
                         return;
                     }
-                    let (pb, w, h) = icon_view_pixbuf(m, it, sz.get(), tsz.get());
+                    let (w, h) = icon_view_dims(m, it, sz.get(), tsz.get());
                     cell.set_fixed_size(w, h);
-                    cell.set_property("pixbuf", pb);
+                    cell.set_property("pixbuf", if drawn { icon_view_pixbuf(m, it, sz.get(), tsz.get()) } else { None });
                 })),
             );
         }
@@ -613,7 +623,8 @@ impl Pane {
                 &name_col,
                 &list_pix,
                 Some(Box::new(move |_, cell, m, it| {
-                    cell.set_property("pixbuf", row_pixbuf(m, it, sz.get()));
+                    // Its size is fixed: the picture is needed only when drawn.
+                    cell.set_property("pixbuf", if icons::drawing() { row_pixbuf(m, it, sz.get()) } else { None });
                 })),
             );
         }
@@ -1339,6 +1350,10 @@ impl Pane {
             {
                 let w = w.clone();
                 view.connect_drag_begin(move |_, _| {
+                    // GTK draws the drag icon from the items' cells next:
+                    // they need their pictures (see mark_drawing), until the
+                    // handler below.
+                    icons::set_drawing(true);
                     if let Some(p) = w.upgrade() {
                         // The whole selection is dragged (see icon_press).
                         p.press_keep.borrow_mut().take();
@@ -1348,6 +1363,10 @@ impl Pane {
                     }
                 });
             }
+            view.connect_local("drag-begin", true, |_| {
+                icons::set_drawing(false);
+                None
+            });
             view.connect_drag_end(|_, _| {
                 DRAG_SRC_DIR.with(|d| *d.borrow_mut() = None);
             });
@@ -3180,7 +3199,7 @@ impl Pane {
         let (Some(model), true) = (iv.model(), iv.item_orientation() == gtk::Orientation::Vertical) else { return boxes };
         let Some(it) = model.iter(path) else { return boxes };
         if let Some(r) = iv.cell_rect(path, Some(&self.icon_pix)) {
-            let (_, w, h) = icon_view_pixbuf(&model, &it, self.icon_size.get(), self.thumb_size.get());
+            let (w, h) = icon_view_dims(&model, &it, self.icon_size.get(), self.thumb_size.get());
             let left = r.x() + self.image.x_shift() + (r.width() - w) / 2;
             boxes.push((left as f64, (r.y() + r.height() - h) as f64, w as f64, h as f64));
         }
@@ -3992,22 +4011,37 @@ fn icon_label_text(m: &gtk::TreeModel, it: &gtk::TreeIter, captions: u32) -> Str
     text
 }
 
-/// An item's picture in the icon view and the room it takes, as in Caja:
-/// its thumbnail with a shadow (longest side `thumb_size`) if it has one,
-/// else its icon (`size`). The thumbnail's shape is known from its file
-/// before the picture is loaded.
-fn icon_view_pixbuf(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32, thumb_size: i32) -> (Option<Pixbuf>, i32, i32) {
-    let thumb: String = m.gv(it, COL_THUMB as i32);
-    let (pb, w, h) = match (!thumb.is_empty()).then(|| icons::thumb_dims(&thumb)).flatten() {
-        Some((w, h)) => {
+/// An item's thumbnail file and its pixel size, if it has one. The size is
+/// known from the file before the picture is loaded.
+fn icon_view_thumb(m: &gtk::TreeModel, it: &gtk::TreeIter) -> Option<(String, (i32, i32))> {
+    // Asked for every item at every layout, and most have none: not copied
+    // out unless there is one.
+    let v = m.value(it, COL_THUMB as i32);
+    let thumb = v.get::<&str>().ok().filter(|t| !t.is_empty())?;
+    Some((thumb.to_string(), icons::thumb_dims(thumb)?))
+}
+
+/// The room an item's picture takes in the icon view, as in Caja: its
+/// thumbnail with a shadow (longest side `thumb_size`) if it has one, else
+/// its icon (`size`).
+fn icon_view_dims(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32, thumb_size: i32) -> (i32, i32) {
+    match icon_view_thumb(m, it) {
+        Some((_, (w, h))) => {
             let (w, h) = icons::fit(w, h, thumb_size);
-            (icons::framed_thumb(&thumb, thumb_size).map(|p| dim_if_cut(m, it, p)), w + 2 * icons::SHADOW, h + icons::SHADOW)
+            (w + 2 * icons::SHADOW, h + icons::SHADOW)
         }
-        None => (row_pixbuf(m, it, size), size, size),
+        None => (size, size),
+    }
+}
+
+/// An item's picture in the icon view (see icon_view_dims).
+fn icon_view_pixbuf(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32, thumb_size: i32) -> Option<Pixbuf> {
+    let pb = match icon_view_thumb(m, it) {
+        Some((thumb, _)) => icons::framed_thumb(&thumb, thumb_size).map(|p| dim_if_cut(m, it, p)),
+        None => row_pixbuf(m, it, size),
     };
     // Hidden items' pictures at 55 %, as in Caja.
-    let pb = if m.gv::<bool>(it, COL_HIDDEN as i32) { pb.map(|p| faded(&p, 0.55)) } else { pb };
-    (pb, w, h)
+    if m.gv::<bool>(it, COL_HIDDEN as i32) { pb.map(|p| faded(&p, 0.55)) } else { pb }
 }
 
 /// `p` drawn at `alpha`.
