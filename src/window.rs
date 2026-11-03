@@ -2350,8 +2350,11 @@ impl AppWindow {
         if stale {
             let names = std::fs::read_dir(&dir)
                 .map(|rd| {
+                    // The listing knows each entry's type: only links need
+                    // a look at what they point to (a round trip each on a
+                    // network share).
                     rd.flatten()
-                        .filter(|e| e.path().is_dir())
+                        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir() || (t.is_symlink() && e.path().is_dir())))
                         .map(|e| e.file_name().to_string_lossy().to_string())
                         .collect()
                 })
