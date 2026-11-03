@@ -2725,11 +2725,11 @@ impl Pane {
             self.info.widget.hide();
             return;
         }
-        let cfg = config::get();
-        let missing = if cfg.info_no_cover == "none" { crate::info::Missing::Nothing } else { crate::info::Missing::Icon };
+        let (no_cover, several) = config::with(|s| (s.info_no_cover == "none", s.info_several.clone()));
+        let missing = if no_cover { crate::info::Missing::Nothing } else { crate::info::Missing::Icon };
         let current = || (self.current(), self.folder_display_name());
         let sel = self.selected();
-        self.show_info_widget_unless(sel.len() > 1 && cfg.info_several == "hide");
+        self.show_info_widget_unless(sel.len() > 1 && several == "hide");
         match sel.as_slice() {
             [] => {
                 let (f, name) = current();
@@ -2737,7 +2737,7 @@ impl Pane {
             }
             [r] if r.is_dir => self.info.show_folder(&gio::File::for_uri(&r.uri), &r.name, missing),
             [r] => self.info.show_file(&gio::File::for_uri(&r.uri), &r.name),
-            _ => match cfg.info_several.as_str() {
+            _ => match several.as_str() {
                 "summary" => {
                     let items: Vec<(String, bool, u64)> = sel.iter().map(|r| (r.uri.clone(), r.is_dir, r.size)).collect();
                     self.info.show_summary(&items);
