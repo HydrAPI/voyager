@@ -11,5 +11,6 @@ mod clipboard;
 mod ops;
 mod thumbnailers;
 mod icons;
+mod scroll;
 
 fn main() {}
