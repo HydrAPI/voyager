@@ -7,5 +7,6 @@ mod config;
 mod util;
 #[cfg(test)]
 mod testutil;
+mod clipboard;
 
 fn main() {}
