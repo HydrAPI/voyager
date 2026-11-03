@@ -1535,7 +1535,22 @@ impl Pane {
     }
 
     pub fn grab_focus(&self) {
-        self.active_view().grab_focus();
+        let view = self.active_view();
+        if view.is_realized() {
+            view.grab_focus();
+            return;
+        }
+        // A new tab's view isn't on screen yet: it takes the focus once it
+        // is (keys sent to it before, the release of the one that opened
+        // it say, make GTK complain).
+        let id: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
+        let id2 = id.clone();
+        *id.borrow_mut() = Some(view.connect_realize(move |v| {
+            v.grab_focus();
+            if let Some(id) = id2.borrow_mut().take() {
+                v.disconnect(id);
+            }
+        }));
     }
 
     pub fn title(&self) -> String {
