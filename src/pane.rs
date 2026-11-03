@@ -3952,13 +3952,7 @@ fn count_entries(path: &std::path::Path, hidden: bool) -> Option<u64> {
     let rd = std::fs::read_dir(path).ok()?;
     Some(
         rd.filter_map(|e| e.ok())
-            .filter(|e| {
-                hidden || {
-                    let n = e.file_name();
-                    let n = n.to_string_lossy();
-                    !n.starts_with('.') && !n.ends_with('~')
-                }
-            })
+            .filter(|e| hidden || !util::name_hidden(&e.file_name().to_string_lossy()))
             .count() as u64,
     )
 }

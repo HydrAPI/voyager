@@ -438,7 +438,7 @@ fn look(dir: &Path, names: &[String]) -> (Option<PathBuf>, usize, i64) {
     if let Ok(rd) = std::fs::read_dir(dir) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
-            if !name.starts_with('.') {
+            if !crate::util::name_hidden(&name) {
                 items += 1;
             }
             if let Some(rank) = names.iter().position(|n| *n == name.to_lowercase()) {

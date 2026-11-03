@@ -268,6 +268,12 @@ pub fn info_is_hidden(info: &gio::FileInfo) -> bool {
     info_name(info).is_some_and(|n| n.starts_with('.'))
 }
 
+/// Whether an item named `name` is left out while hidden items are: a dot
+/// file or a backup ("~"), going by the name alone.
+pub fn name_hidden(name: &str) -> bool {
+    name.starts_with('.') || name.ends_with('~')
+}
+
 /// Backup file: as reported, or else a name ending in "~".
 pub fn info_is_backup(info: &gio::FileInfo) -> bool {
     if info.has_attribute("standard::is-backup") {
