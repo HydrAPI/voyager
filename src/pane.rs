@@ -147,6 +147,10 @@ thread_local! {
     static TYPE_DESC: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
     /// Folder URI the current in-app drag started from.
     static DRAG_SRC_DIR: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// The file systems of the folders the current drag passed over, by
+    /// URI: asked at every move of the pointer, and each is a round trip on
+    /// a network share.
+    static DRAG_FS: RefCell<HashMap<String, Option<String>>> = RefCell::new(HashMap::new());
 }
 
 pub fn type_description(ctype: &str, is_dir: bool) -> String {
@@ -234,6 +238,7 @@ fn enable_drag_source_iv(iv: &gtk::IconView) {
 /// copying and moving), or None.
 pub fn set_drag_source_dir(uri: Option<String>) {
     DRAG_SRC_DIR.with(|d| *d.borrow_mut() = uri);
+    DRAG_FS.with(|c| c.borrow_mut().clear());
 }
 
 pub fn enable_drag_source_tv(tv: &gtk::TreeView) {
@@ -274,10 +279,17 @@ pub fn choose_action(widget: &gtk::Widget, ctx: &gdk::DragContext, dest: &gio::F
         gdk::DragAction::MOVE
     } else if let Some(src) = DRAG_SRC_DIR.with(|d| d.borrow().clone()) {
         let fs = |f: &gio::File| {
-            f.query_info("id::filesystem", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+            let uri = f.uri().to_string();
+            if let Some(id) = DRAG_FS.with(|c| c.borrow().get(&uri).cloned()) {
+                return id;
+            }
+            let id = f
+                .query_info("id::filesystem", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
                 .ok()
                 .and_then(|i| i.attribute_string("id::filesystem"))
-                .map(|s| s.to_string())
+                .map(|s| s.to_string());
+            DRAG_FS.with(|c| c.borrow_mut().insert(uri, id.clone()));
+            id
         };
         let a = fs(&gio::File::for_uri(&src));
         if a.is_some() && a == fs(dest) {
@@ -1357,7 +1369,7 @@ impl Pane {
                     if let Some(p) = w.upgrade() {
                         // The whole selection is dragged (see icon_press).
                         p.press_keep.borrow_mut().take();
-                        DRAG_SRC_DIR.with(|d| *d.borrow_mut() = Some(p.current().uri().to_string()));
+                        set_drag_source_dir(Some(p.current().uri().to_string()));
                         p.tv_block.set(false);
                         p.tv_pending.borrow_mut().take();
                     }
@@ -1368,7 +1380,7 @@ impl Pane {
                 None
             });
             view.connect_drag_end(|_, _| {
-                DRAG_SRC_DIR.with(|d| *d.borrow_mut() = None);
+                set_drag_source_dir(None);
             });
             {
                 let w = w.clone();
