@@ -313,6 +313,19 @@ impl AppWindow {
             b.set_action_target_value(Some(&target.to_variant()));
             b.set_tooltip_text(Some(tip));
             b.set_focus_on_click(false);
+            // Clicking the pressed one would release it: the view doesn't
+            // change, so GTK doesn't press it again.
+            let win = window.downgrade();
+            b.connect_toggled(move |b| {
+                let current = win
+                    .upgrade()
+                    .and_then(|w| w.lookup_action("view-mode"))
+                    .and_then(|a| a.state())
+                    .and_then(|v| v.get::<String>());
+                if !b.is_active() && current.as_deref() == Some(target) {
+                    b.set_active(true);
+                }
+            });
             view_box.pack_start(&b, false, false, 0);
         }
         locbar.pack_start(&view_box, false, false, 3);
