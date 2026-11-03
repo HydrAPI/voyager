@@ -20,5 +20,6 @@ mod info;
 mod props;
 mod sidebar;
 mod bulkrename;
+mod actions;
 
 fn main() {}
