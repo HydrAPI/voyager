@@ -17,5 +17,6 @@ mod iconlabel;
 mod pane;
 mod columns;
 mod info;
+mod props;
 
 fn main() {}
