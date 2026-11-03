@@ -18,5 +18,6 @@ mod pane;
 mod columns;
 mod info;
 mod props;
+mod sidebar;
 
 fn main() {}
