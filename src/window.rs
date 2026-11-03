@@ -3259,8 +3259,8 @@ impl AppWindow {
         });
         indent(&b, confirm.upcast_ref());
         head(&b, "Scrolling");
-        let auto = check("_Middle-click on empty space (or a file in the list view) to autoscroll");
-        auto.set_tooltip_text(Some("Like Firefox: a marker appears where you clicked and the view scrolls towards the pointer, faster the further away it is. Click, press a key or use the wheel to stop (after dragging with the button held, letting go stops it). In the list view this works on files too; Shift+middle-click opens a file there."));
+        let auto = check("_Middle-click on empty space (or an item in the list view) to autoscroll");
+        auto.set_tooltip_text(Some("Like Firefox: a marker appears where you clicked and the view scrolls towards the pointer, faster the further away it is. Click, press a key or use the wheel to stop (after dragging with the button held, letting go stops it). In the list view this works on files and folders too, if the list can scroll; otherwise, or with Shift, a middle-click opens them there (a folder in a new tab)."));
         auto.set_active(s.autoscroll);
         auto.connect_toggled(|c| {
             let v = c.is_active();

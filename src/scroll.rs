@@ -5,8 +5,9 @@
 //!   marker appears where you clicked and the view scrolls towards the
 //!   pointer, faster the further away it is. A click (or, after dragging with
 //!   the button held, releasing it), a key or the wheel stops it. In the
-//!   list view it starts on files too (Shift+middle-click opens them). It
-//!   can be turned off in the preferences.
+//!   list view it starts on files and folders too, if the list can scroll
+//!   (otherwise, or with Shift, a middle-click opens them). It can be turned
+//!   off in the preferences.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;

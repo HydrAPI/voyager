@@ -1114,7 +1114,11 @@ impl Pane {
                         let row = path.as_ref().and_then(|tp| p.row_at_filter_path(tp));
                         let press = ev.event_type() == gdk::EventType::ButtonPress;
                         match row {
-                            Some(r) if r.is_dir => p.emit(Event::OpenNewTab(gio::File::for_uri(&r.uri))),
+                            Some(r) if r.is_dir => {
+                                if press {
+                                    p.emit(Event::OpenNewTab(gio::File::for_uri(&r.uri)));
+                                }
+                            }
                             Some(r) => {
                                 if press {
                                     p.emit(Event::OpenFile(r));
@@ -1227,19 +1231,22 @@ impl Pane {
                         let row = path.as_ref().and_then(|tp| p.row_at_filter_path(tp));
                         let press = ev.event_type() == gdk::EventType::ButtonPress;
                         // The rows fill the list's width, leaving hardly any
-                        // empty space, so files autoscroll too (when it's on);
-                        // Shift+middle-click opens them.
-                        let open_file = !config::with(|s| s.autoscroll)
-                            || ev.state().contains(gdk::ModifierType::SHIFT_MASK);
-                        match row {
-                            Some(r) if r.is_dir => p.emit(Event::OpenNewTab(gio::File::for_uri(&r.uri))),
-                            Some(r) if open_file => {
-                                if press {
-                                    p.emit(Event::OpenFile(r));
+                        // empty space, so files and folders autoscroll too
+                        // (when it's on and there's something to scroll);
+                        // otherwise, or with Shift, a middle-click opens
+                        // them, a folder in a new tab.
+                        if press {
+                            let shift = ev.state().contains(gdk::ModifierType::SHIFT_MASK);
+                            match row {
+                                Some(r) if shift || !crate::scroll::autoscroll(tv.upcast_ref(), ev) => {
+                                    if r.is_dir {
+                                        p.emit(Event::OpenNewTab(gio::File::for_uri(&r.uri)));
+                                    } else {
+                                        p.emit(Event::OpenFile(r));
+                                    }
                                 }
-                            }
-                            _ => {
-                                if press {
+                                Some(_) => {}
+                                None => {
                                     crate::scroll::autoscroll(tv.upcast_ref(), ev);
                                 }
                             }
