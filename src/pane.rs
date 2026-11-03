@@ -374,6 +374,8 @@ pub struct Pane {
     loading: Cell<bool>,
     typeahead: RefCell<String>,
     typeahead_gen: Cell<u64>,
+    /// Wheel scrolling not yet a whole step (see typeahead_scroll).
+    typeahead_wheel: Cell<f64>,
     /// Shows what's been typed to select an item (bottom right, like Caja).
     typeahead_entry: gtk::Entry,
     /// Over the file view: the type-to-select field and the rename editor.
@@ -814,6 +816,7 @@ impl Pane {
             loading: Cell::new(false),
             typeahead: RefCell::new(String::new()),
             typeahead_gen: Cell::new(0),
+            typeahead_wheel: Cell::new(0.0),
             typeahead_entry,
             overlay: overlay.clone(),
             rename_editor: RefCell::new(None),
@@ -1513,6 +1516,14 @@ impl Pane {
             });
             let w2 = Rc::downgrade(self);
             view.connect_scroll_event(move |_, ev| {
+                // While typing to select, the wheel goes to the previous /
+                // next match, as in Caja.
+                if let Some(p) = w2.upgrade() {
+                    if !p.typeahead.borrow().is_empty() {
+                        p.typeahead_scroll(ev);
+                        return glib::Propagation::Stop;
+                    }
+                }
                 if ev.state().contains(gdk::ModifierType::CONTROL_MASK) {
                     if let Some(p) = w2.upgrade() {
                         let dy = match ev.direction() {
@@ -2409,6 +2420,13 @@ impl Pane {
     }
 
     fn select_filter_paths(&self, paths: &[gtk::TreePath]) {
+        self.select_filter_paths_scrolling(paths, true);
+    }
+
+    /// Selects `paths`, scrolled to the first: into the middle with
+    /// `center`, else only as far as needed to see it (not at all when it's
+    /// in view: typing to select and its wheel steps leave the view be).
+    fn select_filter_paths_scrolling(&self, paths: &[gtk::TreePath], center: bool) {
         self.icon_view.unselect_all();
         let sel = self.tree_view.selection();
         sel.unselect_all();
@@ -2418,7 +2436,7 @@ impl Pane {
                     if i == 0 {
                         self.tree_view.set_cursor(p, None::<&gtk::TreeViewColumn>, false);
                         self.tree_view
-                            .scroll_to_cell(Some(p), None::<&gtk::TreeViewColumn>, true, 0.4, 0.0);
+                            .scroll_to_cell(Some(p), None::<&gtk::TreeViewColumn>, center, 0.4, 0.0);
                         sel.unselect_all();
                     }
                     sel.select_path(p);
@@ -2426,7 +2444,7 @@ impl Pane {
                 _ => {
                     if i == 0 {
                         self.icon_view.set_cursor(p, None::<&gtk::CellRenderer>, false);
-                        self.icon_view.scroll_to_path(p, true, 0.4, 0.0);
+                        self.icon_view.scroll_to_path(p, center, 0.4, 0.0);
                         self.icon_view.unselect_all();
                     }
                     self.icon_view.select_path(p);
@@ -2568,7 +2586,7 @@ impl Pane {
         self.typeahead_timeout();
         match self.typeahead_match(None, true) {
             Some(p) => {
-                self.select_filter_paths(&[p]);
+                self.select_filter_paths_scrolling(&[p], false);
                 e.style_context().remove_class("error");
             }
             None => e.style_context().add_class("error"),
@@ -2603,8 +2621,26 @@ impl Pane {
     fn typeahead_step(&self, down: bool) {
         let cur = self.selected_paths().into_iter().next();
         if let Some(p) = self.typeahead_match(cur, down) {
-            self.select_filter_paths(&[p]);
+            self.select_filter_paths_scrolling(&[p], false);
         }
+    }
+
+    /// The wheel while typing: a match up or down for each notch (a
+    /// touchpad's small steps are added up to whole ones).
+    fn typeahead_scroll(self: &Rc<Self>, ev: &gdk::EventScroll) {
+        let dy = match ev.direction() {
+            gdk::ScrollDirection::Up => -1.0,
+            gdk::ScrollDirection::Down => 1.0,
+            gdk::ScrollDirection::Smooth => ev.delta().1,
+            _ => 0.0,
+        };
+        let mut steps = self.typeahead_wheel.get() + dy;
+        while steps.abs() >= 1.0 {
+            self.typeahead_step(steps > 0.0);
+            steps -= steps.signum();
+        }
+        self.typeahead_wheel.set(steps);
+        self.typeahead_timeout();
     }
 
     fn typeahead_timeout(self: &Rc<Self>) {
