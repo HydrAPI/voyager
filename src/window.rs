@@ -1091,8 +1091,21 @@ impl AppWindow {
             }
         });
         self.add("edit-bookmarks", |w| w.edit_bookmarks());
-        self.add("next-tab", |w| w.active().next_page());
-        self.add("prev-tab", |w| w.active().prev_page());
+        // Around from the last tab to the first and back, as in browsers.
+        self.add("next-tab", |w| {
+            let nb = w.active();
+            let n = nb.n_pages();
+            if n > 0 {
+                nb.set_current_page(Some((nb.current_page().unwrap_or(0) + 1) % n));
+            }
+        });
+        self.add("prev-tab", |w| {
+            let nb = w.active();
+            let n = nb.n_pages();
+            if n > 0 {
+                nb.set_current_page(Some((nb.current_page().unwrap_or(0) + n - 1) % n));
+            }
+        });
         for i in 1..=9u32 {
             self.add(&format!("tab-{i}"), move |w| {
                 let nb = w.active();
