@@ -1,0 +1,72 @@
+# Maintainer: dekart811 <mail@dekart811.net>
+#
+# Builds Arkha from this repository's committed state (uncommitted changes
+# aren't included): cd packaging/arch && makepkg -si
+
+pkgname=arkha
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='A Caja-style file manager for GTK 3'
+arch=('x86_64' 'aarch64')
+license=('unknown')
+depends=(
+  'cairo'
+  'gcc-libs'
+  'gdk-pixbuf2'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'gvfs'
+  'pango'
+)
+makedepends=('cargo' 'git')
+optdepends=(
+  'ffmpegthumbnailer: video thumbnails'
+  'ffmpeg: video thumbnails without ffmpegthumbnailer'
+  'mediainfo: the Media Info tab in Properties'
+  'gvfs-mtp: phones and media players over MTP'
+  'gvfs-gphoto2: cameras'
+  'gvfs-smb: Windows and Samba network shares'
+  'engrampa: creating and extracting archives'
+  'file-roller: creating and extracting archives'
+  'xarchiver: creating and extracting archives'
+  'xterm: Open in Terminal, if no other terminal is installed'
+)
+install=arkha.install
+source=("$pkgname::git+file://$(realpath ../..)")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$pkgname"
+  local version
+  version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+  printf '%s.r%s.g%s' "$version" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd "$pkgname"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$pkgname"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo test --frozen --release
+}
+
+package() {
+  cd "$pkgname"
+  install -Dm755 target/release/arkha "$pkgdir/usr/bin/arkha"
+  install -Dm755 arkha-restore-desktop "$pkgdir/usr/bin/arkha-restore-desktop"
+  install -Dm644 arkha.desktop "$pkgdir/usr/share/applications/arkha.desktop"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

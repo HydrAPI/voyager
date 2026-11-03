@@ -1,0 +1,5 @@
+# What makepkg leaves here: its work folders, the cloned sources, packages.
+*
+!.gitignore
+!PKGBUILD
+!arkha.install

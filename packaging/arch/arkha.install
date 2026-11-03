@@ -1,0 +1,17 @@
+post_install() {
+  cat <<'EOF'
+==> Arkha mounts inserted drives itself and, when first started, switches
+    off the desktop's own automounting (this can be changed in its
+    Preferences). Before removing Arkha, run arkha-restore-desktop as each
+    user who used it to give that back to the desktop.
+EOF
+}
+
+pre_remove() {
+  cat <<'EOF'
+==> If Arkha switched off the desktop's own automounting for a user and
+    arkha-restore-desktop wasn't run before this removal, that user can
+    switch it back on in the desktop's settings, or run uninstall.sh from
+    Arkha's sources.
+EOF
+}

@@ -25,7 +25,7 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
 - **Opening files:** Open / Open With (the apps for the file type, or any other app) / Run or Display for executables, Open in Terminal (F4), and Extract Here / Compress via Engrampa or File Roller.
 - **Properties dialog:** type, size (counted in the background), dates, permissions you can edit, the default app for the file type, and a Media Info tab with what [MediaInfo](https://mediaarea.net/MediaInfo) reports (codecs, resolution, duration…) when `mediainfo` is installed; it can be limited to videos, audio, images or other files.
 - **Selection and navigation:** type the start of a name to jump to it, search (Ctrl+F: a Search field in the location bar, as in Caja; typing filters the folder, Enter searches it and all its subfolders, with a Location column for the results), select by pattern (Ctrl+S, e.g. `*.jpg`), invert selection, back-button history on right-click, and mouse back/forward buttons.
-- Devices: flash drives, memory cards, discs, phones (MTP) and network mounts. Click to mount, unmount / eject / safely remove with the button next to them or the context menu. Newly inserted media are mounted by Arkha itself (no desktop environment needed); this can be turned off, and the eject button can be set to only unmount. Arkha switches off the desktop's own automounting (GNOME, Cinnamon, MATE, Xfce, KDE, and PCManFM / PCManFM-Qt on LXDE / LXQt) so only its setting counts; `uninstall.sh` switches it back on. Separate automounters (udiskie, devmon, ldm, udisks-glue) can't be switched off from outside: Arkha says so once if it finds one running.
+- Devices: flash drives, memory cards, discs, phones (MTP) and network mounts. Click to mount, unmount / eject / safely remove with the button next to them or the context menu. Newly inserted media are mounted by Arkha itself (no desktop environment needed); this can be turned off, and the eject button can be set to only unmount. Arkha switches off the desktop's own automounting (GNOME, Cinnamon, MATE, Xfce, KDE, and PCManFM / PCManFM-Qt on LXDE / LXQt) so only its setting counts; `arkha-restore-desktop` (also run by `uninstall.sh`) switches it back on. Separate automounters (udiskie, devmon, ldm, udisks-glue) can't be switched off from outside: Arkha says so once if it finds one running.
 - **Info panel:** beside the files (View → Info Panel, F11, or its toolbar button), turned on per folder. It shows the selected item with a few details: a folder's cover picture (`folder.jpg`, `cover.jpg`, … — the names are a setting, matched ignoring case), an image itself, or a file's thumbnail (videos and the like); for several items their number and total size. Folder sizes are left out on network shares (SMB, NFS, SSHFS…), where adding them up would ask the server about every file. Custom icons set in Caja are shown too.
 - Bookmarks are shared with Caja and the GTK file chooser (`~/.config/gtk-3.0/bookmarks`). Includes a bookmark editor (Ctrl+B).
 - Preferences: single-click mode, default view and sorting, per-folder views, zoom levels, hidden files, file sizes in IEC units (KiB, MiB), thumbnails, confirmation before trashing, the number of hidden items in the status bar (off by default), and which side pane entries to show and their row height.
@@ -55,7 +55,18 @@ cargo run --release              # try it
 ./uninstall.sh --purge           # ...and delete the settings in ~/.config/arkha
 ```
 
-Uninstalling also gives folders back to the application `--default` replaced.
+Uninstalling also gives folders back to the application `--default` replaced, and the desktop its own automounting (that's `arkha-restore-desktop`, which can also be run on its own).
+
+### Arch Linux package
+
+`packaging/arch/PKGBUILD` builds a pacman package from the committed state of this repository:
+
+```sh
+cd packaging/arch
+makepkg -si
+```
+
+The package installs `arkha-restore-desktop` too: run it as each user before removing the package, so the desktop mounts inserted drives itself again. Video thumbnails (`ffmpegthumbnailer` or `ffmpeg`), the Media Info tab (`mediainfo`), phones (`gvfs-mtp`), cameras (`gvfs-gphoto2`), network shares (`gvfs-smb`) and archives (`engrampa`, `file-roller` or `xarchiver`) are optional dependencies.
 
 Trash, network locations and mounting use GVfs, which every MATE install already has. Mounting drives also needs udisks2 (`gvfs` pulls it in on most distributions); Android phones need the GVfs MTP backend (`gvfs-mtp` on Arch, Debian and Fedora).
 
