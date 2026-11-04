@@ -28,7 +28,9 @@ pub fn defaults() -> Vec<Thumbnailer> {
         Thumbnailer {
             name: "Videos (ffmpegthumbnailer)".into(),
             types: "video/*".into(),
-            command: "ffmpegthumbnailer -i %i -o %o -s %s".into(),
+            // -f: a film strip down the sides, as the desktop's own video
+            // thumbnailer (and so Caja) makes them, telling videos from pictures.
+            command: "ffmpegthumbnailer -i %i -o %o -s %s -f".into(),
         },
         Thumbnailer {
             name: "Videos (ffmpeg)".into(),

@@ -4533,7 +4533,7 @@ fn edit_thumbnailer(parent: &gtk::Window, title: &str, cur: &thumbnailers::Thumb
     };
     let name = entry(&cur.name, "e.g. Videos");
     let types = entry(&cur.types, "e.g. video/*");
-    let command = entry(&cur.command, "e.g. ffmpegthumbnailer -i %i -o %o -s %s");
+    let command = entry(&cur.command, "e.g. ffmpegthumbnailer -i %i -o %o -s %s -f");
     command.set_width_chars(56);
     let help = gtk::Label::new(Some("File types are MIME types, separated by “;” (“*” matches anything). In the command, %i is the file, %o the image to write (PNG or JPEG) and %s the size in pixels. It runs with sh and may take up to 30 seconds."));
     help.set_line_wrap(true);
