@@ -2243,8 +2243,13 @@ impl Pane {
     /// added with the views detached (see there), except into an empty
     /// view, which shows them at once.
     fn add_infos(self: &Rc<Self>, parent: &gio::File, infos: Vec<gio::FileInfo>, counts: bool) {
-        if infos.len() <= 20 || self.store.iter_n_children(None) == 0 {
-            for info in &infos {
+        self.add_rows(infos.into_iter().map(|i| (parent.clone(), i)).collect(), counts);
+    }
+
+    /// add_infos for items of any folders: (folder, item) pairs.
+    fn add_rows(self: &Rc<Self>, rows: Vec<(gio::File, gio::FileInfo)>, counts: bool) {
+        if rows.len() <= 20 || self.store.iter_n_children(None) == 0 {
+            for (parent, info) in &rows {
                 self.add_info(parent, info, false);
             }
         } else {
@@ -2254,7 +2259,7 @@ impl Pane {
                 // filter model.
                 let sort = self.store.sort_column_id();
                 self.store.set_unsorted();
-                for info in &infos {
+                for (parent, info) in &rows {
                     self.add_info(parent, info, false);
                 }
                 if let Some((col, order)) = sort {
@@ -2263,10 +2268,10 @@ impl Pane {
             });
         }
         if counts {
-            let dirs: Vec<(String, std::path::PathBuf)> = infos
+            let dirs: Vec<(String, std::path::PathBuf)> = rows
                 .iter()
-                .filter(|i| i.file_type() == gio::FileType::Directory)
-                .filter_map(|i| {
+                .filter(|(_, i)| i.file_type() == gio::FileType::Directory)
+                .filter_map(|(parent, i)| {
                     let f = parent.child(i.name());
                     Some((f.uri().to_string(), f.path()?))
                 })
@@ -3650,21 +3655,29 @@ impl Pane {
         });
         let w = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
-            while let Ok(found) = rx.recv().await {
-                let mut infos = vec![];
-                for (parent, name) in found {
-                    let child = gio::File::for_uri(&parent).child(&name);
-                    let info = child.query_info_future(ATTRS, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT).await;
-                    if let Ok(info) = info {
-                        infos.push((gio::File::for_uri(&parent), info));
-                    }
+            // As a folder loads (see load): the first results at once, the
+            // rest a second's worth at a time, as each addition makes the
+            // icon view measure all its items again.
+            let mut waiting = vec![];
+            let mut shown = std::time::Instant::now();
+            loop {
+                let found = rx.recv().await;
+                let done = found.is_err();
+                if let Ok(found) = found {
+                    waiting.extend(read_infos(found).await);
                 }
                 let Some(p) = w.upgrade() else { return };
                 if p.gen.get() != gen {
                     return;
                 }
-                for (parent, info) in infos {
-                    p.add_info(&parent, &info, false);
+                if !waiting.is_empty() && (done || p.store.iter_n_children(None) == 0 || shown.elapsed() >= Duration::from_secs(1)) {
+                    p.add_rows(std::mem::take(&mut waiting), false);
+                    shown = std::time::Instant::now();
+                    // The count in the status bar follows.
+                    p.emit(Event::Selection);
+                }
+                if done {
+                    break;
                 }
             }
             if let Some(p) = w.upgrade() {
@@ -4022,6 +4035,31 @@ fn mark_drawing(view: &gtk::Widget) {
         icons::set_drawing(false);
         Some(false.to_value())
     });
+}
+
+/// The details of items found, (folder URI, name) pairs, read all at once
+/// (one after another, each would wait for the last).
+async fn read_infos(found: Vec<(String, String)>) -> Vec<(gio::File, gio::FileInfo)> {
+    let out = Rc::new(RefCell::new(Vec::with_capacity(found.len())));
+    let left = Rc::new(Cell::new(found.len()));
+    let (tx, rx) = async_channel::bounded::<()>(1);
+    for (parent, name) in found {
+        let parent = gio::File::for_uri(&parent);
+        let (out, left, tx) = (out.clone(), left.clone(), tx.clone());
+        parent.child(&name).query_info_async(ATTRS, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT, gio::Cancellable::NONE, move |res| {
+            if let Ok(info) = res {
+                out.borrow_mut().push((parent, info));
+            }
+            left.set(left.get() - 1);
+            if left.get() == 0 {
+                let _ = tx.try_send(());
+            }
+        });
+    }
+    if left.get() > 0 {
+        let _ = rx.recv().await;
+    }
+    out.take()
 }
 
 /// What an icon view's name cell shows: its label text (see
