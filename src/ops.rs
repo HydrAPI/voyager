@@ -91,13 +91,87 @@ struct Worker {
     verb: &'static str,
     /// Set from the progress window's pause button.
     paused: Arc<AtomicBool>,
+    clock: Clock,
+}
+
+/// How long a job has been at work, as Caja's job timer: time paused or
+/// waiting for an answer in a dialog is left out (the rate, and the time
+/// left from it, would look worse than they are).
+#[derive(Clone)]
+struct Clock {
+    start: Instant,
+    /// Milliseconds paused or waiting.
+    idle: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl Clock {
+    fn new() -> Clock {
+        Clock { start: Instant::now(), idle: Arc::default() }
+    }
+
+    fn working(&self) -> Duration {
+        self.start.elapsed().saturating_sub(Duration::from_millis(self.idle.load(Ordering::Relaxed)))
+    }
+
+    /// Runs `f` (a wait) with its time left out.
+    fn idle<R>(&self, f: impl FnOnce() -> R) -> R {
+        let t = Instant::now();
+        let r = f();
+        self.idle.fetch_add(t.elapsed().as_millis() as u64, Ordering::Relaxed);
+        r
+    }
 }
 
 /// Blocks while the job is paused (until resumed or cancelled).
-fn wait_while_paused(paused: &AtomicBool, cancel: &gio::Cancellable) {
-    while paused.load(Ordering::Relaxed) && !cancel.is_cancelled() {
-        std::thread::sleep(Duration::from_millis(100));
+fn wait_while_paused(paused: &AtomicBool, cancel: &gio::Cancellable, clock: &Clock) {
+    if paused.load(Ordering::Relaxed) {
+        clock.idle(|| {
+            while paused.load(Ordering::Relaxed) && !cancel.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
     }
+}
+
+/// The rate is guessed from the job's average so far: before this it's
+/// too unsteady to tell the time left, as in Caja.
+const RELIABLE_RATE_AFTER: Duration = Duration::from_secs(15);
+
+/// A time left as Caja words it: "40 seconds", "3 minutes", "1 hour, 20
+/// minutes", "approximately 5 hours".
+fn format_time_left(secs: u64) -> String {
+    let plural = |n: u64, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    match secs {
+        0..60 => plural(secs, "second", "seconds"),
+        60..3600 => plural(secs / 60, "minute", "minutes"),
+        3600..14400 => format!("{}, {}", plural(secs / 3600, "hour", "hours"), plural(secs % 3600 / 60, "minute", "minutes")),
+        _ => format!("approximately {}", plural(secs / 3600, "hour", "hours")),
+    }
+}
+
+/// Caja's progress details for a job counted in bytes: "4 MB of 10 MB",
+/// then, once the rate can be told, "4 MB of 10 MB — 2 minutes left
+/// (1 MB/sec)".
+fn bytes_detail(done: u64, total: u64, working: Duration) -> String {
+    let total = total.max(done);
+    let mut s = format!("{} of {}", util::format_size(done), util::format_size(total));
+    if working >= RELIABLE_RATE_AFTER && done > 0 {
+        let rate = done as f64 / working.as_secs_f64();
+        let left = ((total - done) as f64 / rate) as u64;
+        s.push_str(&format!(" \u{2014} {} left ({}/sec)", format_time_left(left), util::format_size(rate as u64)));
+    }
+    s
+}
+
+/// The same for a job counted in items: "40 of 120 items — 1 minute left".
+fn items_detail(done: u64, total: u64, working: Duration) -> String {
+    let total = total.max(done);
+    let mut s = format!("{done} of {total} items");
+    if working >= RELIABLE_RATE_AFTER && done > 0 {
+        let rate = done as f64 / working.as_secs_f64();
+        s.push_str(&format!(" \u{2014} {} left", format_time_left(((total - done) as f64 / rate) as u64)));
+    }
+    s
 }
 
 const NOFOLLOW: gio::FileQueryInfoFlags = gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS;
@@ -139,7 +213,7 @@ impl Worker {
 
     fn progress(&mut self, detail: &str, force: bool) {
         // Every step of a job reports progress, so this is where it pauses.
-        wait_while_paused(&self.paused, &self.cancel);
+        wait_while_paused(&self.paused, &self.cancel, &self.clock);
         if !force && self.last.elapsed() < Duration::from_millis(80) {
             return;
         }
@@ -151,14 +225,11 @@ impl Worker {
         } else {
             0.0
         };
+        let working = self.clock.working();
         let detail = if self.by_bytes {
-            format!(
-                "{detail}\n{} of {}",
-                util::format_size(self.done_bytes),
-                util::format_size(self.total_bytes)
-            )
+            format!("{detail}\n{}", bytes_detail(self.done_bytes, self.total_bytes, working))
         } else {
-            format!("{detail}\n{} of {} items", self.done_items, self.total_items)
+            format!("{detail}\n{}", items_detail(self.done_items, self.total_items, working))
         };
         let _ = self.tx.send_blocking(Msg::Progress {
             detail,
@@ -181,7 +252,7 @@ impl Worker {
             offer_delete,
             reply: rtx,
         });
-        let c = rrx.recv().unwrap_or(ErrChoice::Cancel);
+        let c = self.clock.idle(|| rrx.recv().unwrap_or(ErrChoice::Cancel));
         match c {
             ErrChoice::SkipAll => {
                 self.skip_errors = true;
@@ -219,7 +290,7 @@ impl Worker {
             dest_desc: describe(dst),
         };
         let _ = self.tx.send_blocking(Msg::Conflict(req, rtx));
-        let (r, all) = rrx.recv().unwrap_or((Resolution::Cancel, false));
+        let (r, all) = self.clock.idle(|| rrx.recv().unwrap_or((Resolution::Cancel, false)));
         if all {
             if both_dirs {
                 self.dir_all = Some(r);
@@ -431,19 +502,15 @@ impl Worker {
             let tx = self.tx.clone();
             let mut last = Instant::now();
             let label = format!("Copying “{name}”");
-            let (paused, cancel) = (self.paused.clone(), self.cancel.clone());
+            let (paused, cancel, clock) = (self.paused.clone(), self.cancel.clone(), self.clock.clone());
             let mut cb = |cur: i64, _tot: i64| {
                 // Pausing in the middle of a big file stops the copy here.
-                wait_while_paused(&paused, &cancel);
+                wait_while_paused(&paused, &cancel, &clock);
                 if last.elapsed() > Duration::from_millis(100) && total > 0 {
                     last = Instant::now();
                     let done = base + cur.max(0) as u64;
                     let _ = tx.send_blocking(Msg::Progress {
-                        detail: format!(
-                            "{label}\n{} of {}",
-                            util::format_size(done),
-                            util::format_size(total)
-                        ),
+                        detail: format!("{label}\n{}", bytes_detail(done, total, clock.working())),
                         fraction: (done as f64 / total as f64).clamp(0.0, 1.0),
                     });
                 }
@@ -1225,6 +1292,7 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
                 last: Instant::now() - Duration::from_secs(1),
                 verb: "",
                 paused,
+                clock: Clock::new(),
             };
             let created = w.run(job);
             let _ = tx.send_blocking(Msg::Done(created));
@@ -1544,6 +1612,7 @@ mod tests {
             last: Instant::now(),
             verb: "",
             paused,
+            clock: Clock::new(),
         };
         let answers = answers.to_vec();
         let ui = std::thread::spawn(move || {
@@ -1753,6 +1822,28 @@ mod tests {
         assert_eq!(asked.len(), 1);
         assert!(asked[0].starts_with("error:Cannot move"), "{asked:?}");
         assert_eq!(read(&s.0.join("d/f")), "f");
+    }
+
+    #[test]
+    fn time_left_as_caja_words_it() {
+        assert_eq!(format_time_left(1), "1 second");
+        assert_eq!(format_time_left(59), "59 seconds");
+        assert_eq!(format_time_left(60), "1 minute");
+        assert_eq!(format_time_left(3599), "59 minutes");
+        assert_eq!(format_time_left(3600 + 60), "1 hour, 1 minute");
+        assert_eq!(format_time_left(3 * 3600 + 20 * 60), "3 hours, 20 minutes");
+        assert_eq!(format_time_left(5 * 3600 + 59), "approximately 5 hours");
+    }
+
+    #[test]
+    fn time_left_once_the_rate_is_steady() {
+        let (s, f) = (Duration::from_secs, util::format_size);
+        // Not before 15 seconds.
+        assert_eq!(bytes_detail(1_000_000, 4_000_000, s(14)), format!("{} of {}", f(1_000_000), f(4_000_000)));
+        // 1 MB in 20 s: the other 3 MB take a minute.
+        assert_eq!(bytes_detail(1_000_000, 4_000_000, s(20)), format!("{} of {} \u{2014} 1 minute left ({}/sec)", f(1_000_000), f(4_000_000), f(50_000)));
+        assert_eq!(items_detail(10, 40, s(30)), "10 of 40 items \u{2014} 1 minute left");
+        assert_eq!(items_detail(0, 40, s(30)), "0 of 40 items");
     }
 
     #[test]
