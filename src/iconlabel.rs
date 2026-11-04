@@ -339,7 +339,15 @@ mod imp {
             let mut h = std::collections::hash_map::DefaultHasher::new();
             self.props().hash.hash(&mut h);
             self.text().hash(&mut h);
-            widget.pango_context().font_description().hash(&mut h);
+            // Hashed where the context keeps it: asked for every item's
+            // every measurement, a copy each time costs more than the rest.
+            let ctx = widget.pango_context();
+            // SAFETY: the context is alive; the description stays its own.
+            let font = unsafe {
+                let d = pango::ffi::pango_context_get_font_description(glib::translate::ToGlibPtr::to_glib_none(&ctx).0);
+                if d.is_null() { 0 } else { pango::ffi::pango_font_description_hash(d) }
+            };
+            font.hash(&mut h);
             widget.scale_factor().hash(&mut h);
             h.finish()
         }
