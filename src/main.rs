@@ -14,6 +14,7 @@ mod ops;
 mod pane;
 mod props;
 mod scroll;
+mod search;
 mod sidebar;
 #[cfg(test)]
 mod testutil;

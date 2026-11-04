@@ -121,9 +121,9 @@ fn for_all_panes(f: impl Fn(&Rc<Pane>)) {
 
 /// What Reopen Closed Tab brings back.
 struct ClosedTab {
-    location: gio::File,
-    back: Vec<gio::File>,
-    fwd: Vec<gio::File>,
+    place: crate::pane::Place,
+    back: Vec<crate::pane::Place>,
+    fwd: Vec<crate::pane::Place>,
     position: u32,
 }
 
@@ -161,8 +161,15 @@ pub struct AppWindow {
     location_entry: gtk::Entry,
     loc_stack: gtk::Stack,
     search_field: gtk::Entry,
-    /// The pane the search field filters while it's open.
-    search_pane: RefCell<Option<std::rc::Weak<Pane>>>,
+    /// The pane and folder the search bar was opened for (Ctrl+F, the
+    /// toolbar's search button) while it's shown without results: as in
+    /// Caja it goes away when that pane goes elsewhere.
+    search_pane: RefCell<Option<(std::rc::Weak<Pane>, String)>>,
+    /// The toolbar's search button: pressed while the search bar shows.
+    search_btn: gtk::ToggleButton,
+    /// Set while the search widgets are updated to match a pane, so their
+    /// handlers leave the pane alone.
+    search_syncing: Cell<bool>,
     loc_toggle: gtk::ToggleButton,
     status: gtk::Label,
     statusbar: gtk::Box,
@@ -230,7 +237,12 @@ impl AppWindow {
         let reload_btn = tbtn("view-refresh", "Reload the current location", "win.reload", None);
         let home_btn = tbtn("go-home", "Open your personal folder", "win.home", None);
         let root_btn = tbtn("drive-harddisk", "Browse the file system", "win.go-root", None);
-        let search_btn = tbtn("edit-find", "Filter the items in this folder", "win.filter", None);
+        // Caja's Search for Files button: shows and hides the search bar.
+        let search_btn = gtk::ToggleButton::new();
+        search_btn.add(&gtk::Image::from_icon_name(Some("edit-find"), gtk::IconSize::LargeToolbar));
+        search_btn.set_relief(gtk::ReliefStyle::None);
+        search_btn.set_tooltip_text(Some("Search documents and folders by name"));
+        search_btn.set_focus_on_click(false);
         for b in [&back_btn, &fwd_btn, &up_btn] {
             toolbar.pack_start(b, false, false, 0);
         }
@@ -489,6 +501,8 @@ impl AppWindow {
             loc_stack,
             search_field,
             search_pane: RefCell::new(None),
+            search_btn,
+            search_syncing: Cell::new(false),
             loc_toggle,
             status,
             statusbar: statusbar.clone(),
@@ -710,6 +724,10 @@ impl AppWindow {
                         .map(|a| format!("_Open With {}", a.display_name().replace('_', "__")))
                         .unwrap_or_else(|| "_Open".into());
                     add("open", &label, "win.open");
+                }
+                // Caja's entry in search results.
+                if pane.is_searching() && sel.len() == 1 {
+                    add("open-parent", "Open parent location", "win.open-parent");
                 }
                 if shown("open-with") {
                     submenus.push(("open-with", "Open Wit_h", self.open_with_menu(&sel)));
@@ -1062,20 +1080,23 @@ impl AppWindow {
             }
         });
         self.add("location", |w| w.show_location_entry(None));
-        // Ctrl+F (and the toolbar's search button) opens the search field,
-        // or closes it again.
-        self.add("filter", |w| {
-            if w.search_open() {
-                w.close_search();
-            } else {
-                w.open_search();
-            }
-        });
+        // Ctrl+F shows the search bar (as in Caja it never hides it: the
+        // toolbar's button does).
+        self.add("filter", |w| w.show_search());
         self.add("escape", |w| {
             w.loc_toggle.set_active(false);
-            w.close_search();
+            let searching = w.current_pane().is_some_and(|p| p.is_searching());
+            if w.search_open() && !searching {
+                w.hide_search();
+            }
             if let Some(p) = w.current_pane() {
                 p.grab_focus();
+            }
+        });
+        self.add("open-parent", |w| {
+            let Some(p) = w.current_pane() else { return };
+            if let [r] = p.selected().as_slice() {
+                p.open_parent_location(&r.uri);
             }
         });
         self.add("zoom-in", |w| {
@@ -1251,7 +1272,7 @@ impl AppWindow {
                 let Some(p) = s.current_pane() else { return glib::Propagation::Proceed };
                 let menu = gtk::Menu::new();
                 for (i, f) in p.history_back().iter().take(15).enumerate() {
-                    let item = gtk::MenuItem::with_label(&util::display_name(f));
+                    let item = gtk::MenuItem::with_label(&f.title());
                     let pw = Rc::downgrade(&p);
                     item.connect_activate(move |_| {
                         if let Some(p) = pw.upgrade() {
@@ -1315,15 +1336,19 @@ impl AppWindow {
                 }
             });
         }
-        // The search field (Ctrl+F): filters the pane it was opened for as
-        // you type; Enter searches all its subfolders too (as in Caja).
+        // The search bar (Ctrl+F), as in Caja: Enter (or its icon) searches
+        // the folder and everything below it; on the results it searches
+        // again, the text typed meanwhile only changing their title.
         {
             let w = w.clone();
             self.search_field.connect_changed(move |e| {
                 let Some(s) = w.upgrade() else { return };
-                let p = s.search_pane.borrow().as_ref().and_then(|p| p.upgrade());
-                if let Some(p) = p {
-                    p.set_filter_text(&e.text());
+                if s.search_syncing.get() {
+                    return;
+                }
+                if let Some(p) = s.current_pane().filter(|p| p.is_searching()) {
+                    p.set_search_text(&e.text());
+                    s.window.set_title(&p.title());
                 }
             });
         }
@@ -1331,11 +1356,40 @@ impl AppWindow {
             let w = w.clone();
             self.search_field.connect_activate(move |e| {
                 let Some(s) = w.upgrade() else { return };
-                let p = s.search_pane.borrow().as_ref().and_then(|p| p.upgrade());
-                if let Some(p) = p {
-                    p.search(&e.text());
-                    p.grab_focus();
+                let text = e.text();
+                let Some(p) = s.current_pane() else { return };
+                if text.is_empty() {
+                    return;
                 }
+                if p.is_searching() {
+                    p.set_search_text(&text);
+                    p.reload();
+                } else {
+                    p.start_search(&text);
+                }
+            });
+            self.search_field.connect_icon_release(|e, pos, _| {
+                if pos == gtk::EntryIconPosition::Secondary {
+                    e.emit_activate();
+                }
+            });
+        }
+        {
+            let w = w.clone();
+            self.search_btn.connect_toggled(move |b| {
+                let Some(s) = w.upgrade() else { return };
+                if s.search_syncing.get() {
+                    return;
+                }
+                if b.is_active() {
+                    s.show_search();
+                    return;
+                }
+                // Off: from the results back to the folder searched, as in Caja.
+                if let Some(p) = s.current_pane().filter(|p| p.is_searching()) {
+                    p.navigate(&p.current());
+                }
+                s.hide_search();
             });
         }
         // Location bar.
@@ -1900,7 +1954,7 @@ impl AppWindow {
         if let Some(n) = nb.page_num(&pane.root) {
             let (back, fwd) = pane.history();
             let mut closed = self.closed_tabs.borrow_mut();
-            closed.push(ClosedTab { location: pane.current(), back, fwd, position: n });
+            closed.push(ClosedTab { place: pane.place(), back, fwd, position: n });
             if closed.len() > MAX_CLOSED_TABS {
                 closed.remove(0);
             }
@@ -1920,8 +1974,11 @@ impl AppWindow {
     /// Brings back the most recently closed tab where it was, with its history.
     fn reopen_tab(self: &Rc<Self>) {
         let Some(t) = self.closed_tabs.borrow_mut().pop() else { return };
-        let pane = self.add_tab(&t.location, true);
+        let pane = self.add_tab(&t.place.folder, true);
         pane.set_history(t.back, t.fwd);
+        if t.place.search.is_some() {
+            pane.show_place(t.place);
+        }
         let nb = self.active();
         let last = nb.n_pages().saturating_sub(1);
         nb.reorder_child(&pane.root, Some(t.position.min(last)));
@@ -2025,14 +2082,7 @@ impl AppWindow {
     }
 
     fn update_for_pane(self: &Rc<Self>, pane: &Rc<Pane>) {
-        // The search filters one folder in one tab: going elsewhere (the
-        // pane clears its filter then) or to another tab ends it.
-        let searched = self.search_pane.borrow().as_ref().and_then(|w| w.upgrade());
-        if let Some(sp) = searched {
-            if !Rc::ptr_eq(&sp, pane) || sp.filter_text().is_empty() && !sp.is_searching() && !self.search_field.text().is_empty() {
-                self.close_search();
-            }
-        }
+        self.sync_search(pane);
         let f = pane.current();
         self.window.set_title(&pane.title());
         self.update_crumbs(&f);
@@ -2059,6 +2109,7 @@ impl AppWindow {
         let sel = p.selected();
         let has = !sel.is_empty();
         let in_trash = p.is_trash();
+        let searching = p.is_searching();
         let writable = !in_trash;
         self.set_enabled("back", p.can_back());
         self.set_enabled("forward", p.can_forward());
@@ -2083,11 +2134,12 @@ impl AppWindow {
         self.set_enabled("rename-all", local);
         self.set_enabled("duplicate", has && writable);
         self.set_enabled("make-link", has && writable && sel.iter().all(|r| gio::File::for_uri(&r.uri).is_native()));
-        self.set_enabled("paste", writable);
+        // Search results are no folder to put anything in, as in Caja.
+        self.set_enabled("paste", writable && !searching);
         self.set_enabled("paste-into", sel.len() == 1 && dirs && writable);
-        self.set_enabled("new-folder", writable);
-        self.set_enabled("new-file", writable);
-        self.set_enabled("new-from-template", writable);
+        self.set_enabled("new-folder", writable && !searching);
+        self.set_enabled("new-file", writable && !searching);
+        self.set_enabled("new-from-template", writable && !searching);
         self.set_enabled("restore", has && in_trash && sel.iter().all(|r| !r.orig.is_empty()));
         self.set_enabled("terminal", p.current().path().is_some());
     }
@@ -2257,24 +2309,54 @@ impl AppWindow {
         self.loc_stack.visible_child_name().as_deref() == Some("search")
     }
 
-    fn open_search(self: &Rc<Self>) {
+    /// Updates the search widgets without their handlers acting on it.
+    fn syncing_search(&self, f: impl FnOnce()) {
+        self.search_syncing.set(true);
+        f();
+        self.search_syncing.set(false);
+    }
+
+    /// Shows the search bar (Ctrl+F, the toolbar's button), empty, for the
+    /// current pane's folder; it just takes the focus if it's shown.
+    fn show_search(self: &Rc<Self>) {
         let Some(p) = self.current_pane() else { return };
-        self.loc_toggle.set_active(false);
-        *self.search_pane.borrow_mut() = Some(Rc::downgrade(&p));
-        self.loc_stack.set_visible_child_name("search");
+        if !self.search_open() {
+            self.loc_toggle.set_active(false);
+            *self.search_pane.borrow_mut() = Some((Rc::downgrade(&p), p.current().uri().to_string()));
+            self.syncing_search(|| self.search_field.set_text(""));
+            self.loc_stack.set_visible_child_name("search");
+        }
+        self.syncing_search(|| self.search_btn.set_active(true));
         self.search_field.grab_focus();
     }
 
-    /// Back to the path (or the location field), showing all items of the
-    /// folder again (also after a search of its subfolders).
-    fn close_search(&self) {
-        let Some(p) = self.search_pane.borrow_mut().take() else { return };
-        self.search_field.set_text("");
-        if let Some(p) = p.upgrade() {
-            p.set_filter_text("");
-            p.end_search();
-        }
+    /// Back to the path (or the location field).
+    fn hide_search(&self) {
+        self.search_pane.borrow_mut().take();
         self.loc_stack.set_visible_child_name(if config::with(|s| s.path_as_text) { "entry" } else { "path" });
+        self.syncing_search(|| self.search_btn.set_active(false));
+    }
+
+    /// The search bar for `pane`, as in Caja: shown with the search's text
+    /// while its results are, and one opened with Ctrl+F stays only while
+    /// its pane shows the folder it was opened in.
+    fn sync_search(&self, pane: &Rc<Pane>) {
+        if let Some(text) = pane.search_text() {
+            if !self.search_open() || self.search_field.text() != text {
+                self.syncing_search(|| self.search_field.set_text(&text));
+            }
+            self.search_pane.borrow_mut().take();
+            self.loc_stack.set_visible_child_name("search");
+            self.syncing_search(|| self.search_btn.set_active(true));
+            return;
+        }
+        if !self.search_open() {
+            return;
+        }
+        let keep = self.search_pane.borrow().as_ref().is_some_and(|(w, uri)| w.upgrade().is_some_and(|p| Rc::ptr_eq(&p, pane)) && *uri == pane.current().uri());
+        if !keep {
+            self.hide_search();
+        }
     }
 
     /// Breadcrumbs with an edit toggle, or (path_as_text) always the text

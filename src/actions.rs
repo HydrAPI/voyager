@@ -11,6 +11,7 @@ pub const ITEM_ENTRIES: &[(&str, &str)] = &[
     ("open-new-tab", "Open in New Tab"),
     ("open-new-window", "Open in New Window"),
     ("open-with", "Open With"),
+    ("open-parent", "Open parent location (in search results)"),
     ("cut", "Cut"),
     ("copy", "Copy"),
     ("paste-into", "Paste Into Folder"),
@@ -58,7 +59,7 @@ pub const SEPARATOR: &str = "-";
 /// everything that can appear in any situation; what doesn't apply (Restore
 /// outside the Trash, say) is left out when the menu is built.
 pub const ITEM_ORDER: &[&str] = &[
-    "restore", "open", "open-new-tab", "open-new-window", "open-with", SEPARATOR,
+    "restore", "open", "open-new-tab", "open-new-window", "open-with", "open-parent", SEPARATOR,
     "cut", "copy", "paste-into", SEPARATOR,
     "duplicate", "make-link", "rename", "rename-all", "copy-to", "move-to", SEPARATOR,
     "trash", "delete", SEPARATOR,

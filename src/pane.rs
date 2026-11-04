@@ -48,6 +48,24 @@ impl<O: IsA<gtk::TreeModel>> ModelGet for O {
     }
 }
 
+/// A place in a pane's history: a folder, or a search started there (as in
+/// Caja, the results are a place of their own: Back returns to the folder).
+#[derive(Clone)]
+pub struct Place {
+    pub folder: gio::File,
+    pub search: Option<crate::search::Query>,
+}
+
+impl Place {
+    /// Its name in the Back button's menu.
+    pub fn title(&self) -> String {
+        match &self.search {
+            Some(q) => q.title(),
+            None => util::display_name(&self.folder),
+        }
+    }
+}
+
 /// Compares two rows' text in column `col` where it is, without copying it.
 fn cmp_text(m: &gtk::TreeModel, a: &gtk::TreeIter, b: &gtk::TreeIter, col: u32) -> Ordering {
     let (va, vb) = (m.value(a, col as i32), m.value(b, col as i32));
@@ -365,8 +383,8 @@ pub struct Pane {
     info_label: gtk::Label,
 
     current: RefCell<gio::File>,
-    back: RefCell<Vec<gio::File>>,
-    fwd: RefCell<Vec<gio::File>>,
+    back: RefCell<Vec<Place>>,
+    fwd: RefCell<Vec<Place>>,
     monitor: RefCell<Option<gio::FileMonitor>>,
     gen: Cell<u64>,
     /// Rows of deleted files waiting for remove_uri's idle batch.
@@ -379,10 +397,11 @@ pub struct Pane {
     list_size: Rc<Cell<i32>>,
     show_hidden: Rc<Cell<bool>>,
     folders_first: Rc<Cell<bool>>,
-    filter_text: Rc<RefCell<String>>,
-    /// The text searched for in the open folder and its subfolders (see
-    /// search), while the results are shown.
-    searching: RefCell<Option<String>>,
+    /// The search whose results are shown (see start_search), started in
+    /// the folder in `current`.
+    search: RefCell<Option<crate::search::Query>>,
+    /// Caja's query editor, above the results.
+    query_editor: Rc<crate::search::QueryEditor>,
     /// The search running in the background: it stops when this changes.
     search_gen: std::sync::Arc<std::sync::atomic::AtomicU64>,
     pending_select: RefCell<Vec<String>>,
@@ -450,7 +469,6 @@ impl Pane {
         let s = config::get();
         let show_hidden = Rc::new(Cell::new(s.show_hidden));
         let folders_first = Rc::new(Cell::new(s.folders_first));
-        let filter_text = Rc::new(RefCell::new(String::new()));
         let icon_size = Rc::new(Cell::new(s.icon_size));
         let list_size = Rc::new(Cell::new(s.list_size));
 
@@ -502,19 +520,7 @@ impl Pane {
         let filter = gtk::TreeModelFilter::new(&store, None);
         {
             let sh = show_hidden.clone();
-            let ft = filter_text.clone();
-            filter.set_visible_func(move |m, it| {
-                let hidden: bool = m.gv(it, COL_HIDDEN as i32);
-                if hidden && !sh.get() {
-                    return false;
-                }
-                let f = ft.borrow();
-                if f.is_empty() {
-                    return true;
-                }
-                let name: String = m.gv(it, COL_NAME as i32);
-                name.to_lowercase().contains(f.as_str())
-            });
+            filter.set_visible_func(move |m, it| sh.get() || !m.gv::<bool>(it, COL_HIDDEN as i32));
         }
 
         // ---- icon view
@@ -769,6 +775,9 @@ impl Pane {
         let info_paned = gtk::Paned::new(gtk::Orientation::Horizontal);
         info_paned.pack1(&overlay, true, false);
         info_paned.pack2(&info.widget, false, false);
+        // Caja's query editor, above the search results (see start_search).
+        let query_editor = crate::search::QueryEditor::new();
+        root.pack_start(&query_editor.widget, false, false, 0);
         root.pack_start(&info_bar, false, false, 0);
         root.pack_start(&info_paned, true, true, 0);
         root.show_all();
@@ -829,8 +838,8 @@ impl Pane {
             list_size,
             show_hidden,
             folders_first,
-            filter_text,
-            searching: RefCell::new(None),
+            search: RefCell::new(None),
+            query_editor,
             search_gen: Default::default(),
             pending_select: RefCell::new(vec![]),
             pending_rename: RefCell::new(None),
@@ -955,6 +964,24 @@ impl Pane {
 
     fn setup_signals(self: &Rc<Self>) {
         let w = Rc::downgrade(self);
+        // The query editor's rows are kept with the search; Reload (or Enter
+        // in a row) searches again.
+        {
+            let w1 = w.clone();
+            self.query_editor.connect_changed(move |criteria| {
+                if let Some(p) = w1.upgrade() {
+                    if let Some(q) = p.search.borrow_mut().as_mut() {
+                        q.criteria = criteria;
+                    }
+                }
+            });
+            let w = w.clone();
+            self.query_editor.connect_reload(move || {
+                if let Some(p) = w.upgrade() {
+                    p.reload();
+                }
+            });
+        }
         // The rename editor sits over the item's name, also as the view
         // scrolls.
         {
@@ -1405,7 +1432,8 @@ impl Pane {
                     let dest = match &target {
                         Some((_, uri)) => gio::File::for_uri(uri),
                         None => {
-                            if from_self {
+                            // Search results are no folder to drop into, as in Caja.
+                            if from_self || p.is_searching() {
                                 ctx.drag_status(gdk::DragAction::empty(), time);
                                 return true;
                             }
@@ -1438,11 +1466,12 @@ impl Pane {
                     // The views' own handlers would insert rows into the model.
                     view.stop_signal_emission_by_name("drag-data-received");
                     let Some(p) = w.upgrade() else { return };
-                    let uris: Vec<String> = sel.uris().iter().map(|s| s.to_string()).collect();
-                    let dest = p
-                        .drop_target(x, y)
-                        .map(|(_, u)| gio::File::for_uri(&u))
-                        .unwrap_or_else(|| p.current());
+                    let mut uris: Vec<String> = sel.uris().iter().map(|s| s.to_string()).collect();
+                    let target = p.drop_target(x, y);
+                    if target.is_none() && p.is_searching() {
+                        uris.clear();
+                    }
+                    let dest = target.map(|(_, u)| gio::File::for_uri(&u)).unwrap_or_else(|| p.current());
                     let action = choose_action(view, ctx, &dest);
                     p.highlight_drop(None);
                     ctx.drag_finish(!uris.is_empty(), false, time);
@@ -1601,17 +1630,33 @@ impl Pane {
     }
 
     /// Back and forward history as stored (oldest first / next first last).
-    pub fn history(&self) -> (Vec<gio::File>, Vec<gio::File>) {
+    pub fn history(&self) -> (Vec<Place>, Vec<Place>) {
         (self.back.borrow().clone(), self.fwd.borrow().clone())
     }
 
-    pub fn set_history(&self, back: Vec<gio::File>, fwd: Vec<gio::File>) {
+    pub fn set_history(&self, back: Vec<Place>, fwd: Vec<Place>) {
         *self.back.borrow_mut() = back;
         *self.fwd.borrow_mut() = fwd;
     }
 
-    pub fn history_back(&self) -> Vec<gio::File> {
+    pub fn history_back(&self) -> Vec<Place> {
         self.back.borrow().iter().rev().cloned().collect()
+    }
+
+    /// Where the pane is: its folder, or a search started there.
+    pub fn place(&self) -> Place {
+        Place { folder: self.current(), search: self.search.borrow().clone() }
+    }
+
+    fn set_place(&self, place: Place) {
+        *self.current.borrow_mut() = place.folder;
+        *self.search.borrow_mut() = place.search;
+    }
+
+    /// Shows `place` without adding to the history (a reopened tab).
+    pub fn show_place(self: &Rc<Self>, place: Place) {
+        self.set_place(place);
+        self.load();
     }
 
     pub fn mode(&self) -> ViewMode {
@@ -1674,8 +1719,8 @@ impl Pane {
     }
 
     pub fn title(&self) -> String {
-        if let Some(q) = self.searching.borrow().as_ref() {
-            return format!("Search for “{q}”");
+        if let Some(q) = self.search.borrow().as_ref() {
+            return q.title();
         }
         let f = self.current();
         if f.uri() == "trash:///" {
@@ -1707,15 +1752,15 @@ impl Pane {
 
     pub fn navigate(self: &Rc<Self>, file: &gio::File) {
         let cur = self.current();
-        if !cur.equal(file) {
-            self.back.borrow_mut().push(cur.clone());
+        if !cur.equal(file) || self.is_searching() {
+            self.back.borrow_mut().push(self.place());
             self.fwd.borrow_mut().clear();
             // Select the folder we came from when going up.
-            if cur.has_parent(Some(file)) {
+            if cur.has_parent(Some(file)) && !self.is_searching() {
                 *self.pending_select.borrow_mut() = vec![cur.uri().to_string()];
             }
         }
-        *self.current.borrow_mut() = file.clone();
+        self.set_place(Place { folder: file.clone(), search: None });
         self.load();
     }
 
@@ -1725,12 +1770,12 @@ impl Pane {
 
     pub fn go_back(self: &Rc<Self>) {
         let Some(prev) = self.back.borrow_mut().pop() else { return };
-        let cur = self.current();
-        self.fwd.borrow_mut().push(cur.clone());
-        if cur.has_parent(Some(&prev)) {
-            *self.pending_select.borrow_mut() = vec![cur.uri().to_string()];
+        let cur = self.place();
+        if cur.search.is_none() && prev.search.is_none() && cur.folder.has_parent(Some(&prev.folder)) {
+            *self.pending_select.borrow_mut() = vec![cur.folder.uri().to_string()];
         }
-        *self.current.borrow_mut() = prev;
+        self.fwd.borrow_mut().push(cur);
+        self.set_place(prev);
         self.keep_columns.set(true);
         self.load();
     }
@@ -1738,18 +1783,18 @@ impl Pane {
     pub fn go_back_n(self: &Rc<Self>, n: usize) {
         for _ in 0..n {
             let Some(prev) = self.back.borrow_mut().pop() else { break };
-            let cur = self.current();
+            let cur = self.place();
             self.fwd.borrow_mut().push(cur);
-            *self.current.borrow_mut() = prev;
+            self.set_place(prev);
         }
         self.load();
     }
 
     pub fn go_forward(self: &Rc<Self>) {
         let Some(next) = self.fwd.borrow_mut().pop() else { return };
-        let cur = self.current();
+        let cur = self.place();
         self.back.borrow_mut().push(cur);
-        *self.current.borrow_mut() = next;
+        self.set_place(next);
         self.keep_columns.set(true);
         self.load();
     }
@@ -1779,17 +1824,20 @@ impl Pane {
     fn load(self: &Rc<Self>) {
         let gen = self.gen.get() + 1;
         self.gen.set(gen);
-        // Showing a folder ends a search.
+        // A search still running stops.
         self.search_gen.store(0, std::sync::atomic::Ordering::SeqCst);
-        self.searching.borrow_mut().take();
-        self.orig_col.set_title("Original Location");
         if let Some(m) = self.monitor.borrow_mut().take() {
             m.cancel();
         }
         self.info_bar.hide();
         self.end_typeahead();
         self.close_rename_editor(false);
-        self.filter_text.borrow_mut().clear();
+        let query = self.search.borrow().clone();
+        if let Some(q) = query {
+            self.run_search(gen, &q);
+            return;
+        }
+        self.query_editor.widget.hide();
         self.clear_rows();
         self.loading.set(true);
         *self.free_space.borrow_mut() = None;
@@ -3511,127 +3559,87 @@ impl Pane {
         }
     }
 
-    /// Shows only the items whose names contain `text` (the window's search
-    /// field, in the location bar as in Caja); empty for all of them.
-    pub fn set_filter_text(&self, text: &str) {
-        let text = text.to_lowercase();
-        if *self.filter_text.borrow() == text {
-            return;
-        }
-        *self.filter_text.borrow_mut() = text;
-        self.refilter();
-        self.emit(Event::Selection);
-    }
-
-    pub fn filter_text(&self) -> String {
-        self.filter_text.borrow().clone()
-    }
-
     // ------------------------------------------------------------ search
 
     pub fn is_searching(&self) -> bool {
-        self.searching.borrow().is_some()
+        self.search.borrow().is_some()
     }
 
-    /// Searches the open folder and everything below it for items whose
-    /// names contain `query` (ignoring case), as Caja does. The results
-    /// replace the folder's items as they're found, their folders in the
-    /// Location column; hidden items count as set, linked folders aren't
-    /// followed. Showing a folder again (end_search, navigating) ends it.
-    pub fn search(self: &Rc<Self>, query: &str) {
+    /// The text of the search whose results are shown.
+    pub fn search_text(&self) -> Option<String> {
+        self.search.borrow().as_ref().map(|q| q.text.clone())
+    }
+
+    /// Searches for `text` (from the search bar) in the open folder and
+    /// everything below it, as Caja does: the results are a place of their
+    /// own (Back returns to the folder), with the query editor above them.
+    pub fn start_search(self: &Rc<Self>, text: &str) {
+        let query = crate::search::Query::new(text, &self.current());
+        self.back.borrow_mut().push(self.place());
+        self.fwd.borrow_mut().clear();
+        *self.search.borrow_mut() = Some(query);
+        self.load();
+    }
+
+    /// The search's text as now typed in the search bar: the title follows
+    /// it, the results only once searched again (Enter, Reload), as in Caja.
+    pub fn set_search_text(&self, text: &str) {
+        if let Some(q) = self.search.borrow_mut().as_mut() {
+            q.text = text.to_string();
+        }
+        if self.is_searching() {
+            self.tab_label.set_text(&self.title());
+        }
+    }
+
+    /// Shows `q`'s results, found in a thread (see search::run) and added
+    /// as they come. Hidden items are left out whatever's shown elsewhere,
+    /// as in Caja.
+    fn run_search(self: &Rc<Self>, gen: u64, q: &crate::search::Query) {
         use std::sync::atomic::Ordering;
-        let q = query.trim().to_lowercase();
-        if q.is_empty() {
-            self.end_search();
-            return;
-        }
-        let gen = self.gen.get() + 1;
-        self.gen.set(gen);
         self.search_gen.store(gen, Ordering::SeqCst);
-        // The folder's changes don't apply to the results.
-        if let Some(m) = self.monitor.borrow_mut().take() {
-            m.cancel();
-        }
-        self.end_typeahead();
-        self.close_rename_editor(false);
-        self.info_bar.hide();
-        *self.searching.borrow_mut() = Some(query.trim().to_string());
+        self.query_editor.set_query(q, &self.current());
+        self.query_editor.widget.show();
         self.clear_rows();
-        self.orig_col.set_title("Location");
-        self.orig_col.set_visible(!self.columns_mode.get());
-        self.tab_label.set_text(&self.title());
         self.loading.set(true);
+        *self.free_space.borrow_mut() = None;
+        self.orig_col.set_visible(false);
+        self.tab_label.set_text(&self.title());
+        self.tab_label.set_tooltip_text(Some(&self.title()));
+        if self.columns_mode.get() {
+            self.rebuild_columns();
+        }
         self.emit(Event::Location);
         self.emit(Event::Loading(true));
-        let root = self.current();
-        let show_hidden = self.show_hidden.get();
+        let params = q.params();
         let token = self.search_gen.clone();
         let (tx, rx) = async_channel::unbounded::<Vec<(String, String)>>();
-        {
-            let (root, q) = (root.clone(), q.clone());
-            std::thread::spawn(move || {
-                // Breadth first: matches near the top come first.
-                let mut todo = std::collections::VecDeque::from([root]);
-                let attrs = "standard::name,standard::type,standard::is-hidden,standard::is-backup,standard::is-symlink";
-                while let Some(dir) = todo.pop_front() {
-                    if token.load(Ordering::SeqCst) != gen {
-                        return;
-                    }
-                    let Ok(en) = dir.enumerate_children(attrs, gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS, gio::Cancellable::NONE) else { continue };
-                    let mut found = vec![];
-                    while let Ok(Some(info)) = en.next_file(gio::Cancellable::NONE) {
-                        if !show_hidden && (util::info_is_hidden(&info) || util::info_is_backup(&info)) {
-                            continue;
-                        }
-                        let name = info.name().to_string_lossy().to_string();
-                        if name.to_lowercase().contains(&q) {
-                            found.push((dir.uri().to_string(), name.clone()));
-                        }
-                        if info.file_type() == gio::FileType::Directory && !util::info_is_symlink(&info) {
-                            todo.push_back(dir.child(&name));
-                        }
-                    }
-                    if !found.is_empty() && tx.send_blocking(found).is_err() {
-                        return;
-                    }
-                }
-            });
-        }
+        std::thread::spawn(move || {
+            crate::search::run(&params, || token.load(Ordering::SeqCst) == gen, |found| tx.send_blocking(found).is_ok());
+        });
         let w = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
             while let Ok(found) = rx.recv().await {
+                let mut infos = vec![];
                 for (parent, name) in found {
-                    let parent = gio::File::for_uri(&parent);
-                    let child = parent.child(&name);
+                    let child = gio::File::for_uri(&parent).child(&name);
                     let info = child.query_info_future(ATTRS, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT).await;
-                    let Some(p) = w.upgrade() else { return };
-                    if p.gen.get() != gen {
-                        return;
+                    if let Ok(info) = info {
+                        infos.push((gio::File::for_uri(&parent), info));
                     }
-                    let Ok(info) = info else { continue };
+                }
+                let Some(p) = w.upgrade() else { return };
+                if p.gen.get() != gen {
+                    return;
+                }
+                for (parent, info) in infos {
                     p.add_info(&parent, &info, false);
-                    // Where it is, from the folder the search started in.
-                    let location = match root.relative_path(&parent) {
-                        Some(rel) => rel.to_string_lossy().to_string(),
-                        None if parent.equal(&root) => util::display_name(&root),
-                        None => util::pretty_location(&parent),
-                    };
-                    if let Some(it) = p.index.borrow().get(child.uri().as_str()) {
-                        p.store.set_value(it, COL_ORIG, &location.to_value());
-                    }
-                    // The first match selected, ready to open.
-                    if p.selected().is_empty() {
-                        p.select_filter_paths(&[gtk::TreePath::from_indicesv(&[0])]);
-                    }
                 }
             }
             if let Some(p) = w.upgrade() {
                 if p.gen.get() == gen {
                     p.loading.set(false);
                     p.count_dir_items(gen);
-                    if p.filter.iter_n_children(None) == 0 {
-                        p.show_error(&format!("Nothing here or in its subfolders is called “{q}”"));
-                    }
                     p.emit(Event::Loading(false));
                     p.emit(Event::Selection);
                 }
@@ -3639,13 +3647,14 @@ impl Pane {
         });
     }
 
-    /// Back from the search results to the folder itself.
-    pub fn end_search(self: &Rc<Self>) {
-        if self.is_searching() {
-            self.load();
-        }
+    /// Opens the folder a search result is in, with it selected (Caja's
+    /// "Open parent location").
+    pub fn open_parent_location(self: &Rc<Self>, uri: &str) {
+        let f = gio::File::for_uri(uri);
+        let Some(parent) = f.parent() else { return };
+        self.navigate(&parent);
+        *self.pending_select.borrow_mut() = vec![uri.to_string()];
     }
-
 
     // --------------------------------------------------------------- rename
 
@@ -3873,10 +3882,8 @@ impl Pane {
         match sel.len() {
             0 => {
                 let mut s = format!("{visible} item{}", if visible == 1 { "" } else { "s" });
-                if !self.show_hidden.get() && hidden > 0 && self.filter_text.borrow().is_empty() && config::with(|s| s.status_hidden) {
+                if !self.show_hidden.get() && hidden > 0 && config::with(|s| s.status_hidden) {
                     s.push_str(&format!(" ({hidden} hidden)"));
-                } else if !self.filter_text.borrow().is_empty() {
-                    s = format!("{visible} of {total} items match the filter");
                 }
                 s + &free
             }
