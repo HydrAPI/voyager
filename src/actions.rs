@@ -88,9 +88,10 @@ pub fn custom_key(a: &CustomAction) -> String {
 }
 
 /// The menu order to use: the saved one (`saved`, empty for the default),
-/// cleaned up: unknown entries dropped, and built-in entries or custom
-/// actions it doesn't have yet (`customs`, their keys) added in front of
-/// Properties, the custom actions in a group of their own as before.
+/// cleaned up: unknown entries dropped, and built-in entries it doesn't
+/// have yet added after the one they follow by default (else in front of
+/// Properties), custom actions it doesn't have yet (`customs`, their keys)
+/// in front of Properties, in a group of their own as before.
 pub fn menu_order(saved: &[String], defaults: &[&str], customs: &[String]) -> Vec<String> {
     let known = |k: &str| k == SEPARATOR || defaults.contains(&k) || customs.iter().any(|c| c == k);
     let mut order: Vec<String> = vec![];
@@ -102,9 +103,10 @@ pub fn menu_order(saved: &[String], defaults: &[&str], customs: &[String]) -> Ve
     }
     let props = defaults.last().copied().unwrap_or_default();
     let before_props = |order: &Vec<String>| order.iter().position(|k| k == props).unwrap_or(order.len());
-    for k in defaults.iter().filter(|k| **k != SEPARATOR) {
+    for (i, k) in defaults.iter().enumerate().filter(|(_, k)| **k != SEPARATOR) {
         if !order.iter().any(|o| o == k) {
-            let at = before_props(&order);
+            let after = defaults[..i].iter().rev().filter(|d| **d != SEPARATOR).find_map(|d| order.iter().position(|o| o == d));
+            let at = after.map_or_else(|| before_props(&order), |p| p + 1);
             order.insert(at, k.to_string());
         }
     }
@@ -344,6 +346,9 @@ mod tests {
         // A saved order is kept; gone entries drop out, new ones are added.
         let saved = v(&["custom:1", "b", "custom:gone", "-", "a", "properties", "c"]);
         assert_eq!(menu_order(&saved, d, &v(&["custom:1", "custom:3"])), v(&["custom:1", "b", "-", "a", "-", "custom:3", "-", "properties", "c"]));
+        // A new built-in entry goes after the one it follows by default.
+        assert_eq!(menu_order(&v(&["c", "-", "a", "properties"]), d, &[]), v(&["c", "-", "a", "b", "properties"]));
+        assert_eq!(menu_order(&v(&["c", "properties"]), d, &[]), v(&["c", "a", "b", "properties"]));
     }
 
     #[test]
