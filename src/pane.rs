@@ -2196,7 +2196,21 @@ impl Pane {
         match rows.len() {
             0 => return,
             1 => {
+                // GtkIconView's row-deleted handler (GTK 3.24) drops its
+                // reference on the row that moves into the removed one's
+                // place instead of on the removed one: that row gets it back
+                // here. Otherwise the filter model's counts go wrong, and a
+                // row later added at the top trips its "elt->ref_count > 0"
+                // assertion (gtk_tree_model_filter_real_unref_node).
+                let path = self.filter.convert_child_iter_to_iter(&rows[0]).and_then(|f| self.filter.path(&f));
                 self.store.remove(&rows[0]);
+                if let Some(path) = path.filter(|_| self.icon_view.model().is_some()) {
+                    if let Some(mut next) = self.filter.iter(&path) {
+                        use glib::translate::{ToGlibPtr, ToGlibPtrMut};
+                        // SAFETY: a valid iter of this model, as GtkIconView passes it.
+                        unsafe { gtk::ffi::gtk_tree_model_ref_node(self.filter.upcast_ref::<gtk::TreeModel>().to_glib_none().0, next.to_glib_none_mut().0) };
+                    }
+                }
             }
             _ => self.detached(|| {
                 for it in &rows {
