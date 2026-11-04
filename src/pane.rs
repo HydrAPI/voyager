@@ -165,6 +165,9 @@ thread_local! {
     static TYPE_DESC: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
     /// Folder URI the current in-app drag started from.
     static DRAG_SRC_DIR: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// Whether everything in the current in-app drag is a folder (None:
+    /// not known).
+    static DRAG_ALL_DIRS: Cell<Option<bool>> = const { Cell::new(None) };
     /// The file systems of the folders the current drag passed over, by
     /// URI: asked at every move of the pointer, and each is a round trip on
     /// a network share.
@@ -257,6 +260,23 @@ fn enable_drag_source_iv(iv: &gtk::IconView) {
 pub fn set_drag_source_dir(uri: Option<String>) {
     DRAG_SRC_DIR.with(|d| *d.borrow_mut() = uri);
     DRAG_FS.with(|c| c.borrow_mut().clear());
+    DRAG_ALL_DIRS.with(|d| d.set(None));
+}
+
+/// Whether the current in-app drag holds only folders (None: not known,
+/// e.g. a drag from another program).
+pub fn drag_is_folders() -> Option<bool> {
+    DRAG_ALL_DIRS.with(|d| d.get())
+}
+
+/// The keyboard modifiers held now, as a drop sees them.
+pub fn pointer_modifiers(widget: &gtk::Widget) -> gdk::ModifierType {
+    if let (Some(win), Some(seat)) = (widget.window(), widget.display().default_seat()) {
+        if let Some(ptr) = seat.pointer() {
+            return win.device_position(&ptr).3;
+        }
+    }
+    gdk::ModifierType::empty()
 }
 
 pub fn enable_drag_source_tv(tv: &gtk::TreeView) {
@@ -276,12 +296,7 @@ pub fn enable_drag_source_tv(tv: &gtk::TreeView) {
 
 /// Decide copy / move / link from the keyboard modifiers and source/dest filesystem.
 pub fn choose_action(widget: &gtk::Widget, ctx: &gdk::DragContext, dest: &gio::File) -> gdk::DragAction {
-    let mut mods = gdk::ModifierType::empty();
-    if let (Some(win), Some(seat)) = (widget.window(), widget.display().default_seat()) {
-        if let Some(ptr) = seat.pointer() {
-            mods = win.device_position(&ptr).3;
-        }
-    }
+    let mods = pointer_modifiers(widget);
     let ctrl = mods.contains(gdk::ModifierType::CONTROL_MASK);
     let shift = mods.contains(gdk::ModifierType::SHIFT_MASK);
     let alt = mods.contains(gdk::ModifierType::MOD1_MASK);
@@ -1397,6 +1412,8 @@ impl Pane {
                         // The whole selection is dragged (see icon_press).
                         p.press_keep.borrow_mut().take();
                         set_drag_source_dir(Some(p.current().uri().to_string()));
+                        let all_dirs = p.selected().iter().all(|r| r.is_dir);
+                        DRAG_ALL_DIRS.with(|d| d.set(Some(all_dirs)));
                         p.tv_block.set(false);
                         p.tv_pending.borrow_mut().take();
                     }

@@ -816,6 +816,9 @@ impl Sidebar {
             Some(_) => match (self.section_at(i), self.item_at(i)) {
                 // Folders dropped on the Bookmarks heading become bookmarks.
                 (Some("bookmarks"), None) => (Some(row), gdk::DragAction::LINK),
+                // So do folders dropped on a bookmark; with Shift they go
+                // into its folder.
+                (_, Some(Item { bookmark: Some(_), .. })) if bookmarking(self.list.upcast_ref()) => (Some(row), gdk::DragAction::LINK),
                 (_, Some(Item { target: Target::Location(f), .. })) => {
                     let a = crate::pane::choose_action(self.list.upcast_ref(), ctx, &f);
                     (Some(row), a)
@@ -865,12 +868,22 @@ impl Sidebar {
                 }
                 match (self.section_at(i), self.item_at(i)) {
                     (Some("bookmarks"), None) => {
-                        for u in &uris {
-                            let f = gio::File::for_uri(u);
-                            if f.query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE) == gio::FileType::Directory {
-                                let _ = util::add_bookmark(u);
-                            }
+                        for u in uris.iter().filter(|u| is_folder(u)) {
+                            let _ = util::add_bookmark(u);
                         }
+                        true
+                    }
+                    (_, Some(Item { bookmark: Some(at), .. })) if bookmarking(self.list.upcast_ref()) && uris.iter().all(|u| is_folder(u)) => {
+                        // In the dropped-on bookmark's place, in their order.
+                        edit_bookmarks(|b| {
+                            let mut pos = b.iter().position(|(u, _)| *u == at).unwrap_or(b.len());
+                            for u in &uris {
+                                if !b.iter().any(|(x, _)| x == u) {
+                                    b.insert(pos, (u.clone(), String::new()));
+                                    pos += 1;
+                                }
+                            }
+                        });
                         true
                     }
                     (_, Some(Item { target: Target::Location(dest), .. })) => {
@@ -884,6 +897,17 @@ impl Sidebar {
             None => false,
         }
     }
+}
+
+/// Whether a drop on a bookmark adds bookmarks: without Shift (which
+/// drops into its folder), unless what's dragged is known not to be all
+/// folders.
+fn bookmarking(widget: &gtk::Widget) -> bool {
+    !crate::pane::pointer_modifiers(widget).contains(gdk::ModifierType::SHIFT_MASK) && crate::pane::drag_is_folders() != Some(false)
+}
+
+fn is_folder(uri: &str) -> bool {
+    gio::File::for_uri(uri).query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE) == gio::FileType::Directory
 }
 
 impl Item {
