@@ -325,9 +325,22 @@ struct JobQueue {
     ready: Condvar,
 }
 
-/// How many thumbnails are made at once: mostly it's waiting for the file
-/// (a video on a network share), not working.
-const MAKER_COUNT: usize = 3;
+/// How many thumbnails are made at once (see makers_for); 1 if the number
+/// of processors can't be told.
+fn maker_count() -> usize {
+    std::thread::available_parallelism().map_or(1, |n| makers_for(n.get()))
+}
+
+/// Thumbnail makers for `cpus` processors: one fewer than there are, so
+/// one is always left for the rest (the window drawing, other programs),
+/// at most 8, and at least 1.
+fn makers_for(cpus: usize) -> usize {
+    if cpus > 8 {
+        8
+    } else {
+        cpus.saturating_sub(1).max(1)
+    }
+}
 
 fn makers() -> Arc<JobQueue> {
     if let Some(q) = MAKERS.with(|m| m.borrow().clone()) {
@@ -335,7 +348,7 @@ fn makers() -> Arc<JobQueue> {
     }
     let q = Arc::new(JobQueue { jobs: Mutex::new(vec![]), ready: Condvar::new() });
     let (done_tx, done_rx) = async_channel::unbounded::<(String, Option<String>)>();
-    for _ in 0..MAKER_COUNT {
+    for _ in 0..maker_count() {
         let q = q.clone();
         let done_tx = done_tx.clone();
         std::thread::spawn(move || loop {
@@ -584,6 +597,12 @@ mod tests {
         // An outdated one isn't used.
         i.set_attribute_boolean("thumbnail::is-valid", false);
         assert_eq!(existing_thumbnail(&i, uri, 5), None);
+    }
+
+    #[test]
+    fn makers_leave_a_processor_free() {
+        let counts: Vec<usize> = [1, 2, 4, 8, 9, 16, 64].iter().map(|&n| makers_for(n)).collect();
+        assert_eq!(counts, [1, 1, 3, 7, 8, 8, 8]);
     }
 
     #[test]
