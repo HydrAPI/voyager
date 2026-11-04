@@ -1,6 +1,8 @@
 //! View, sorting and the info panel remembered for individual folders, in
 //! ~/.config/arkha/folders.conf (one group per folder URI). Used when the
-//! "remember view and sorting for each folder" preference is on.
+//! "remember view and sorting for each folder" preference is on. Only what
+//! differs from the defaults (Preferences) is kept: a setting set back to
+//! its default goes, and so does a folder with nothing left.
 
 use std::cell::RefCell;
 
@@ -26,6 +28,15 @@ fn with_store<R>(f: impl FnOnce(&glib::KeyFile) -> R) -> R {
         let kf = s.get_or_insert_with(|| {
             let kf = glib::KeyFile::new();
             let _ = kf.load_from_file(path(), glib::KeyFileFlags::NONE);
+            // Settings kept before only defaults were: tidied once.
+            let groups: Vec<String> = kf.groups().iter().map(|g| g.to_string()).collect();
+            let mut changed = false;
+            for g in &groups {
+                changed |= drop_defaults(&kf, g);
+            }
+            if changed {
+                save(&kf);
+            }
             kf
         });
         f(kf)
@@ -52,26 +63,51 @@ pub fn get(uri: &str) -> FolderView {
     })
 }
 
-pub fn set_view(uri: &str, view: &str) {
+/// Removes `uri`'s settings that are the defaults, and the group if none
+/// are left; whether anything went.
+fn drop_defaults(kf: &glib::KeyFile, uri: &str) -> bool {
+    let (view, by, desc) = crate::config::with(|s| (s.default_view.clone(), s.sort_by.clone(), s.sort_desc));
+    let mut changed = false;
+    if kf.string(uri, "view").is_ok_and(|v| v == view) {
+        changed |= kf.remove_key(uri, "view").is_ok();
+    }
+    let sort_by = kf.string(uri, "sort_by").ok();
+    if sort_by.is_none_or(|b| b == by) && kf.boolean(uri, "sort_desc").unwrap_or(false) == desc {
+        for k in ["sort_by", "sort_desc"] {
+            changed |= kf.remove_key(uri, k).is_ok();
+        }
+    }
+    if kf.boolean(uri, "info_panel").is_ok_and(|on| !on) {
+        changed |= kf.remove_key(uri, "info_panel").is_ok();
+    }
+    if kf.has_group(uri) && kf.keys(uri).is_ok_and(|k| k.is_empty()) {
+        changed |= kf.remove_group(uri).is_ok();
+    }
+    changed
+}
+
+/// Sets `uri`'s settings with `f`, keeping only what isn't a default.
+fn set(uri: &str, f: impl FnOnce(&glib::KeyFile)) {
     with_store(|kf| {
-        kf.set_string(uri, "view", view);
+        f(kf);
+        drop_defaults(kf, uri);
         save(kf);
     })
+}
+
+pub fn set_view(uri: &str, view: &str) {
+    set(uri, |kf| kf.set_string(uri, "view", view));
 }
 
 pub fn set_sort(uri: &str, by: &str, desc: bool) {
-    with_store(|kf| {
+    set(uri, |kf| {
         kf.set_string(uri, "sort_by", by);
         kf.set_boolean(uri, "sort_desc", desc);
-        save(kf);
-    })
+    });
 }
 
 pub fn set_info_panel(uri: &str, on: bool) {
-    with_store(|kf| {
-        kf.set_boolean(uri, "info_panel", on);
-        save(kf);
-    })
+    set(uri, |kf| kf.set_boolean(uri, "info_panel", on));
 }
 
 /// Number of folders with remembered settings.
@@ -86,4 +122,38 @@ pub fn forget_all() {
         }
         save(kf);
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_only_what_differs_from_the_defaults() {
+        let (view, by, desc) = crate::config::with(|s| (s.default_view.clone(), s.sort_by.clone(), s.sort_desc));
+        let other_view = if view == "list" { "icon" } else { "list" };
+        let other_by = if by == "mtime" { "name" } else { "mtime" };
+        let kf = glib::KeyFile::new();
+        // All defaults: the folder goes.
+        kf.set_string("a", "view", &view);
+        kf.set_string("a", "sort_by", &by);
+        kf.set_boolean("a", "sort_desc", desc);
+        kf.set_boolean("a", "info_panel", false);
+        // Its own view only.
+        kf.set_string("b", "view", other_view);
+        kf.set_boolean("b", "info_panel", false);
+        // Its own sorting and info panel.
+        kf.set_string("c", "view", &view);
+        kf.set_string("c", "sort_by", other_by);
+        kf.set_boolean("c", "sort_desc", desc);
+        kf.set_boolean("c", "info_panel", true);
+        for g in ["a", "b", "c"] {
+            drop_defaults(&kf, g);
+        }
+        let keys = |g: &str| kf.keys(g).map(|k| k.iter().map(|k| k.to_string()).collect::<Vec<_>>()).unwrap_or_default();
+        assert!(!kf.has_group("a"));
+        assert_eq!(keys("b"), ["view"]);
+        assert_eq!(keys("c"), ["sort_by", "sort_desc", "info_panel"]);
+        assert!(!drop_defaults(&kf, "b"), "nothing more to drop");
+    }
 }
