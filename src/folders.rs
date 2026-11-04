@@ -44,11 +44,7 @@ fn with_store<R>(f: impl FnOnce(&glib::KeyFile) -> R) -> R {
 }
 
 fn save(kf: &glib::KeyFile) {
-    let p = path();
-    if let Some(d) = p.parent() {
-        let _ = std::fs::create_dir_all(d);
-    }
-    let _ = kf.save_to_file(p);
+    crate::util::save_settings(kf, &path());
 }
 
 pub fn get(uri: &str) -> FolderView {

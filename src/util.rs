@@ -16,6 +16,21 @@ pub fn format_size(n: u64) -> String {
     glib::format_size_full(n, flags).to_string()
 }
 
+/// Writes a settings file: whole or not at all (a new file renamed over
+/// the old), but without waiting for the disk to have it, as
+/// KeyFile::save_to_file does. That takes a moment, longer while the disk
+/// is busy (with a copy, say), and settings are saved as they change.
+pub fn save_settings(kf: &glib::KeyFile, path: &std::path::Path) {
+    if let Some(d) = path.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    // GLib's own way (file_set_contents_full, CONSISTENT) flushes too.
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    if std::fs::write(&tmp, kf.to_data().as_bytes()).is_err() || std::fs::rename(&tmp, path).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+}
+
 /// Whether `w` is in sight: shown, not minimized, and (on X11) on the
 /// workspace shown or on all of them.
 pub fn window_in_sight(w: &gtk::Window) -> bool {

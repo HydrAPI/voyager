@@ -80,11 +80,7 @@ pub fn save(list: &[Thumbnailer]) {
         kf.set_string(&g, "types", &t.types);
         kf.set_string(&g, "command", &t.command);
     }
-    let p = path();
-    if let Some(d) = p.parent() {
-        let _ = std::fs::create_dir_all(d);
-    }
-    let _ = kf.save_to_file(p);
+    crate::util::save_settings(&kf, &path());
 }
 
 /// Whether `t` handles content type `ctype` (patterns are case-insensitive globs).

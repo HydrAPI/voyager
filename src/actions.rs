@@ -210,11 +210,7 @@ pub fn save(actions: &[CustomAction]) {
         kf.set_string(&g, "patterns", &a.patterns);
         kf.set_string(&g, "types", &a.types);
     }
-    let p = path();
-    if let Some(d) = p.parent() {
-        let _ = std::fs::create_dir_all(d);
-    }
-    let _ = kf.save_to_file(p);
+    crate::util::save_settings(&kf, &path());
 }
 
 /// The shell custom actions run with (`sh` unless changed in Preferences).

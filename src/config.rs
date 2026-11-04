@@ -454,11 +454,7 @@ fn set_string_list(kf: &glib::KeyFile, group: &str, key: &str, list: &[String]) 
 
 fn save() {
     let kf = to_keyfile(&get());
-    let p = path();
-    if let Some(d) = p.parent() {
-        let _ = std::fs::create_dir_all(d);
-    }
-    let _ = kf.save_to_file(p);
+    crate::util::save_settings(&kf, &path());
 }
 
 fn to_keyfile(s: &Settings) -> glib::KeyFile {
