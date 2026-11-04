@@ -16,6 +16,55 @@ pub fn format_size(n: u64) -> String {
     glib::format_size_full(n, flags).to_string()
 }
 
+/// Whether `w` is in sight: shown, not minimized, and (on X11) on the
+/// workspace shown or on all of them.
+pub fn window_in_sight(w: &gtk::Window) -> bool {
+    let Some(gw) = w.window().filter(|_| w.is_visible()) else { return false };
+    if gw.state().contains(gtk::gdk::WindowState::ICONIFIED) {
+        return false;
+    }
+    let display = gw.display();
+    if display.type_().name() == "GdkX11Display" {
+        use glib::translate::ToGlibPtr;
+        extern "C" {
+            fn gdk_x11_window_get_desktop(window: *mut gtk::gdk::ffi::GdkWindow) -> u32;
+            fn gdk_x11_screen_get_current_desktop(screen: *mut gtk::gdk::ffi::GdkScreen) -> u32;
+        }
+        // SAFETY: both are X11 objects (checked above), alive for the call.
+        let (desktop, current) = unsafe {
+            (gdk_x11_window_get_desktop(gw.to_glib_none().0), gdk_x11_screen_get_current_desktop(display.default_screen().to_glib_none().0))
+        };
+        // 0xFFFFFFFF: on every workspace.
+        if desktop != u32::MAX && desktop != current {
+            return false;
+        }
+    }
+    true
+}
+
+/// Shows a desktop notification from Arkha (as libnotify does, which Caja
+/// uses: clicking it does nothing).
+pub fn notify(summary: &str, body: &str) {
+    let hints: std::collections::HashMap<String, glib::Variant> = [("desktop-entry".to_string(), "arkha".to_variant())].into();
+    let args = ("Arkha", 0u32, "system-file-manager", summary, body, Vec::<String>::new(), hints, -1i32).to_variant();
+    gio::bus_get(gio::BusType::Session, gio::Cancellable::NONE, move |bus| {
+        if let Ok(bus) = bus {
+            bus.call(
+                Some("org.freedesktop.Notifications"),
+                "/org/freedesktop/Notifications",
+                "org.freedesktop.Notifications",
+                "Notify",
+                Some(&args),
+                None,
+                gio::DBusCallFlags::NONE,
+                -1,
+                gio::Cancellable::NONE,
+                |_| {},
+            );
+        }
+    });
+}
+
 pub fn format_time(t: i64) -> String {
     if t <= 0 {
         return String::new();

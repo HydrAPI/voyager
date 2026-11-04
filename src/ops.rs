@@ -912,6 +912,9 @@ fn progress_text(detail: &str, paused: bool) -> String {
 
 thread_local! {
     static RUNNING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Whether an operation since the queue last ran empty took a while
+    /// (and was listed): only then is its end told, as in Caja.
+    static LISTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// The operations shown, in order.
     static OPS: RefCell<Vec<Rc<Op>>> = const { RefCell::new(vec![]) };
     static VIEWS: RefCell<Vec<Rc<View>>> = const { RefCell::new(vec![]) };
@@ -1310,6 +1313,7 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
         let delay = if show_now { 0 } else { 600 };
         glib::timeout_add_local_once(Duration::from_millis(delay), move || {
             if !finished.get() {
+                LISTED.with(|l| l.set(true));
                 add_op(op);
             }
         });
@@ -1343,11 +1347,23 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
                     remove_op(op.id);
                     on_done(created);
                     start_next();
+                    if !is_busy() && LISTED.with(|l| l.replace(false)) {
+                        notify_done(&parent);
+                    }
                     break;
                 }
             }
         }
     });
+}
+
+/// Tells the desktop that the file operations are done, as Caja does, if
+/// the window they were started from is out of sight: closed, minimized
+/// or on a workspace not shown.
+fn notify_done(parent: &Option<gtk::Window>) {
+    if !parent.as_ref().is_some_and(util::window_in_sight) {
+        util::notify("Arkha", "Process completed");
+    }
 }
 
 fn dialog_parent(parent: &Option<gtk::Window>) -> Option<gtk::Window> {
