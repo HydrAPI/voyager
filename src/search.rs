@@ -142,7 +142,7 @@ impl Query {
                     let s = sizes()[(*size).min(10)].0;
                     p.size = if *greater { s } else { -s };
                 }
-                Criterion::ContainedText(t) => p.text = Some(t.clone()),
+                Criterion::ContainedText(t) => p.text = Some(fold(t)),
             }
         }
         p
@@ -165,7 +165,7 @@ pub struct Params {
     timestamp: i64,
     /// At least this big (> 0), or at most its negation (< 0).
     size: i64,
-    /// Text a file must contain (plain text and OpenDocument files).
+    /// Text a file must contain (plain text and OpenDocument files), folded.
     text: Option<String>,
 }
 
@@ -219,17 +219,14 @@ fn odt2txt_available() -> bool {
     std::process::Command::new("odt2txt").arg("--version").output().is_ok_and(|o| o.status.success() && o.stdout.starts_with(b"odt2txt"))
 }
 
-/// Whether the file at `path` contains `text`, ignoring case (plain text
-/// files, and OpenDocument files with odt2txt).
+/// Whether the file at `path` contains `text` (folded), ignoring case
+/// (plain text files, and OpenDocument files with odt2txt).
 fn contains_text(path: &std::path::Path, text: &str, ctype: &str, odt2txt: bool) -> bool {
     if text.is_empty() {
         return true;
     }
     let contents = if gio::content_type_is_mime_type(ctype, "text/plain") {
-        match std::fs::read(path) {
-            Ok(b) => String::from_utf8_lossy(&b).into_owned(),
-            Err(_) => return false,
-        }
+        return file_contains(path, text);
     } else {
         if !odt2txt {
             return false;
@@ -239,7 +236,37 @@ fn contains_text(path: &std::path::Path, text: &str, ctype: &str, odt2txt: bool)
             _ => return false,
         }
     };
-    fold(&contents).contains(&fold(text))
+    fold(&contents).contains(text)
+}
+
+/// Whether the text file at `path` contains `text` (folded), read a piece
+/// at a time: a big log file mustn't take as much memory.
+fn file_contains(path: &std::path::Path, text: &str) -> bool {
+    use std::io::Read;
+    let Ok(mut f) = std::fs::File::open(path) else { return false };
+    let mut buf = vec![0u8; 1 << 20];
+    // Bytes of a character cut off at the end of a piece, and the end of
+    // the text before (a match may run across pieces).
+    let (mut cut, mut tail) = (Vec::new(), String::new());
+    let keep = text.chars().count() * 2;
+    loop {
+        let n = match f.read(&mut buf) {
+            Ok(0) | Err(_) => return false,
+            Ok(n) => n,
+        };
+        cut.extend_from_slice(&buf[..n]);
+        let valid = match std::str::from_utf8(&cut) {
+            Ok(_) => cut.len(),
+            Err(e) if e.error_len().is_none() => e.valid_up_to(),
+            Err(_) => cut.len(),
+        };
+        let piece = format!("{tail}{}", String::from_utf8_lossy(&cut[..valid]));
+        if fold(&piece).contains(text) {
+            return true;
+        }
+        tail = piece.chars().rev().take(keep).collect::<Vec<_>>().into_iter().rev().collect();
+        cut.drain(..valid);
+    }
 }
 
 const TEXT_TYPES: [&str; 6] = [
@@ -726,6 +753,18 @@ mod tests {
     fn tags_are_unescaped_and_folded() {
         assert_eq!(tags_of("work,Urgent"), ["work", "urgent"]);
         assert_eq!(tags_of("caf\\xc3\\xa9"), [fold("café")]);
+    }
+
+    #[test]
+    fn text_is_found_across_pieces() {
+        let t = crate::testutil::TestDir::new("pieces-text");
+        let mut data = vec![b'a'; (1 << 20) - 3];
+        data.extend_from_slice("XYÄßQ".as_bytes());
+        data.extend(vec![b'b'; 100]);
+        let p = t.0.join("big.txt");
+        std::fs::write(&p, &data).unwrap();
+        assert!(file_contains(&p, &fold("yäßq")));
+        assert!(!file_contains(&p, &fold("yäßz")));
     }
 
     #[test]
