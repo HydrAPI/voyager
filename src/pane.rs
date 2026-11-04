@@ -4093,14 +4093,18 @@ fn icon_label_text(m: &gtk::TreeModel, it: &gtk::TreeIter, captions: u32) -> Str
     text
 }
 
-/// An item's thumbnail file and its pixel size, if it has one. The size is
-/// known from the file before the picture is loaded.
-fn icon_view_thumb(m: &gtk::TreeModel, it: &gtk::TreeIter) -> Option<(String, (i32, i32))> {
+/// An item's thumbnail file, its pixel size, and whether it's shown with
+/// a shadow, if it has one. The size is known from the file before the
+/// picture is loaded. As in Caja, pictures with transparency (a logo, an
+/// icon) have no shadow: it would show through around them.
+fn icon_view_thumb(m: &gtk::TreeModel, it: &gtk::TreeIter) -> Option<(String, (i32, i32), bool)> {
     // Asked for every item at every layout, and most have none: not copied
     // out unless there is one.
     let v = m.value(it, COL_THUMB as i32);
     let thumb = v.get::<&str>().ok().filter(|t| !t.is_empty())?;
-    Some((thumb.to_string(), icons::thumb_dims(thumb)?))
+    let head = icons::thumb_header(thumb)?;
+    let shadow = !(head.alpha && m.value(it, COL_CTYPE as i32).get::<&str>().is_ok_and(|t| t.starts_with("image/")));
+    Some((thumb.to_string(), (head.width, head.height), shadow))
 }
 
 /// The room an item's picture takes in the icon view, as in Caja: its
@@ -4108,9 +4112,9 @@ fn icon_view_thumb(m: &gtk::TreeModel, it: &gtk::TreeIter) -> Option<(String, (i
 /// its icon (`size`).
 fn icon_view_dims(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32, thumb_size: i32) -> (i32, i32) {
     match icon_view_thumb(m, it) {
-        Some((_, (w, h))) => {
+        Some((_, (w, h), shadow)) => {
             let (w, h) = icons::fit(w, h, thumb_size);
-            (w + 2 * icons::SHADOW, h + icons::SHADOW)
+            if shadow { (w + 2 * icons::SHADOW, h + icons::SHADOW) } else { (w, h) }
         }
         None => (size, size),
     }
@@ -4119,7 +4123,8 @@ fn icon_view_dims(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32, thumb_size:
 /// An item's picture in the icon view (see icon_view_dims).
 fn icon_view_pixbuf(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32, thumb_size: i32) -> Option<Pixbuf> {
     let pb = match icon_view_thumb(m, it) {
-        Some((thumb, _)) => icons::framed_thumb(&thumb, thumb_size).map(|p| dim_if_cut(m, it, p)),
+        Some((thumb, _, true)) => icons::framed_thumb(&thumb, thumb_size).map(|p| dim_if_cut(m, it, p)),
+        Some((thumb, _, false)) => icons::thumb_pixbuf(&thumb, thumb_size).map(|p| dim_if_cut(m, it, p)),
         None => row_pixbuf(m, it, size),
     };
     // Hidden items' pictures at 55 %, as in Caja.

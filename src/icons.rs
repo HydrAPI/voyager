@@ -18,7 +18,7 @@ thread_local! {
     static THUMBS: RefCell<HashMap<String, HashMap<i32, Option<Pixbuf>>>> = RefCell::new(HashMap::new());
     /// Thumbnails with their shadow (see framed_thumb), and their sizes.
     static FRAMED: RefCell<HashMap<(String, i32), Pixbuf>> = RefCell::new(HashMap::new());
-    static DIMS: RefCell<HashMap<String, Option<(i32, i32)>>> = RefCell::new(HashMap::new());
+    static DIMS: RefCell<HashMap<String, Option<ThumbHeader>>> = RefCell::new(HashMap::new());
     /// Thumbnails being loaded, and the loaders' queue (see thumb_pixbuf).
     static LOADING: RefCell<HashSet<(String, i32)>> = RefCell::new(HashSet::new());
     static LOAD_QUEUE: RefCell<Option<Arc<LoadQueue>>> = const { RefCell::new(None) };
@@ -216,25 +216,51 @@ pub fn forget_thumb(path: &str) {
     DIMS.with(|c| c.borrow_mut().remove(path));
 }
 
-/// The pixel size of a thumbnail file, from its PNG header (without
-/// decoding it): a view can lay out its item before the picture is loaded.
-pub fn thumb_dims(path: &str) -> Option<(i32, i32)> {
+/// What a thumbnail file's PNG header tells before it's decoded: a view
+/// can lay out its item before the picture is loaded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThumbHeader {
+    pub width: i32,
+    pub height: i32,
+    /// Whether it has transparency (an alpha channel, or a tRNS chunk).
+    pub alpha: bool,
+}
+
+pub fn thumb_header(path: &str) -> Option<ThumbHeader> {
     if let Some(d) = DIMS.with(|c| c.borrow().get(path).copied()) {
         return d;
     }
     let d = (|| {
         use std::io::Read;
-        let mut head = [0u8; 24];
-        std::fs::File::open(path).ok()?.read_exact(&mut head).ok()?;
-        if &head[..8] != b"\x89PNG\r\n\x1a\n" || &head[12..16] != b"IHDR" {
-            return None;
-        }
-        let w = u32::from_be_bytes([head[16], head[17], head[18], head[19]]) as i32;
-        let h = u32::from_be_bytes([head[20], head[21], head[22], head[23]]) as i32;
-        (w > 0 && h > 0).then_some((w, h))
+        // The chunks before the picture's data are in its first few
+        // kilobytes (thumbnails' text chunks are short).
+        let mut head = Vec::with_capacity(8192);
+        std::fs::File::open(path).ok()?.take(8192).read_to_end(&mut head).ok()?;
+        parse_png_header(&head)
     })();
     DIMS.with(|c| c.borrow_mut().insert(path.to_string(), d));
     d
+}
+
+fn parse_png_header(b: &[u8]) -> Option<ThumbHeader> {
+    if b.len() < 26 || &b[..8] != b"\x89PNG\r\n\x1a\n" || &b[12..16] != b"IHDR" {
+        return None;
+    }
+    let be = |i: usize| u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+    let (width, height) = (be(16) as i32, be(20) as i32);
+    // Colour types 4 and 6 have an alpha channel; others may have a tRNS
+    // chunk, which comes before the picture's data.
+    let mut alpha = matches!(b[25], 4 | 6);
+    let mut i = 8;
+    while !alpha && i + 8 <= b.len() {
+        let (len, kind) = (be(i) as usize, &b[i + 4..i + 8]);
+        if kind == b"IDAT" {
+            break;
+        }
+        alpha = kind == b"tRNS";
+        i += 12 + len;
+    }
+    (width > 0 && height > 0).then_some(ThumbHeader { width, height, alpha })
 }
 
 /// A picture `w`×`h` scaled so its longest side is `size`.
@@ -248,7 +274,9 @@ pub const SHADOW: i32 = 3;
 
 /// A thumbnail as Caja shows it in the icon view, with a shadow below and
 /// to the right: `SHADOW` pixels more at the bottom and on both sides (so
-/// the picture stays centered). None while it's still being loaded.
+/// the picture stays centered). None while it's still being loaded. Caja
+/// leaves it out for pictures with transparency (see pane's
+/// icon_view_thumb): it would show through.
 pub fn framed_thumb(path: &str, size: i32) -> Option<Pixbuf> {
     let key = (path.to_string(), size);
     if let Some(p) = FRAMED.with(|c| c.borrow().get(&key).cloned()) {
@@ -557,6 +585,20 @@ mod tests {
             v.extend([0u8; 4]);
         }
         v
+    }
+
+    #[test]
+    fn header_tells_size_and_transparency() {
+        // 300×200, 8 bits, the given colour type.
+        let ihdr = |colour: u8| -> Vec<u8> { [&300u32.to_be_bytes()[..], &200u32.to_be_bytes()[..], &[8, colour, 0, 0, 0]].concat() };
+        let head = |chunks: &[(&[u8; 4], &[u8])]| parse_png_header(&png(chunks));
+        let (rgba, rgb) = (ihdr(6), ihdr(2));
+        assert_eq!(head(&[(b"IHDR", &rgba), (b"IDAT", b"")]), Some(ThumbHeader { width: 300, height: 200, alpha: true }));
+        assert_eq!(head(&[(b"IHDR", &rgb), (b"tEXt", b"Thumb::MTime\x001"), (b"IDAT", b"")]).map(|h| h.alpha), Some(false));
+        assert_eq!(head(&[(b"IHDR", &rgb), (b"tRNS", b"\0\0"), (b"IDAT", b"")]).map(|h| h.alpha), Some(true));
+        // A tRNS after the picture's data isn't one.
+        assert_eq!(head(&[(b"IHDR", &rgb), (b"IDAT", b""), (b"tRNS", b"\0\0")]).map(|h| h.alpha), Some(false));
+        assert_eq!(parse_png_header(b"GIF89a"), None);
     }
 
     #[test]
