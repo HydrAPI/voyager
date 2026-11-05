@@ -18,8 +18,22 @@ done
 [ "$removed" = 1 ] || echo "Arkha isn't installed in $PREFIX."
 update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
 
-# Folders and automounting go back to the desktop.
-sh "$(dirname "$0")/arkha-restore-desktop"
+# If --default made Arkha the folder handler, give folders back to the
+# application it replaced, or else drop just that association so the
+# desktop's own default applies again.
+MIMEAPPS="$CONFIG/mimeapps.list"
+PREVIOUS_FILE="$CONFIG/arkha/previous-folder-app"
+if [ -f "$MIMEAPPS" ] && grep -q '^inode/directory=.*arkha\.desktop' "$MIMEAPPS"; then
+    PREVIOUS="$(cat "$PREVIOUS_FILE" 2>/dev/null || true)"
+    if [ -n "$PREVIOUS" ]; then
+        xdg-mime default "$PREVIOUS" inode/directory
+        echo "Folders open with $PREVIOUS again."
+    else
+        sed -i -e '/^inode\/directory=/ s/arkha\.desktop;\{0,1\}//' -e '/^inode\/directory=$/d' "$MIMEAPPS"
+        echo "Arkha is no longer the default application for folders."
+    fi
+fi
+rm -f "$PREVIOUS_FILE"
 
 # Only removes the folder if nothing else is in it.
 rmdir "$CONFIG/arkha" 2>/dev/null || true

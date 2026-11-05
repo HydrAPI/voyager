@@ -5,9 +5,9 @@
 //! Devices (drives, partitions, phones over MTP, network mounts) are mounted
 //! by clicking them, and unmounted / ejected / safely removed with the button
 //! next to them or the context menu. Arkha mounts newly inserted media
-//! itself (see `init_automount`), independent of the desktop (whose own
-//! automounting it switches off), unless that's turned off in the
-//! preferences.
+//! itself (see `init_automount`), unless that's turned off in the
+//! preferences, a setting shared with the desktop's own (see
+//! `DesktopMount`).
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -1227,51 +1227,180 @@ fn edit_bookmarks(f: impl FnOnce(&mut Vec<(String, String)>)) {
     let _ = std::fs::write(&path, out);
 }
 
-/// Where the desktop's automount settings that Arkha switched off are
-/// recorded, one per line, for uninstall.sh to switch back on:
-/// `gsettings SCHEMA KEY VALUE`, `xfconf CHANNEL PROPERTY VALUE`,
-/// `kde FILE GROUP KEY VALUE` or `ini SECTION KEY VALUE PATH` (`-`: the key
-/// wasn't set; the path goes last as it may contain spaces).
-fn desktop_automount_file() -> std::path::PathBuf {
-    glib::user_config_dir().join("arkha").join("desktop-automount")
+/// The desktop's own setting for mounting inserted media. Arkha's "Mount
+/// drives and media when they're inserted" is that same setting, as Caja's
+/// is MATE's: changing it in one place changes it in the other, and Arkha
+/// never changes it on its own, so nothing is left to undo when Arkha is
+/// removed. Without a desktop (a plain window manager) Arkha keeps its own.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum DesktopMount {
+    /// GNOME, Cinnamon and MATE (Caja): the schema, and the desktop's name.
+    Gsettings(&'static str, &'static str),
+    /// Xfce: thunar-volman's switches for drives and for media, in xfconf.
+    Xfce,
+    /// KDE Plasma's device automounter.
+    Kde,
+    /// LXQt / LXDE: their file managers, PCManFM-Qt and PCManFM, mount
+    /// media, set in their config files (one per profile). They read these
+    /// when they start, so a change there applies from the next login.
+    Pcmanfm { qt: bool },
 }
 
-fn record_desktop_automount(lines: &[String]) {
-    if lines.is_empty() {
-        return;
-    }
-    let path = desktop_automount_file();
-    let mut text = std::fs::read_to_string(&path).unwrap_or_default();
-    for l in lines {
-        if !text.lines().any(|x| x == l) {
-            text.push_str(l);
-            text.push('\n');
-        }
-    }
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let _ = std::fs::write(&path, text);
+/// The desktop `XDG_CURRENT_DESKTOP` names (the first one known, as in
+/// `Budgie:GNOME`), whether or not its settings are installed.
+fn desktop_kind(current: &str) -> Option<DesktopMount> {
+    current.split(':').find_map(|d| match d.to_ascii_lowercase().as_str() {
+        "x-cinnamon" | "cinnamon" => Some(DesktopMount::Gsettings("org.cinnamon.desktop.media-handling", "Cinnamon")),
+        "mate" => Some(DesktopMount::Gsettings("org.mate.media-handling", "MATE")),
+        "gnome" | "gnome-classic" | "gnome-flashback" | "unity" => Some(DesktopMount::Gsettings("org.gnome.desktop.media-handling", "GNOME")),
+        "xfce" => Some(DesktopMount::Xfce),
+        "kde" => Some(DesktopMount::Kde),
+        "lxqt" => Some(DesktopMount::Pcmanfm { qt: true }),
+        "lxde" => Some(DesktopMount::Pcmanfm { qt: false }),
+        _ => None,
+    })
 }
 
-/// Sets each of `keys` in `[section]` of the INI file at `path` to `off`
-/// (missing keys count as on), changing nothing else in the file, and notes
-/// the old values in `changed`.
-fn ini_disable(path: &std::path::Path, section: &str, keys: &[&str], off: &str, changed: &mut Vec<String>) {
-    let Ok(mut text) = std::fs::read_to_string(path) else { return };
-    let mut any = false;
-    for key in keys {
-        let old = ini_get(&text, section, key);
-        if old.as_deref() == Some(off) {
-            continue;
+/// A program's output, if it ran and succeeded.
+fn output(prog: &str, args: &[&str]) -> Option<String> {
+    std::process::Command::new(prog)
+        .args(args)
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+}
+
+fn first_program(names: &[&'static str]) -> Option<&'static str> {
+    names.iter().copied().find(|n| glib::find_program_in_path(n).is_some())
+}
+
+const KDE_AUTOMOUNT: [&str; 6] = ["--file", "kded_device_automounterrc", "--group", "General", "--key", "AutomountEnabled"];
+const XFCE_AUTOMOUNT: [&str; 2] = ["/automount-drives/enabled", "/automount-media/enabled"];
+
+impl DesktopMount {
+    /// The current desktop's, if it has one and its settings are there.
+    fn get() -> Option<DesktopMount> {
+        thread_local! {
+            static FOUND: std::cell::OnceCell<Option<DesktopMount>> = const { std::cell::OnceCell::new() };
         }
-        text = ini_set(&text, section, key, off);
-        changed.push(format!("ini {section} {key} {} {}", old.as_deref().unwrap_or("-"), path.display()));
-        any = true;
+        FOUND.with(|f| {
+            *f.get_or_init(|| {
+                let d = desktop_kind(&std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default())?;
+                let there = match d {
+                    DesktopMount::Gsettings(schema, _) => gio::SettingsSchemaSource::default()
+                        .and_then(|src| src.lookup(schema, true))
+                        .is_some_and(|s| s.has_key("automount")),
+                    DesktopMount::Xfce => first_program(&["xfconf-query"]).is_some(),
+                    DesktopMount::Kde => Self::kde_tools().is_some(),
+                    DesktopMount::Pcmanfm { .. } => true,
+                };
+                there.then_some(d)
+            })
+        })
     }
-    if any {
-        let _ = std::fs::write(path, text);
+
+    fn name(self) -> &'static str {
+        match self {
+            DesktopMount::Gsettings(_, name) => name,
+            DesktopMount::Xfce => "Xfce",
+            DesktopMount::Kde => "KDE Plasma",
+            DesktopMount::Pcmanfm { qt: true } => "LXQt",
+            DesktopMount::Pcmanfm { qt: false } => "LXDE",
+        }
     }
+
+    fn kde_tools() -> Option<(&'static str, &'static str)> {
+        Some((first_program(&["kreadconfig6", "kreadconfig5"])?, first_program(&["kwriteconfig6", "kwriteconfig5"])?))
+    }
+
+    /// PCManFM(-Qt)'s config files: every profile's, or the desktop's usual
+    /// profile's when there's none yet. Then the section, key and values.
+    fn pcmanfm(qt: bool) -> (Vec<std::path::PathBuf>, &'static str, &'static str, [&'static str; 2]) {
+        let (app, file, profile) = if qt { ("pcmanfm-qt", "settings.conf", "lxqt") } else { ("pcmanfm", "pcmanfm.conf", "LXDE") };
+        let dir = glib::user_config_dir().join(app);
+        let mut files: Vec<_> = std::fs::read_dir(&dir)
+            .map(|d| d.flatten().map(|e| e.path().join(file)).filter(|p| p.is_file()).collect())
+            .unwrap_or_default();
+        files.sort();
+        if files.is_empty() {
+            files.push(dir.join(profile).join(file));
+        }
+        if qt {
+            (files, "Volume", "MountRemovable", ["false", "true"])
+        } else {
+            (files, "volume", "mount_removable", ["0", "1"])
+        }
+    }
+
+    fn is_on(self) -> bool {
+        match self {
+            DesktopMount::Gsettings(schema, _) => gio::Settings::new(schema).boolean("automount"),
+            // thunar-volman's switches are off unless set.
+            DesktopMount::Xfce => XFCE_AUTOMOUNT
+                .iter()
+                .any(|p| output("xfconf-query", &["-c", "thunar-volman", "-p", p]).as_deref() == Some("true")),
+            DesktopMount::Kde => Self::kde_tools().is_none_or(|(read, _)| {
+                output(read, &[&KDE_AUTOMOUNT[..], &["--default", "true"]].concat()).as_deref() != Some("false")
+            }),
+            // Missing, the key is on.
+            DesktopMount::Pcmanfm { qt } => {
+                let (files, section, key, [off, _]) = Self::pcmanfm(qt);
+                let text = std::fs::read_to_string(&files[0]).unwrap_or_default();
+                ini_get(&text, section, key).as_deref() != Some(off)
+            }
+        }
+    }
+
+    fn set(self, on: bool) {
+        let word = if on { "true" } else { "false" };
+        match self {
+            DesktopMount::Gsettings(schema, _) => {
+                let _ = gio::Settings::new(schema).set_boolean("automount", on);
+                gio::Settings::sync();
+            }
+            DesktopMount::Xfce => {
+                for p in XFCE_AUTOMOUNT {
+                    output("xfconf-query", &["-c", "thunar-volman", "-p", p, "-n", "-t", "bool", "-s", word]);
+                }
+            }
+            DesktopMount::Kde => {
+                if let Some((_, write)) = Self::kde_tools() {
+                    output(write, &[&KDE_AUTOMOUNT[..], &["--type", "bool", word]].concat());
+                }
+            }
+            DesktopMount::Pcmanfm { qt } => {
+                let (files, section, key, values) = Self::pcmanfm(qt);
+                for path in files {
+                    let text = std::fs::read_to_string(&path).unwrap_or_default();
+                    if let Some(dir) = path.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    let _ = std::fs::write(&path, ini_set(&text, section, key, values[on as usize]));
+                }
+            }
+        }
+    }
+}
+
+/// Whether inserted media are mounted: the desktop's own setting, or
+/// Arkha's without a desktop.
+pub fn automount_on() -> bool {
+    DesktopMount::get().map_or_else(|| config::with(|s| s.automount), DesktopMount::is_on)
+}
+
+/// Sets that, in the desktop's settings too.
+pub fn set_automount(on: bool) {
+    if let Some(d) = DesktopMount::get() {
+        d.set(on);
+    }
+    config::update(|s| s.automount = on);
+}
+
+/// The desktop whose setting that is, if any.
+pub fn automount_desktop() -> Option<&'static str> {
+    DesktopMount::get().map(DesktopMount::name)
 }
 
 fn ini_section(line: &str) -> Option<&str> {
@@ -1344,80 +1473,6 @@ fn ini_set(text: &str, section: &str, key: &str, value: &str) -> String {
     let mut s = out.join("\n");
     s.push('\n');
     s
-}
-
-/// Desktop environments mount inserted media themselves. Arkha does that
-/// (or, set so, doesn't), so theirs is switched off, every start in case
-/// it was switched back on.
-fn disable_desktop_automount() {
-    // GNOME, Cinnamon and MATE (Caja).
-    let mut changed = vec![];
-    if let Some(src) = gio::SettingsSchemaSource::default() {
-        for schema in ["org.gnome.desktop.media-handling", "org.cinnamon.desktop.media-handling", "org.mate.media-handling"] {
-            if !src.lookup(schema, true).is_some_and(|s| s.has_key("automount")) {
-                continue;
-            }
-            let s = gio::Settings::new(schema);
-            if s.boolean("automount") && s.set_boolean("automount", false).is_ok() {
-                changed.push(format!("gsettings {schema} automount true"));
-            }
-        }
-        gio::Settings::sync();
-    }
-    // LXQt and LXDE: their file managers (PCManFM-Qt, PCManFM) mount media
-    // themselves, set in their config files, one per profile. They read
-    // these when they start, so this applies from the next login.
-    let conf = glib::user_config_dir();
-    let profiles = |app: &str, file: &str| -> Vec<std::path::PathBuf> {
-        std::fs::read_dir(conf.join(app))
-            .map(|d| d.flatten().map(|e| e.path().join(file)).filter(|p| p.is_file()).collect())
-            .unwrap_or_default()
-    };
-    for path in profiles("pcmanfm-qt", "settings.conf") {
-        ini_disable(&path, "Volume", &["MountOnStartup", "MountRemovable"], "false", &mut changed);
-    }
-    for path in profiles("pcmanfm", "pcmanfm.conf") {
-        ini_disable(&path, "volume", &["mount_on_startup", "mount_removable"], "0", &mut changed);
-    }
-    record_desktop_automount(&changed);
-    // Xfce (thunar-volman) and KDE keep theirs elsewhere; their tools are
-    // run off the main thread.
-    let xfconf = glib::find_program_in_path("xfconf-query");
-    let kread = glib::find_program_in_path("kreadconfig6").or_else(|| glib::find_program_in_path("kreadconfig5"));
-    let kwrite = glib::find_program_in_path("kwriteconfig6").or_else(|| glib::find_program_in_path("kwriteconfig5"));
-    if xfconf.is_none() && (kread.is_none() || kwrite.is_none()) {
-        return;
-    }
-    std::thread::spawn(move || {
-        let run = |prog: &std::path::Path, args: &[&str]| {
-            std::process::Command::new(prog)
-                .args(args)
-                .stderr(std::process::Stdio::null())
-                .output()
-                .ok()
-                .filter(|o| o.status.success())
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        };
-        let mut changed = vec![];
-        if let Some(x) = &xfconf {
-            for prop in ["/automount-drives/enabled", "/automount-media/enabled"] {
-                if run(x, &["-c", "thunar-volman", "-p", prop]).as_deref() == Some("true")
-                    && run(x, &["-c", "thunar-volman", "-p", prop, "-s", "false"]).is_some()
-                {
-                    changed.push(format!("xfconf thunar-volman {prop} true"));
-                }
-            }
-        }
-        if let (Some(r), Some(w)) = (&kread, &kwrite) {
-            let (file, group, key) = ("kded_device_automounterrc", "General", "AutomountEnabled");
-            let cur = run(r, &["--file", file, "--group", group, "--key", key]).unwrap_or_default();
-            if cur != "false" && run(w, &["--file", file, "--group", group, "--key", key, "--type", "bool", "false"]).is_some() {
-                let was = if cur.is_empty() { "-" } else { cur.as_str() };
-                changed.push(format!("kde {file} {group} {key} {was}"));
-            }
-        }
-        record_desktop_automount(&changed);
-    });
 }
 
 /// Some drives (a VM's virtual CD drive, for one) never report a disc being
@@ -1513,19 +1568,32 @@ pub fn init_automount() {
         if m.borrow().is_some() {
             return;
         }
-        disable_desktop_automount();
         // Once the first window is up.
         glib::timeout_add_local_once(std::time::Duration::from_secs(2), notice_automounters);
         let monitor = gio::VolumeMonitor::get();
         poll_removable_media(&monitor);
         monitor.connect_volume_added(|_, v| {
-            if !config::with(|s| s.automount) || !v.should_automount() || !v.can_mount() || v.get_mount().is_some() {
+            if !v.should_automount() || !automount_on() {
                 return;
             }
-            let op = gtk::MountOperation::new(None::<&gtk::Window>);
-            // Errors are left alone: another program (the desktop's own
-            // automounter) may have mounted it first.
-            v.mount(gio::MountMountFlags::NONE, Some(&op), gio::Cancellable::NONE, |_| {});
+            let mount = |v: &gio::Volume| {
+                if !v.can_mount() || v.get_mount().is_some() {
+                    return;
+                }
+                let op = gtk::MountOperation::new(None::<&gtk::Window>);
+                // Errors are left alone: another program may have mounted
+                // it meanwhile.
+                v.mount(gio::MountMountFlags::NONE, Some(&op), gio::Cancellable::NONE, |_| {});
+            };
+            // A desktop mounts media itself (and may open a window for them,
+            // per its settings), so it gets the first go; Arkha mounts what
+            // it left, in case its automounter isn't running.
+            if DesktopMount::get().is_some() {
+                let v = v.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || mount(&v));
+            } else {
+                mount(v);
+            }
         });
         *m.borrow_mut() = Some(monitor);
     });
@@ -1549,5 +1617,19 @@ mod tests {
         // A missing section is added at the end.
         assert_eq!(ini_set("[desktop]\nwallpaper=x\n", "volume", "mount_removable", "0"), "[desktop]\nwallpaper=x\n\n[volume]\nmount_removable=0\n");
         assert_eq!(ini_set("", "volume", "mount_removable", "0"), "[volume]\nmount_removable=0\n");
+    }
+
+    #[test]
+    fn desktop_names() {
+        assert_eq!(desktop_kind("X-Cinnamon").map(DesktopMount::name), Some("Cinnamon"));
+        assert_eq!(desktop_kind("Budgie:GNOME").map(DesktopMount::name), Some("GNOME"));
+        assert_eq!(desktop_kind("ubuntu:GNOME").map(DesktopMount::name), Some("GNOME"));
+        assert_eq!(desktop_kind("MATE"), Some(DesktopMount::Gsettings("org.mate.media-handling", "MATE")));
+        assert_eq!(desktop_kind("XFCE"), Some(DesktopMount::Xfce));
+        assert_eq!(desktop_kind("KDE"), Some(DesktopMount::Kde));
+        assert_eq!(desktop_kind("LXQt"), Some(DesktopMount::Pcmanfm { qt: true }));
+        assert_eq!(desktop_kind("LXDE"), Some(DesktopMount::Pcmanfm { qt: false }));
+        assert_eq!(desktop_kind("i3"), None);
+        assert_eq!(desktop_kind(""), None);
     }
 }

@@ -32,7 +32,6 @@ optdepends=(
   'xarchiver: creating and extracting archives'
   'xterm: Open in Terminal, if no other terminal is installed'
 )
-install=arkha.install
 source=("$pkgname::git+file://$(realpath ../..)")
 sha256sums=('SKIP')
 
@@ -66,7 +65,6 @@ check() {
 package() {
   cd "$pkgname"
   install -Dm755 target/release/arkha "$pkgdir/usr/bin/arkha"
-  install -Dm755 arkha-restore-desktop "$pkgdir/usr/bin/arkha-restore-desktop"
   install -Dm644 arkha.desktop "$pkgdir/usr/share/applications/arkha.desktop"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }

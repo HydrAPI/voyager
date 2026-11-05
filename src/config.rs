@@ -52,7 +52,8 @@ pub struct Settings {
     pub sidebar_sections: Vec<String>,
     /// Side pane sections showing only their heading.
     pub sidebar_collapsed: Vec<String>,
-    /// Mount removable media when inserted (see sidebar::init_automount).
+    /// Mount removable media when inserted (see sidebar::init_automount);
+    /// only used without a desktop, whose own setting this is otherwise.
     pub automount: bool,
     /// The side pane's eject button only unmounts (no eject / power off).
     pub unmount_only: bool,
