@@ -552,7 +552,7 @@ impl Pane {
             });
         }
 
-        let filter = gtk::TreeModelFilter::new(&store, None);
+        let filter = new_filter(&store);
         {
             let sh = show_hidden.clone();
             filter.set_visible_func(move |m, it| sh.get() || !m.gv::<bool>(it, COL_HIDDEN as i32));
@@ -4027,6 +4027,15 @@ impl Pane {
 
 
 
+/// A filter model on `child`. Not gtk::TreeModelFilter::new: in gtk-rs 0.18
+/// it takes a reference on top of the one gtk_tree_model_filter_new hands
+/// over (as for a floating widget, which a model isn't), so the filter,
+/// its list and all its rows were never freed: every closed tab stayed in
+/// memory. g_object_new hands over its reference properly.
+fn new_filter(child: &impl IsA<gtk::TreeModel>) -> gtk::TreeModelFilter {
+    glib::Object::builder().property("child-model", child.as_ref()).build()
+}
+
 /// Where `cell` of the item at `path` is, once the item has been laid out.
 /// Before, GTK 3.24's gtk_icon_view_get_cell_rect looks the cell up in a
 /// row the item isn't in yet and crashes (right after a new folder is
@@ -4246,7 +4255,7 @@ mod tests {
         }
         let names = |m: &gtk::TreeModel| m.rows().iter().map(|it| m.gv::<String>(it, 0)).collect::<Vec<_>>();
         assert_eq!(names(store.upcast_ref()), ["a", ".b", "c", ".d", "e"]);
-        let filter = gtk::TreeModelFilter::new(&store, None);
+        let filter = new_filter(&store);
         filter.set_visible_func(|m, it| !m.gv::<String>(it, 0).starts_with('.'));
         assert_eq!(names(filter.upcast_ref()), ["a", "c", "e"]);
         store.clear();
