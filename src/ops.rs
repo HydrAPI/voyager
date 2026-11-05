@@ -1615,10 +1615,14 @@ mod tests {
     }
 
     fn run_job_paused(job: Job, answers: &[Resolution], paused: Arc<AtomicBool>) -> (Vec<String>, Vec<String>) {
+        run_job_with(job, answers, paused, gio::Cancellable::new())
+    }
+
+    fn run_job_with(job: Job, answers: &[Resolution], paused: Arc<AtomicBool>, cancel: gio::Cancellable) -> (Vec<String>, Vec<String>) {
         let (tx, rx) = async_channel::unbounded::<Msg>();
         let mut w = Worker {
             tx,
-            cancel: gio::Cancellable::new(),
+            cancel,
             total_bytes: 0,
             done_bytes: 0,
             total_items: 0,
@@ -1943,6 +1947,139 @@ mod tests {
         assert_eq!(read(&s.0.join("dst/a")), "old");
         assert!(!s.0.join("dst/b").exists());
         assert_eq!(read(&s.0.join("src/b")), "new");
+    }
+
+    /// A tree of `files` files (sizes up to 64 KiB, some empty) in
+    /// folders up to four deep, with links to files and folders in it.
+    fn make_tree(root: &Path, files: usize, seed: u64) {
+        let mut r = crate::testutil::Rng::new(seed);
+        fs::create_dir_all(root).unwrap();
+        let mut dirs = vec![root.to_path_buf()];
+        for i in 0..files {
+            if r.chance(12) && dirs.len() < files / 10 + 2 {
+                let parent = r.pick(&dirs).clone();
+                if parent.components().count() - root.components().count() < 4 {
+                    let d = parent.join(format!("dir {i}"));
+                    fs::create_dir_all(&d).unwrap();
+                    dirs.push(d);
+                }
+            }
+            let d = r.pick(&dirs).clone();
+            let size = if r.chance(10) { 0 } else { r.below(64 * 1024) };
+            let data: Vec<u8> = (0..size).map(|j| ((i * 31 + j) % 251) as u8).collect();
+            fs::write(d.join(format!("file {i}.bin")), data).unwrap();
+        }
+        std::os::unix::fs::symlink("file 0.bin", root.join("link to a file")).unwrap();
+        std::os::unix::fs::symlink(".", root.join("link to here")).unwrap();
+    }
+
+    /// Every entry under `root`, relative, with its content (a link's target).
+    fn tree_contents(root: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+        let mut out = std::collections::BTreeMap::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for e in fs::read_dir(&d).unwrap().flatten() {
+                let p = e.path();
+                let rel = p.strip_prefix(root).unwrap().to_path_buf();
+                let meta = fs::symlink_metadata(&p).unwrap();
+                if meta.file_type().is_symlink() {
+                    out.insert(rel, fs::read_link(&p).unwrap().into_os_string().into_encoded_bytes());
+                } else if meta.is_dir() {
+                    out.insert(rel, b"<dir>".to_vec());
+                    stack.push(p);
+                } else {
+                    out.insert(rel, fs::read(&p).unwrap());
+                }
+            }
+        }
+        out
+    }
+
+    fn files_count() -> usize {
+        std::env::var("ARKHA_STRESS_FILES").ok().and_then(|v| v.parse().ok()).unwrap_or(3000)
+    }
+
+    /// cargo test -- --ignored (ARKHA_STRESS_FILES=n for another size).
+    #[test]
+    #[ignore = "stress test: run with --ignored"]
+    fn stress_big_tree_copy_move_delete() {
+        let s = home_scratch("stress-tree");
+        let src = s.0.join("src/tree");
+        make_tree(&src, files_count(), 1);
+        let want = tree_contents(&src);
+        // Copy, here.
+        fs::create_dir_all(s.0.join("copy")).unwrap();
+        let (_, asked) = run_job(transfer(Kind::Copy, &src, &s.0.join("copy")), &[]);
+        assert!(asked.is_empty(), "{asked:?}");
+        assert!(tree_contents(&s.0.join("copy/tree")) == want, "the copy differs");
+        // Move to another file system (RAM: a small tree only) and back.
+        let shm = scratch("/dev/shm", "stress-tree");
+        let small = s.0.join("small/tree");
+        make_tree(&small, 300, 2);
+        let small_want = tree_contents(&small);
+        run_job(transfer(Kind::Move, &small, &shm.0), &[]);
+        assert!(!small.exists() && tree_contents(&shm.0.join("tree")) == small_want, "moving away");
+        run_job(transfer(Kind::Move, &shm.0.join("tree"), &s.0.join("small")), &[]);
+        assert!(!shm.0.join("tree").exists() && tree_contents(&small) == small_want, "moving back");
+        // Move here (a rename), then delete it all.
+        run_job(transfer(Kind::Move, &s.0.join("copy/tree"), &s.0), &[]);
+        assert!(tree_contents(&s.0.join("tree")) == want);
+        let (_, asked) = run_job(Job::Delete(vec![uri(&s.0.join("tree")), uri(&src)]), &[]);
+        assert!(asked.is_empty(), "{asked:?}");
+        assert!(!s.0.join("tree").exists() && !src.exists());
+    }
+
+    /// Copies and moves cancelled at random moments: what got copied is
+    /// whole, nothing is lost, and nothing half-written is left behind.
+    #[test]
+    #[ignore = "stress test: run with --ignored"]
+    fn stress_cancel_anywhere() {
+        let s = home_scratch("stress-cancel");
+        let src = s.0.join("src/tree");
+        make_tree(&src, files_count() / 3, 3);
+        let want = tree_contents(&src);
+        let mut r = crate::testutil::Rng::new(4);
+        for round in 0..12 {
+            let dst = s.0.join(format!("dst{round}"));
+            fs::create_dir_all(&dst).unwrap();
+            let moving = round % 3 == 2;
+            // Moving within a file system is a rename: across one it copies.
+            let shm = scratch("/dev/shm", &format!("stress-cancel-{round}"));
+            let (from, to) = if moving {
+                let from = shm.0.join("tree");
+                make_tree(&from, 400, 10 + round as u64);
+                (from, dst.clone())
+            } else {
+                (src.clone(), dst.clone())
+            };
+            let before = tree_contents(&from);
+            let cancel = gio::Cancellable::new();
+            let c = cancel.clone();
+            let delay = r.below(400) as u64;
+            let canceller = std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(delay));
+                c.cancel();
+            });
+            let job = transfer(if moving { Kind::Move } else { Kind::Copy }, &from, &to);
+            let (_, asked) = run_job_with(job, &[], Arc::new(AtomicBool::new(false)), cancel);
+            canceller.join().unwrap();
+            assert!(asked.is_empty(), "round {round}: {asked:?}");
+            let got = if to.join("tree").exists() { tree_contents(&to.join("tree")) } else { Default::default() };
+            let left = if from.exists() { tree_contents(&from) } else { Default::default() };
+            for (rel, data) in &got {
+                // A folder may be there half full; a file only whole.
+                let orig = before.get(rel).unwrap_or_else(|| panic!("round {round}: {rel:?} came from nowhere"));
+                assert!(data == orig || data == b"<dir>", "round {round}: {rel:?} is cut off ({} of {} bytes)", data.len(), orig.len());
+            }
+            for (rel, data) in &before {
+                if data != b"<dir>" {
+                    assert!(got.contains_key(rel) || left.get(rel) == Some(data), "round {round}: {rel:?} was lost");
+                }
+            }
+            if !moving {
+                assert!(tree_contents(&src) == want, "round {round}: the source changed");
+            }
+        }
     }
 
     #[test]
