@@ -365,8 +365,9 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     ));
     let d = gtk::Dialog::new();
     d.set_title("Rename...");
+    // Kept above its window, but not blocking it (Caja's does): the
+    // folders can be looked at and used meanwhile.
     d.set_transient_for(Some(parent));
-    d.set_modal(true);
     d.set_destroy_with_parent(true);
     d.set_position(gtk::WindowPosition::CenterOnParent);
     d.set_default_size(640, 480);
@@ -629,8 +630,9 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     if let Some(cur) = notebook.nth_page(notebook.current_page()) {
         show_only(&notebook, &cur);
     }
-    d.run();
-    d.close();
+    // Close, or the window's own close button.
+    // SAFETY: the dialog is ours; nothing uses it once it's closed.
+    d.connect_response(|d, _| unsafe { d.destroy() });
 }
 
 #[cfg(test)]
