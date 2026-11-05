@@ -532,11 +532,9 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         let (store, entries, ui) = (store.clone(), entries.clone(), ui.clone());
         Rc::new(move || {
             let o = ui.options();
-            let Some(it) = store.iter_first() else { return };
             for (row, e) in entries.borrow().iter().enumerate() {
-                store.set(&it, &[(1, &e.old), (2, &new_name_for(&e.old, e.is_dir, row, &o))]);
-                if !store.iter_next(&it) {
-                    break;
+                if let Some(it) = store.iter_nth_child(None, row as i32) {
+                    store.set(&it, &[(1, &e.old), (2, &new_name_for(&e.old, e.is_dir, row, &o))]);
                 }
             }
         })

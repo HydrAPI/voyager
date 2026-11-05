@@ -294,18 +294,10 @@ impl Column {
         let sel = self.view.selection();
         sel.unselect_all();
         let Some(want) = self.highlight.borrow().clone() else { return };
-        let Some(it) = self.store.iter_first() else { return };
-        loop {
-            if self.store.gv::<String>(&it, C_URI as i32) == want {
-                if let Some(p) = self.store.path(&it) {
-                    sel.select_path(&p);
-                    self.view.scroll_to_cell(Some(&p), None::<&gtk::TreeViewColumn>, false, 0.0, 0.0);
-                }
-                return;
-            }
-            if !self.store.iter_next(&it) {
-                return;
-            }
+        let found = self.store.rows().into_iter().find(|it| self.store.gv::<String>(it, C_URI as i32) == want);
+        if let Some(p) = found.and_then(|it| self.store.path(&it)) {
+            sel.select_path(&p);
+            self.view.scroll_to_cell(Some(&p), None::<&gtk::TreeViewColumn>, false, 0.0, 0.0);
         }
     }
 

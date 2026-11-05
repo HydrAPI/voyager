@@ -1979,6 +1979,13 @@ impl AppWindow {
                 closed.remove(0);
             }
             drop(closed);
+            // The focus leaves the tab while it's still there: moved only
+            // after its view is gone, accessibility (which follows the
+            // focus) gets the gone view handed to it (gtk_widget_get_parent
+            // assertion).
+            if self.window.focused_widget().is_some_and(|f| f.is_ancestor(&pane.root)) {
+                self.window.set_focus(None::<&gtk::Widget>);
+            }
             nb.remove_page(Some(n));
         }
         self.set_enabled("reopen-tab", true);
@@ -4165,15 +4172,7 @@ fn bookmark_editor(parent: &gtk::Window) -> gtk::Box {
     let save = {
         let store = store.clone();
         move || {
-            let mut list = vec![];
-            if let Some(it) = store.iter_first() {
-                loop {
-                    list.push((store.gv::<String>(&it, 1), store.gv::<String>(&it, 0)));
-                    if !store.iter_next(&it) {
-                        break;
-                    }
-                }
-            }
+            let list: Vec<(String, String)> = store.rows().iter().map(|it| (store.gv::<String>(it, 1), store.gv::<String>(it, 0))).collect();
             let _ = util::edit_bookmarks(|b| *b = list);
         }
     };

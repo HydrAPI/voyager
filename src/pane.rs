@@ -34,9 +34,15 @@ standard::size,standard::content-type,standard::is-hidden,standard::is-backup,\
 standard::is-symlink,standard::symlink-target,time::modified,access::can-read,\
 thumbnail::path,thumbnail::is-valid,trash::orig-path,trash::deletion-date";
 
-/// Typed getter for tree model cells.
+/// Typed getter for tree model cells, and the rows of a list.
 pub trait ModelGet {
     fn gv<T: for<'b> glib::value::FromValue<'b> + 'static>(&self, it: &gtk::TreeIter, col: i32) -> T;
+
+    /// The (top-level) rows in order, each its own iter, for going through
+    /// them. Not with iter_next: it moves an iter through a shared
+    /// reference, which the compiler may not expect (a loop, or an
+    /// Option::filter, can go on with the iter as it was).
+    fn rows(&self) -> Vec<gtk::TreeIter>;
 }
 
 impl<O: IsA<gtk::TreeModel>> ModelGet for O {
@@ -45,6 +51,17 @@ impl<O: IsA<gtk::TreeModel>> ModelGet for O {
             .value(it, col)
             .get::<T>()
             .expect("tree model column type")
+    }
+
+    fn rows(&self) -> Vec<gtk::TreeIter> {
+        let mut out = vec![];
+        self.as_ref().foreach(|_, path, it| {
+            if path.depth() == 1 {
+                out.push(*it);
+            }
+            false
+        });
+        out
     }
 }
 
@@ -434,6 +451,9 @@ pub struct Pane {
     overlay: gtk::Overlay,
     /// Renaming in the icon and compact views (see open_rename_editor).
     rename_editor: RefCell<Option<Rc<RenameEditor>>>,
+    /// Times the rename editor's place was asked for before its item was
+    /// laid out (see the overlay's get-child-position handler).
+    rename_tries: Cell<u32>,
     /// The info panel beside the view (info.rs), and whether this folder
     /// shows it.
     info: Rc<crate::info::InfoPanel>,
@@ -538,8 +558,34 @@ impl Pane {
             filter.set_visible_func(move |m, it| sh.get() || !m.gv::<bool>(it, COL_HIDDEN as i32));
         }
 
+        // GtkIconView's row-deleted handler (GTK 3.24) gives up a reference
+        // on the row that moves into the removed one's place (it looks the
+        // path up after the removal), and it only holds references on rows
+        // added while it's attached, not on those there when it gets the
+        // model. Uncorrected, the filter model's counts go below zero (the
+        // "elt->ref_count > 0" assertion in gtk_tree_model_filter_real_unref_node,
+        // on removing a row or later on freeing a row reference). This
+        // handler, connected before the icon view's (so it runs first), gives
+        // that row the reference the icon view then takes away.
+        let icon_view_ref: Rc<RefCell<Option<glib::WeakRef<gtk::IconView>>>> = Rc::default();
+        {
+            let iv = icon_view_ref.clone();
+            filter.connect_row_deleted(move |m, path| {
+                let attached = iv.borrow().as_ref().and_then(|w| w.upgrade()).is_some_and(|v| v.model().is_some());
+                if !attached || path.depth() != 1 {
+                    return;
+                }
+                if let Some(mut next) = m.iter(path) {
+                    use glib::translate::{ToGlibPtr, ToGlibPtrMut};
+                    // SAFETY: a valid iter of this model, as GtkIconView passes it.
+                    unsafe { gtk::ffi::gtk_tree_model_ref_node(m.upcast_ref::<gtk::TreeModel>().to_glib_none().0, next.to_glib_none_mut().0) };
+                }
+            });
+        }
+
         // ---- icon view
         let icon_view = gtk::IconView::with_model(&filter);
+        *icon_view_ref.borrow_mut() = Some(icon_view.downgrade());
         icon_view.set_selection_mode(gtk::SelectionMode::Multiple);
         IconViewExt::set_margin(&icon_view, 8);
         icon_view.set_row_spacing(4);
@@ -867,6 +913,7 @@ impl Pane {
             typeahead_entry,
             overlay: overlay.clone(),
             rename_editor: RefCell::new(None),
+            rename_tries: Cell::new(0),
             info,
             info_paned,
             info_on: Cell::new(false),
@@ -1007,7 +1054,18 @@ impl Pane {
                 if child != ed.frame.upcast_ref::<gtk::Widget>() {
                     return None;
                 }
-                p.rename_rect(&ed)
+                if let Some(r) = p.rename_rect(&ed) {
+                    p.rename_tries.set(0);
+                    return Some(r);
+                }
+                // Its item isn't laid out yet (just added): out of sight
+                // until it is, asked again shortly (for up to 2 s).
+                if p.rename_tries.get() < 40 {
+                    p.rename_tries.set(p.rename_tries.get() + 1);
+                    let ov = p.overlay.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || ov.queue_resize());
+                }
+                Some(gdk::Rectangle::new(0, 0, 0, 0))
             });
             if let Some(adj) = self.icon_view.vadjustment() {
                 let ov = self.overlay.clone();
@@ -2013,16 +2071,11 @@ impl Pane {
     fn count_dir_items(self: &Rc<Self>, gen: u64) {
         let mut dirs = vec![];
         let store = &self.store;
-        if let Some(it) = store.iter_first() {
-            loop {
-                if store.gv::<bool>(&it, COL_IS_DIR as i32) {
-                    let uri: String = store.gv(&it, COL_URI as i32);
-                    if let Some(p) = gio::File::for_uri(&uri).path() {
-                        dirs.push((uri, p));
-                    }
-                }
-                if !store.iter_next(&it) {
-                    break;
+        for it in store.rows() {
+            if store.gv::<bool>(&it, COL_IS_DIR as i32) {
+                let uri: String = store.gv(&it, COL_URI as i32);
+                if let Some(p) = gio::File::for_uri(&uri).path() {
+                    dirs.push((uri, p));
                 }
             }
         }
@@ -2215,22 +2268,10 @@ impl Pane {
         };
         match rows.len() {
             0 => return,
+            // One at a time while attached (see the filter's row-deleted
+            // handler in new for the icon view's references).
             1 => {
-                // GtkIconView's row-deleted handler (GTK 3.24) drops its
-                // reference on the row that moves into the removed one's
-                // place instead of on the removed one: that row gets it back
-                // here. Otherwise the filter model's counts go wrong, and a
-                // row later added at the top trips its "elt->ref_count > 0"
-                // assertion (gtk_tree_model_filter_real_unref_node).
-                let path = self.filter.convert_child_iter_to_iter(&rows[0]).and_then(|f| self.filter.path(&f));
                 self.store.remove(&rows[0]);
-                if let Some(path) = path.filter(|_| self.icon_view.model().is_some()) {
-                    if let Some(mut next) = self.filter.iter(&path) {
-                        use glib::translate::{ToGlibPtr, ToGlibPtrMut};
-                        // SAFETY: a valid iter of this model, as GtkIconView passes it.
-                        unsafe { gtk::ffi::gtk_tree_model_ref_node(self.filter.upcast_ref::<gtk::TreeModel>().to_glib_none().0, next.to_glib_none_mut().0) };
-                    }
-                }
             }
             _ => self.detached(|| {
                 for it in &rows {
@@ -2614,15 +2655,10 @@ impl Pane {
         let selected: std::collections::HashSet<Vec<i32>> =
             self.selected_paths().iter().map(|p| p.indices()).collect();
         let mut paths = vec![];
-        if let Some(it) = self.filter.iter_first() {
-            loop {
-                let p = self.filter.path(&it).unwrap();
-                if !selected.contains(&p.indices()) {
-                    paths.push(p);
-                }
-                if !self.filter.iter_next(&it) {
-                    break;
-                }
+        for it in self.filter.rows() {
+            let p = self.filter.path(&it).unwrap();
+            if !selected.contains(&p.indices()) {
+                paths.push(p);
             }
         }
         self.icon_view.unselect_all();
@@ -2639,15 +2675,10 @@ impl Pane {
     pub fn select_pattern(&self, pattern: &str) {
         let pat: Vec<char> = pattern.to_lowercase().chars().collect();
         let mut paths = vec![];
-        if let Some(it) = self.filter.iter_first() {
-            loop {
-                let name: String = self.filter.gv(&it, COL_NAME as i32);
-                if util::glob_match(&pat, &name.to_lowercase().chars().collect::<Vec<_>>()) {
-                    paths.push(self.filter.path(&it).unwrap());
-                }
-                if !self.filter.iter_next(&it) {
-                    break;
-                }
+        for it in self.filter.rows() {
+            let name: String = self.filter.gv(&it, COL_NAME as i32);
+            if util::glob_match(&pat, &name.to_lowercase().chars().collect::<Vec<_>>()) {
+                paths.push(self.filter.path(&it).unwrap());
             }
         }
         self.icon_view.unselect_all();
@@ -2916,13 +2947,8 @@ impl Pane {
         let tv = &self.tree_view;
         let text_width = |t: &str| tv.create_pango_layout(Some(t)).pixel_size().0;
         let mut width = 0;
-        if let Some(it) = self.filter.iter_first() {
-            loop {
-                width = width.max(text_width(&self.filter.gv::<String>(&it, *text_col as i32)));
-                if !self.filter.iter_next(&it) {
-                    break;
-                }
-            }
+        for it in self.filter.rows() {
+            width = width.max(text_width(&self.filter.gv::<String>(&it, *text_col as i32)));
         }
         // Cell padding, and the icon with its gap in the Name column.
         width += 12;
@@ -3313,13 +3339,13 @@ impl Pane {
         let mut boxes = vec![];
         let (Some(model), true) = (iv.model(), iv.item_orientation() == gtk::Orientation::Vertical) else { return boxes };
         let Some(it) = model.iter(path) else { return boxes };
-        if let Some(r) = iv.cell_rect(path, Some(&self.icon_pix)) {
+        if let Some(r) = cell_rect(iv, path, &self.icon_pix) {
             let (w, h) = icon_view_dims(&model, &it, self.icon_size.get(), self.thumb_size.get());
             let left = r.x() + self.image.x_shift() + (r.width() - w) / 2;
             boxes.push((left as f64, (r.y() + r.height() - h) as f64, w as f64, h as f64));
         }
         if self.labels_shown.get() {
-            if let Some(r) = iv.cell_rect(path, Some(&self.icon_text)) {
+            if let Some(r) = cell_rect(iv, path, &self.icon_text) {
                 let text = icon_cell_text(&model, &it, self.captions.get(), self.icon_columns.get());
                 boxes.extend(self.label.text_box(iv.upcast_ref(), &r, &text, iv.path_is_selected(path)));
             }
@@ -3517,7 +3543,7 @@ impl Pane {
                 if let Some(it) = model.iter(&path) {
                     let uri: String = model.gv(&it, COL_URI as i32);
                     if editing.as_deref() != Some(uri.as_str()) {
-                        if let Some(rect) = iv.cell_rect(&path, Some(&self.icon_text)) {
+                        if let Some(rect) = cell_rect(iv, &path, &self.icon_text) {
                             let text = icon_label_text(&model, &it, self.captions.get());
                             if selected {
                                 self.label.draw_selected(iv.upcast_ref(), cr, &rect, &text);
@@ -3760,6 +3786,7 @@ impl Pane {
     /// stretches over the whole label area.) Enter or clicking elsewhere
     /// renames, Escape cancels.
     fn open_rename_editor(&self, uri: &str) {
+        self.rename_tries.set(0);
         self.close_rename_editor(false);
         let Some(row) = self.index.borrow().get(uri).cloned().map(|it| self.row_info(self.store.upcast_ref(), &it)) else {
             self.editing.borrow_mut().take();
@@ -3846,7 +3873,7 @@ impl Pane {
         let it = self.index.borrow().get(&ed.uri).cloned()?;
         let fit = self.filter.convert_child_iter_to_iter(&it)?;
         let path = self.filter.path(&fit)?;
-        let r = self.icon_view.cell_rect(&path, Some(&self.icon_text))?;
+        let r = cell_rect(&self.icon_view, &path, &self.icon_text)?;
         let (x, y) = self.icon_view.translate_coordinates(&self.overlay, r.x(), r.y())?;
         let width = r.width().max(90);
         // The wrapped text's height, measured like the view draws it (the
@@ -3999,6 +4026,19 @@ impl Pane {
 }
 
 
+
+/// Where `cell` of the item at `path` is, once the item has been laid out.
+/// Before, GTK 3.24's gtk_icon_view_get_cell_rect looks the cell up in a
+/// row the item isn't in yet and crashes (right after a new folder is
+/// added, say). Without a cell it only reads the item's own area, which
+/// until then is -1 wide (plus the padding on both sides).
+fn cell_rect(iv: &gtk::IconView, path: &gtk::TreePath, cell: &impl IsA<gtk::CellRenderer>) -> Option<gdk::Rectangle> {
+    let item = iv.cell_rect(path, None::<&gtk::CellRenderer>)?;
+    if item.width() <= 2 * iv.item_padding() {
+        return None;
+    }
+    iv.cell_rect(path, Some(cell))
+}
 
 fn sort_id(by: &str) -> u32 {
     match by {
@@ -4195,6 +4235,23 @@ fn row_pixbuf(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32) -> Option<Pixbu
 mod tests {
     use super::*;
     use crate::testutil::TestDir;
+
+    #[test]
+    fn rows_of_a_list_and_its_filter() {
+        // Models need no display; GTK just has to count as set up.
+        unsafe { gtk::set_initialized() };
+        let store = gtk::ListStore::new(&[String::static_type()]);
+        for n in ["a", ".b", "c", ".d", "e"] {
+            store.insert_with_values(None, &[(0, &n)]);
+        }
+        let names = |m: &gtk::TreeModel| m.rows().iter().map(|it| m.gv::<String>(it, 0)).collect::<Vec<_>>();
+        assert_eq!(names(store.upcast_ref()), ["a", ".b", "c", ".d", "e"]);
+        let filter = gtk::TreeModelFilter::new(&store, None);
+        filter.set_visible_func(|m, it| !m.gv::<String>(it, 0).starts_with('.'));
+        assert_eq!(names(filter.upcast_ref()), ["a", "c", "e"]);
+        store.clear();
+        assert!(filter.rows().is_empty());
+    }
 
     #[test]
     fn numbers_sort_by_value() {
