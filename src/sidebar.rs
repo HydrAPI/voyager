@@ -17,6 +17,59 @@ use gtk::prelude::*;
 
 use crate::{config, util};
 
+/// Notifications for taking out a drive, like Caja's. GVfs reports how
+/// unmounting goes through the mount operation's show-unmount-progress
+/// ("summary\nbody" messages): when it takes a while, "Writing data to …",
+/// which stays until the data is written; then "… can be safely
+/// unplugged", which takes its place.
+fn notify_unmount_progress(op: &gtk::MountOperation) {
+    #[derive(Default)]
+    struct Progress {
+        /// The "Writing data" notification's id once it's shown.
+        id: Cell<u32>,
+        /// Asked for and not shown yet.
+        pending: Cell<bool>,
+        /// Done (or given up) while it was pending: close it when shown.
+        finished: Cell<bool>,
+    }
+    let progress = Rc::new(Progress::default());
+    let close = |p: &Progress| {
+        if p.pending.get() {
+            p.finished.set(true);
+        }
+        util::close_notification(p.id.replace(0));
+    };
+    let p = progress.clone();
+    op.connect_show_unmount_progress(move |_, message, _time_left, bytes_left| {
+        let (summary, body) = message.split_once('\n').unwrap_or((message, ""));
+        if bytes_left == 0 {
+            close(&p);
+            if !message.is_empty() {
+                let n = util::Notification { summary, body, icon: "media-removable", sticky: false };
+                util::send_notification(&n, |_| {});
+            }
+            return;
+        }
+        // Shown already (GVfs says it once).
+        if p.pending.get() || p.id.get() != 0 || p.finished.get() {
+            return;
+        }
+        p.pending.set(true);
+        let n = util::Notification { summary, body, icon: "media-removable", sticky: true };
+        let p = p.clone();
+        util::send_notification(&n, move |id| {
+            p.pending.set(false);
+            if p.finished.get() {
+                util::close_notification(id);
+            } else {
+                p.id.set(id);
+            }
+        });
+    });
+    // Cancelled (files still in use, say): no more "Writing data".
+    op.connect_aborted(move |_| close(&progress));
+}
+
 /// Section ids (what `sidebar_sections` stores) and headings.
 pub const SECTIONS: &[(&str, &str)] = &[("computer", "Computer"), ("devices", "Devices"), ("bookmarks", "Bookmarks")];
 
@@ -611,6 +664,7 @@ impl Sidebar {
         let flags = gio::MountUnmountFlags::NONE;
         let none = gio::Cancellable::NONE;
         let label = item.label.clone();
+        notify_unmount_progress(&op);
         match how {
             Removal::Unmount => {
                 if let Some(m) = &item.mount {

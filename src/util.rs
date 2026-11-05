@@ -34,23 +34,51 @@ pub fn save_settings(kf: &glib::KeyFile, path: &std::path::Path) {
 /// Shows a desktop notification from Arkha (as libnotify does, which Caja
 /// uses: clicking it does nothing).
 pub fn notify(summary: &str, body: &str) {
-    let hints: std::collections::HashMap<String, glib::Variant> = [("desktop-entry".to_string(), "arkha".to_variant())].into();
-    let args = ("Arkha", 0u32, "system-file-manager", summary, body, Vec::<String>::new(), hints, -1i32).to_variant();
+    send_notification(&Notification { summary, body, icon: "system-file-manager", sticky: false }, |_| {});
+}
+
+pub struct Notification<'a> {
+    pub summary: &'a str,
+    pub body: &'a str,
+    pub icon: &'a str,
+    /// Stays until it's closed (`close_notification`) instead of timing
+    /// out, and isn't kept in the notification history (critical urgency,
+    /// transient), like Caja's "Writing data to …".
+    pub sticky: bool,
+}
+
+/// Sends `n`; `shown` gets its id (0 if it couldn't be shown).
+pub fn send_notification(n: &Notification, shown: impl FnOnce(u32) + 'static) {
+    let mut hints: std::collections::HashMap<String, glib::Variant> = [("desktop-entry".to_string(), "arkha".to_variant())].into();
+    if n.sticky {
+        hints.insert("urgency".to_string(), 2u8.to_variant());
+        hints.insert("transient".to_string(), true.to_variant());
+    }
+    let args = ("Arkha", 0u32, n.icon, n.summary, n.body, Vec::<String>::new(), hints, -1i32).to_variant();
+    notifications_call("Notify", args, move |reply| shown(reply.and_then(|r| r.child_value(0).get::<u32>()).unwrap_or(0)));
+}
+
+pub fn close_notification(id: u32) {
+    if id != 0 {
+        notifications_call("CloseNotification", (id,).to_variant(), |_| {});
+    }
+}
+
+fn notifications_call(method: &'static str, args: glib::Variant, done: impl FnOnce(Option<glib::Variant>) + 'static) {
     gio::bus_get(gio::BusType::Session, gio::Cancellable::NONE, move |bus| {
-        if let Ok(bus) = bus {
-            bus.call(
-                Some("org.freedesktop.Notifications"),
-                "/org/freedesktop/Notifications",
-                "org.freedesktop.Notifications",
-                "Notify",
-                Some(&args),
-                None,
-                gio::DBusCallFlags::NONE,
-                -1,
-                gio::Cancellable::NONE,
-                |_| {},
-            );
-        }
+        let Ok(bus) = bus else { return done(None) };
+        bus.call(
+            Some("org.freedesktop.Notifications"),
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+            method,
+            Some(&args),
+            None,
+            gio::DBusCallFlags::NONE,
+            -1,
+            gio::Cancellable::NONE,
+            move |r| done(r.ok()),
+        );
     });
 }
 
