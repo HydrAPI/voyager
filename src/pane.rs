@@ -492,6 +492,11 @@ pub struct Pane {
     /// Keep the strip of columns scrolled to its end while it's laid out.
     columns_to_end: Rc<Cell<bool>>,
     me: RefCell<std::rc::Weak<Pane>>,
+    /// An icon view scroll waiting for its item to be laid out (see
+    /// scroll_icon_view): the item's URI, center, row alignment, whether
+    /// it gets the cursor too; tries.
+    pending_scroll: RefCell<Option<(String, bool, f32, bool)>>,
+    scroll_tries: Cell<u32>,
     /// A selection change waits to be passed on (see emit).
     selection_pending: Cell<bool>,
     /// The open folder's display name, by its URI: asking for it is a
@@ -904,6 +909,8 @@ impl Pane {
             search_gen: Default::default(),
             pending_select: RefCell::new(vec![]),
             pending_rename: RefCell::new(None),
+            pending_scroll: RefCell::new(None),
+            scroll_tries: Cell::new(0),
             editing: Rc::new(RefCell::new(None)),
             free_space: RefCell::new(None),
             loading: Cell::new(false),
@@ -1059,13 +1066,15 @@ impl Pane {
                     return Some(r);
                 }
                 // Its item isn't laid out yet (just added): out of sight
-                // until it is, asked again shortly (for up to 2 s).
+                // until it is (at its own size: smaller, GTK complains),
+                // asked again shortly (for up to 2 s).
                 if p.rename_tries.get() < 40 {
                     p.rename_tries.set(p.rename_tries.get() + 1);
                     let ov = p.overlay.clone();
                     glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || ov.queue_resize());
                 }
-                Some(gdk::Rectangle::new(0, 0, 0, 0))
+                let (w, h) = (ed.frame.preferred_width().1.max(1), ed.frame.preferred_height().1.max(1));
+                Some(gdk::Rectangle::new(-w - 100, -h - 100, w, h))
             });
             if let Some(adj) = self.icon_view.vadjustment() {
                 let ov = self.overlay.clone();
@@ -2054,8 +2063,7 @@ impl Pane {
                     self.tree_view.selection().unselect_all();
                 }
                 _ => {
-                    self.icon_view.scroll_to_path(&path, false, 0.0, 0.0);
-                    self.icon_view.set_cursor(&path, None::<&gtk::CellRenderer>, false);
+                    self.scroll_icon_view(&path, false, 0.0, true);
                     self.icon_view.unselect_all();
                 }
             }
@@ -2362,7 +2370,7 @@ impl Pane {
                 .and_then(|it| self.filter.path(&it))
         };
         if let Some(p) = path_of(&icons_top) {
-            self.icon_view.scroll_to_path(&p, true, 0.0, 0.0);
+            self.scroll_icon_view(&p, true, 0.0, false);
         }
         if let Some(p) = path_of(&list_top) {
             self.tree_view.scroll_to_cell(Some(&p), None::<&gtk::TreeViewColumn>, true, 0.0, 0.0);
@@ -2578,11 +2586,61 @@ impl Pane {
                 for i in anchor.min(next)..=anchor.max(next) {
                     self.icon_view.select_path(&path(i));
                 }
-                self.icon_view.scroll_to_path(&path(next), false, 0.0, 0.0);
+                self.scroll_icon_view(&path(next), false, 0.0, false);
             }
             None => self.select_filter_paths(&[path(next)]),
         }
         glib::Propagation::Stop
+    }
+
+    /// Scrolls the icon view to the item at `path` (and with `cursor` puts
+    /// the cursor on it, which scrolls too). Not laid out yet (just added,
+    /// the view just attached), GtkIconView (GTK 3.24) would keep the path
+    /// in a row reference that it doesn't move when rows above are removed:
+    /// freed later, it lets go of another row's reference (the filter
+    /// model's "elt->ref_count > 0" assertion). So the item is remembered
+    /// by its URI here and scrolled to once it is laid out.
+    fn scroll_icon_view(&self, path: &gtk::TreePath, center: bool, row_align: f32, cursor: bool) {
+        if self.icon_view.is_realized() && cell_rect(&self.icon_view, path, &self.icon_text).is_some() {
+            *self.pending_scroll.borrow_mut() = None;
+            if cursor {
+                self.icon_view.set_cursor(path, None::<&gtk::CellRenderer>, false);
+            }
+            self.icon_view.scroll_to_path(path, center, row_align, 0.0);
+            return;
+        }
+        let Some(uri) = self.filter.iter(path).map(|it| self.filter.gv::<String>(&it, COL_URI as i32)) else { return };
+        let first = self.pending_scroll.replace(Some((uri, center, row_align, cursor))).is_none();
+        self.scroll_tries.set(0);
+        if first {
+            self.retry_scroll();
+        }
+    }
+
+    fn retry_scroll(&self) {
+        let w = self.me.borrow().clone();
+        glib::timeout_add_local_once(Duration::from_millis(30), move || {
+            let Some(p) = w.upgrade() else { return };
+            let Some((uri, center, align, cursor)) = p.pending_scroll.borrow().clone() else { return };
+            let path = p.index.borrow().get(&uri).and_then(|it| p.filter.convert_child_iter_to_iter(it)).and_then(|f| p.filter.path(&f));
+            let Some(path) = path.filter(|_| p.icon_view.model().is_some()) else {
+                // Gone, or the view shows another model: nothing to scroll to.
+                *p.pending_scroll.borrow_mut() = None;
+                return;
+            };
+            if p.icon_view.is_realized() && cell_rect(&p.icon_view, &path, &p.icon_text).is_some() {
+                *p.pending_scroll.borrow_mut() = None;
+                if cursor {
+                    p.icon_view.set_cursor(&path, None::<&gtk::CellRenderer>, false);
+                }
+                p.icon_view.scroll_to_path(&path, center, align, 0.0);
+            } else if p.scroll_tries.get() < 100 {
+                p.scroll_tries.set(p.scroll_tries.get() + 1);
+                p.retry_scroll();
+            } else {
+                *p.pending_scroll.borrow_mut() = None;
+            }
+        });
     }
 
     fn select_filter_paths(&self, paths: &[gtk::TreePath]) {
@@ -2609,8 +2667,7 @@ impl Pane {
                 }
                 _ => {
                     if i == 0 {
-                        self.icon_view.set_cursor(p, None::<&gtk::CellRenderer>, false);
-                        self.icon_view.scroll_to_path(p, center, 0.4, 0.0);
+                        self.scroll_icon_view(p, center, 0.4, true);
                         self.icon_view.unselect_all();
                     }
                     self.icon_view.select_path(p);
@@ -4015,6 +4072,12 @@ impl Pane {
     }
 
     pub fn shutdown(&self) {
+        // While everything is still there: an icon view not in the window
+        // (in the list view) is disposed before it's destroyed, and its
+        // destroy then lets go of the model with its cells already gone
+        // (the selection-changed handlers ask for them).
+        *self.pending_scroll.borrow_mut() = None;
+        self.detach_model();
         self.gen.set(self.gen.get() + 1);
         if let Some(m) = self.monitor.borrow_mut().take() {
             m.cancel();

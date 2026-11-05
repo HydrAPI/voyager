@@ -2320,6 +2320,11 @@ impl AppWindow {
         if let Some(b) = active_btn {
             let sw = self.path_scroll.clone();
             glib::idle_add_local_once(move || {
+                // The window may have been closed meanwhile: a destroyed
+                // scrolled window has no scrollbar (and no adjustment).
+                if b.parent().is_none() || sw.hscrollbar().is_none() {
+                    return;
+                }
                 let adj = sw.hadjustment();
                 let alloc = b.allocation();
                 let right = (alloc.x() + alloc.width()) as f64;
@@ -3042,6 +3047,12 @@ impl AppWindow {
     }
 
     fn edit_bookmarks(self: &Rc<Self>) {
+        thread_local! {
+            static OPEN: RefCell<glib::WeakRef<gtk::Dialog>> = RefCell::default();
+        }
+        if self.present_open(&OPEN.with(|o| o.borrow().upgrade())) {
+            return;
+        }
         let d = gtk::Dialog::with_buttons(
             Some("Edit Bookmarks"),
             Some(&self.window),
@@ -3053,12 +3064,31 @@ impl AppWindow {
         bx.set_border_width(8);
         bx.pack_start(&bookmark_editor(d.upcast_ref()), true, true, 0);
         d.connect_response(|d, _| d.close());
+        OPEN.with(|o| o.borrow().set(Some(&d)));
         d.show_all();
     }
 
+    /// Brings `open` (Preferences or Edit Bookmarks, shown once at a time,
+    /// as in Caja) to the front of this window; false if it isn't open.
+    fn present_open(&self, open: &Option<gtk::Dialog>) -> bool {
+        let Some(d) = open else { return false };
+        d.set_transient_for(Some(&self.window));
+        // Its "win.*" check buttons act on the window it's in front of.
+        d.insert_action_group("win", Some(&self.window));
+        d.present();
+        true
+    }
+
     fn preferences(self: &Rc<Self>) {
+        thread_local! {
+            static OPEN: RefCell<glib::WeakRef<gtk::Dialog>> = RefCell::default();
+        }
+        if self.present_open(&OPEN.with(|o| o.borrow().upgrade())) {
+            return;
+        }
         let s = config::get();
         let d = gtk::Dialog::new();
+        OPEN.with(|o| o.borrow().set(Some(&d)));
         d.set_title("File Manager Preferences");
         d.set_transient_for(Some(&self.window));
         d.set_destroy_with_parent(true);
