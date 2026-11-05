@@ -70,6 +70,18 @@ Video thumbnails (`ffmpegthumbnailer` or `ffmpeg`), the Media Info tab (`mediain
 
 Trash, network locations and mounting use GVfs, which every MATE install already has. Mounting drives also needs udisks2 (`gvfs` pulls it in on most distributions); Android phones need the GVfs MTP backend (`gvfs-mtp` on Arch, Debian and Fedora).
 
+## Testing
+
+```sh
+cargo test --release                                  # unit tests (no display needed)
+ARKHA_RANDOM_CASES=50 cargo test --release random     # the randomized tests, 50 times as many inputs
+cargo test --release -- --ignored stress              # file operation stress tests (ARKHA_STRESS_FILES=n)
+tools/soak.py --backend x11 --minutes 30              # the whole program, driven at random
+tools/soak.py --backend wayland --minutes 30 --cycle  # one round repeated: does memory keep growing?
+```
+
+`tools/soak.py` runs Arkha in a bubblewrap sandbox (the system read-only, `/home` and `/mnt` hidden, its own D-Bus session, a headless X server, and for Wayland Weston inside it) and drives it through its D-Bus actions and its dialogs through accessibility (AT-SPI), while files keep changing underneath. It reports crashes (with backtraces, as Arkha runs under gdb), GLib/GTK warnings, slow or missing responses, and memory over time, in `target/soak/<run>/`. `--fatal-criticals` stops at the first critical warning for its backtrace. Needs `bubblewrap`, `xorg-server-xvfb`, `weston`, `gdb`, `xdotool`, `at-spi2-core` and `python-gobject`.
+
 ## Code layout
 
 | File | What it does |
