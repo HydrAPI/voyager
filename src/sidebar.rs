@@ -737,10 +737,12 @@ impl Sidebar {
         if item.mount.as_ref().is_some_and(|m| m.can_unmount()) {
             device.push(("_Unmount", ej(Removal::Unmount)));
         }
+        // A drive that can be safely removed (a flash drive, a card reader)
+        // only gets that: ejecting it would leave it powered on, so there's
+        // one way to take it out. Eject is for the rest (discs).
         if removable(&item).is_some_and(|d| d.can_stop()) {
             device.push(("_Safely Remove Drive", ej(Removal::Stop)));
-        }
-        if can_eject(&item) {
+        } else if can_eject(&item) {
             device.push(("_Eject", ej(Removal::Eject)));
         }
         if let Target::Drive(_) = &item.target {
