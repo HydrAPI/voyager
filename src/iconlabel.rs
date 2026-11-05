@@ -473,9 +473,24 @@ mod imp {
             }
             let widget = widget.upcast_ref();
             let p = self.props();
-            let x = (cell_area.x() + self.x_shift.get()) as f64 + (cell_area.width() - p.wrap_width) as f64 / 2.0;
+            let shift = self.x_shift.get();
+            let x = (cell_area.x() + shift) as f64 + (cell_area.width() - p.wrap_width) as f64 / 2.0;
             let y = cell_area.y() as f64 + p.ypad as f64;
+            // GtkIconView clips each item to where it puts it: drawn
+            // `shift` to the right, the clip goes along, or a name as wide
+            // as the item would lose its right end.
+            let shifted_clip = shift != 0 && cr.save().is_ok();
+            if shifted_clip {
+                if let Ok((x1, y1, x2, y2)) = cr.clip_extents() {
+                    cr.reset_clip();
+                    cr.rectangle(x1 + shift as f64, y1, x2 - x1, y2 - y1);
+                    cr.clip();
+                }
+            }
             draw_lines(&widget.style_context(), cr, x, y, &self.layouts(widget, &text, false));
+            if shifted_clip {
+                let _ = cr.restore();
+            }
         }
     }
 
