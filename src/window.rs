@@ -3817,44 +3817,67 @@ impl AppWindow {
 
 const MENU_ROW_TARGET: &str = "ARKHA_MENU_ROW";
 
-/// The order of one context menu (`bg`: the one for a folder's empty space)
-/// as a list: entries are moved by dragging their handle or with the arrow
-/// buttons, shown or hidden with their checkbox, and separators can be
-/// added and removed. Returns the editor and a function that reloads it
-/// (custom actions may have been added or removed meanwhile).
-fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
-    let defaults = if bg { actions::BACKGROUND_ORDER } else { actions::ITEM_ORDER };
-    let labels = if bg { actions::BACKGROUND_ENTRIES } else { actions::ITEM_ENTRIES };
-    let outer = gtk::Box::new(gtk::Orientation::Vertical, 6);
+/// A list the user puts in order, for the preferences: entries by key,
+/// each row with a handle to drag it by; the selected one moves with the
+/// arrows (see arrows). The context menus and the side pane's places use it.
+struct OrderList {
+    widget: gtk::ScrolledWindow,
+    list: gtk::ListBox,
+    order: Rc<RefCell<Vec<String>>>,
+    /// Fills the list from `order`, selecting row `select`.
+    rebuild: Rc<dyn Fn(Option<usize>)>,
+    /// Moves an entry, tells the list's owner (`changed`) and rebuilds.
+    move_to: Rc<dyn Fn(usize, usize)>,
+}
+
+impl OrderList {
+    fn selected(&self) -> Option<usize> {
+        self.list.selected_row().map(|r| r.index() as usize)
+    }
+
+    /// Buttons moving the selected entry up and down.
+    fn arrows(self: &Rc<Self>) -> (gtk::Button, gtk::Button) {
+        let up = gtk::Button::from_icon_name(Some("go-up-symbolic"), gtk::IconSize::Button);
+        up.set_tooltip_text(Some("Move up"));
+        let down = gtk::Button::from_icon_name(Some("go-down-symbolic"), gtk::IconSize::Button);
+        down.set_tooltip_text(Some("Move down"));
+        let ol = self.clone();
+        up.connect_clicked(move |_| {
+            if let Some(i) = ol.selected().filter(|i| *i > 0) {
+                (ol.move_to)(i, i - 1);
+            }
+        });
+        let ol = self.clone();
+        down.connect_clicked(move |_| {
+            if let Some(i) = ol.selected().filter(|i| i + 1 < ol.order.borrow().len()) {
+                (ol.move_to)(i, i + 1);
+            }
+        });
+        (up, down)
+    }
+}
+
+/// An OrderList whose rows show `content(key)` beside their handle;
+/// `changed` gets the new order when the user moves an entry. `target` is
+/// the rows' own kind of drag: they can only be dropped in their list.
+fn order_list(target: &'static str, content: impl Fn(&str) -> gtk::Widget + 'static, changed: impl Fn(&[String]) + 'static) -> Rc<OrderList> {
     let list = gtk::ListBox::new();
     list.set_selection_mode(gtk::SelectionMode::Single);
     let sw = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
     sw.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
     sw.set_shadow_type(gtk::ShadowType::In);
     sw.set_min_content_height(150);
-    // Grows with the preferences window (the page, the stack of the two
-    // menus and this box all pass the expansion on).
+    // Grows with the preferences window (the boxes around pass it on).
     sw.set_vexpand(true);
     sw.add(&list);
-    outer.add(&sw);
     let order: Rc<RefCell<Vec<String>>> = Rc::default();
-    let save = {
-        let order = order.clone();
-        move || {
-            let o = order.borrow().clone();
-            config::update(|s| if bg { s.menu_order_bg = o } else { s.menu_order = o });
-        }
-    };
     let handle_icon = if gtk::IconTheme::default().is_some_and(|t| t.has_icon("list-drag-handle-symbolic")) { "list-drag-handle-symbolic" } else { "open-menu-symbolic" };
-    // Fills the list from `order`, selecting row `select`.
     let rebuild: Rc<dyn Fn(Option<usize>)> = {
         let (list, order, sw) = (list.clone(), order.clone(), sw.clone());
         Rc::new(move |select| {
             for c in list.children() {
                 list.remove(&c);
             }
-            let custom = actions::load();
-            let hidden = config::get().hidden_menu_items;
             for (i, k) in order.borrow().iter().enumerate() {
                 let hb = gtk::Box::new(gtk::Orientation::Horizontal, 8);
                 hb.set_margin_start(4);
@@ -3862,7 +3885,7 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
                 let handle = gtk::EventBox::new();
                 handle.add(&gtk::Image::from_icon_name(Some(handle_icon), gtk::IconSize::Menu));
                 handle.set_tooltip_text(Some("Drag to move"));
-                let targets = [gtk::TargetEntry::new(MENU_ROW_TARGET, gtk::TargetFlags::SAME_APP, 0)];
+                let targets = [gtk::TargetEntry::new(target, gtk::TargetFlags::SAME_APP, 0)];
                 handle.drag_source_set(gdk::ModifierType::BUTTON1_MASK, &targets, gdk::DragAction::MOVE);
                 handle.connect_drag_begin(|h, ctx| {
                     if let Some(row) = h.ancestor(gtk::ListBoxRow::static_type()) {
@@ -3874,39 +3897,9 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
                     data.set(&data.target(), 8, i.to_string().as_bytes());
                 });
                 hb.add(&handle);
-                if k == actions::SEPARATOR {
-                    let l = gtk::Label::new(Some("Separator"));
-                    l.style_context().add_class("dim-label");
-                    hb.add(&l);
-                    let line = gtk::Separator::new(gtk::Orientation::Horizontal);
-                    line.set_hexpand(true);
-                    line.set_valign(gtk::Align::Center);
-                    hb.add(&line);
-                } else {
-                    let action = custom.iter().find(|a| actions::custom_key(a) == *k);
-                    let label = match action {
-                        Some(a) => a.name.clone(),
-                        None => labels.iter().find(|(key, _)| key == k).map_or(k.clone(), |(_, l)| l.to_string()),
-                    };
-                    let cb = gtk::CheckButton::with_label(&label);
-                    cb.set_active(!hidden.contains(k));
-                    let key = k.clone();
-                    cb.connect_toggled(move |c| {
-                        let show = c.is_active();
-                        config::update(|s| {
-                            s.hidden_menu_items.retain(|x| *x != key);
-                            if !show {
-                                s.hidden_menu_items.push(key.clone());
-                            }
-                        });
-                    });
-                    hb.add(&cb);
-                    if action.is_some() {
-                        let l = gtk::Label::new(Some("custom action"));
-                        l.style_context().add_class("dim-label");
-                        hb.add(&l);
-                    }
-                }
+                let c = content(k);
+                c.set_hexpand(true);
+                hb.add(&c);
                 let row = gtk::ListBoxRow::new();
                 row.add(&hb);
                 list.add(&row);
@@ -3924,19 +3917,8 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
             }
         })
     };
-    let refresh: Rc<dyn Fn()> = {
-        let (order, rebuild) = (order.clone(), rebuild.clone());
-        Rc::new(move || {
-            let custom = actions::load();
-            let keys: Vec<String> = custom.iter().filter(|a| if bg { a.background } else { a.files || a.folders }).map(actions::custom_key).collect();
-            let cfg = config::get();
-            *order.borrow_mut() = actions::menu_order(if bg { &cfg.menu_order_bg } else { &cfg.menu_order }, defaults, &keys);
-            rebuild(None);
-        })
-    };
-    refresh();
     let move_to: Rc<dyn Fn(usize, usize)> = {
-        let (order, rebuild, save) = (order.clone(), rebuild.clone(), save.clone());
+        let (order, rebuild) = (order.clone(), rebuild.clone());
         Rc::new(move |from, to| {
             let to = {
                 let mut o = order.borrow_mut();
@@ -3948,12 +3930,12 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
                 o.insert(to, k);
                 to
             };
-            save();
+            changed(&order.borrow());
             rebuild(Some(to));
         })
     };
     // Dropping a dragged row: it takes the place of the row it's dropped on.
-    let targets = [gtk::TargetEntry::new(MENU_ROW_TARGET, gtk::TargetFlags::SAME_APP, 0)];
+    let targets = [gtk::TargetEntry::new(target, gtk::TargetFlags::SAME_APP, 0)];
     list.drag_dest_set(gtk::DestDefaults::empty(), &targets, gdk::DragAction::MOVE);
     list.connect_drag_motion(|l, ctx, _, y, time| {
         match l.row_at_y(y) {
@@ -3997,15 +3979,82 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
             }
         });
     }
-    // Buttons for the selected row.
-    let selected = {
-        let list = list.clone();
-        move || list.selected_row().map(|r| r.index() as usize)
+    Rc::new(OrderList { widget: sw, list, order, rebuild, move_to })
+}
+
+/// A checkbox showing or hiding an entry: `key` in the hidden list that
+/// `hidden` picks out of the settings. `then` runs after a change.
+fn shown_check(label: &gtk::Widget, key: &str, hidden: fn(&mut config::Settings) -> &mut Vec<String>, then: fn()) -> gtk::CheckButton {
+    let cb = gtk::CheckButton::new();
+    cb.add(label);
+    cb.set_active(!config::with(|s| hidden(&mut s.clone()).iter().any(|h| h == key)));
+    let key = key.to_string();
+    cb.connect_toggled(move |c| {
+        let show = c.is_active();
+        config::update(|s| {
+            let list = hidden(s);
+            list.retain(|x| *x != key);
+            if !show {
+                list.push(key.clone());
+            }
+        });
+        then();
+    });
+    cb
+}
+
+/// The order of one context menu (`bg`: the one for a folder's empty space)
+/// as a list: entries are moved by dragging their handle or with the arrow
+/// buttons, shown or hidden with their checkbox, and separators can be
+/// added and removed. Returns the editor and a function that reloads it
+/// (custom actions may have been added or removed meanwhile).
+fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
+    let defaults = if bg { actions::BACKGROUND_ORDER } else { actions::ITEM_ORDER };
+    let labels = if bg { actions::BACKGROUND_ENTRIES } else { actions::ITEM_ENTRIES };
+    let outer = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let save = move |o: &[String]| {
+        let o = o.to_vec();
+        config::update(|s| if bg { s.menu_order_bg = o } else { s.menu_order = o });
     };
-    let up = gtk::Button::from_icon_name(Some("go-up-symbolic"), gtk::IconSize::Button);
-    up.set_tooltip_text(Some("Move up"));
-    let down = gtk::Button::from_icon_name(Some("go-down-symbolic"), gtk::IconSize::Button);
-    down.set_tooltip_text(Some("Move down"));
+    let row = move |k: &str| -> gtk::Widget {
+        let hb = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        if k == actions::SEPARATOR {
+            let l = gtk::Label::new(Some("Separator"));
+            l.style_context().add_class("dim-label");
+            hb.add(&l);
+            let line = gtk::Separator::new(gtk::Orientation::Horizontal);
+            line.set_hexpand(true);
+            line.set_valign(gtk::Align::Center);
+            hb.add(&line);
+            return hb.upcast();
+        }
+        let action = actions::load().into_iter().find(|a| actions::custom_key(a) == k);
+        let label = match &action {
+            Some(a) => a.name.clone(),
+            None => labels.iter().find(|(key, _)| *key == k).map_or(k.to_string(), |(_, l)| l.to_string()),
+        };
+        hb.add(&shown_check(gtk::Label::new(Some(&label)).upcast_ref(), k, |s| &mut s.hidden_menu_items, || {}));
+        if action.is_some() {
+            let l = gtk::Label::new(Some("custom action"));
+            l.style_context().add_class("dim-label");
+            hb.add(&l);
+        }
+        hb.upcast()
+    };
+    let ol = order_list(MENU_ROW_TARGET, row, save);
+    outer.add(&ol.widget);
+    let refresh: Rc<dyn Fn()> = {
+        let ol = ol.clone();
+        Rc::new(move || {
+            let custom = actions::load();
+            let keys: Vec<String> = custom.iter().filter(|a| if bg { a.background } else { a.files || a.folders }).map(actions::custom_key).collect();
+            let cfg = config::get();
+            *ol.order.borrow_mut() = actions::menu_order(if bg { &cfg.menu_order_bg } else { &cfg.menu_order }, defaults, &keys);
+            (ol.rebuild)(None);
+        })
+    };
+    refresh();
+    let (up, down) = ol.arrows();
     let add_sep = gtk::Button::with_mnemonic("Add _Separator");
     add_sep.set_tooltip_text(Some("Add a separator below the selected entry"));
     let remove_sep = gtk::Button::with_mnemonic("Re_move Separator");
@@ -4013,40 +4062,25 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
     let reset = gtk::Button::with_mnemonic("Reset _Order");
     reset.set_tooltip_text(Some("Put every entry back in its original place (which entries are hidden stays as it is)"));
     {
-        let (selected, move_to) = (selected.clone(), move_to.clone());
-        up.connect_clicked(move |_| {
-            if let Some(i) = selected().filter(|i| *i > 0) {
-                move_to(i, i - 1);
-            }
-        });
-    }
-    {
-        let (selected, move_to, order) = (selected.clone(), move_to.clone(), order.clone());
-        down.connect_clicked(move |_| {
-            if let Some(i) = selected().filter(|i| i + 1 < order.borrow().len()) {
-                move_to(i, i + 1);
-            }
-        });
-    }
-    {
-        let (selected, order, rebuild, save) = (selected.clone(), order.clone(), rebuild.clone(), save.clone());
+        let ol = ol.clone();
         add_sep.connect_clicked(move |_| {
-            let at = selected().map_or(order.borrow().len(), |i| i + 1);
-            order.borrow_mut().insert(at, actions::SEPARATOR.to_string());
-            save();
-            rebuild(Some(at));
+            let at = ol.selected().map_or(ol.order.borrow().len(), |i| i + 1);
+            ol.order.borrow_mut().insert(at, actions::SEPARATOR.to_string());
+            save(&ol.order.borrow());
+            (ol.rebuild)(Some(at));
         });
     }
     {
-        let (selected, order, rebuild, save) = (selected.clone(), order.clone(), rebuild.clone(), save.clone());
+        let ol = ol.clone();
         remove_sep.connect_clicked(move |_| {
-            let Some(i) = selected() else { return };
-            if order.borrow().get(i).map(String::as_str) != Some(actions::SEPARATOR) {
+            let Some(i) = ol.selected() else { return };
+            if ol.order.borrow().get(i).map(String::as_str) != Some(actions::SEPARATOR) {
                 return;
             }
-            order.borrow_mut().remove(i);
-            save();
-            rebuild(Some(i.min(order.borrow().len().saturating_sub(1))));
+            ol.order.borrow_mut().remove(i);
+            save(&ol.order.borrow());
+            let last = ol.order.borrow().len().saturating_sub(1);
+            (ol.rebuild)(Some(i.min(last)));
         });
     }
     {
@@ -4057,8 +4091,8 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
         });
     }
     {
-        let (order, remove_sep) = (order.clone(), remove_sep.clone());
-        list.connect_row_selected(move |_, row| {
+        let (order, remove_sep) = (ol.order.clone(), remove_sep.clone());
+        ol.list.connect_row_selected(move |_, row| {
             let sep = row.and_then(|r| order.borrow().get(r.index() as usize).cloned()).as_deref() == Some(actions::SEPARATOR);
             remove_sep.set_sensitive(sep);
         });
@@ -4079,22 +4113,10 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
         flow.set_max_children_per_line(4);
         flow.set_column_spacing(12);
         flow.set_hexpand(true);
-        let hidden = config::get().hidden_menu_items;
         for key in actions::VIEW_SUBMENU {
             let label = labels.iter().find(|(k, _)| k == key).map_or(*key, |(_, l)| l);
-            let cb = gtk::CheckButton::with_label(label.trim_start_matches("View › "));
-            cb.set_active(!hidden.iter().any(|h| h == key));
-            let key = key.to_string();
-            cb.connect_toggled(move |c| {
-                let show = c.is_active();
-                config::update(|s| {
-                    s.hidden_menu_items.retain(|x| *x != key);
-                    if !show {
-                        s.hidden_menu_items.push(key.clone());
-                    }
-                });
-            });
-            flow.add(&cb);
+            let l = gtk::Label::new(Some(label.trim_start_matches("View › ")));
+            flow.add(&shown_check(l.upcast_ref(), key, |s| &mut s.hidden_menu_items, || {}));
         }
         hb.add(&flow);
         outer.add(&hb);
