@@ -1357,11 +1357,13 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
     });
 }
 
-/// Tells the desktop that the file operations are done, as Caja does, if
-/// the window they were started from is out of sight: closed, minimized
-/// or on a workspace not shown.
+/// Tells the desktop that the file operations are done, as Caja does,
+/// unless the window they were started from (or the operations' own
+/// window) is the active one: one closed, minimized or on another
+/// workspace isn't either.
 fn notify_done(parent: &Option<gtk::Window>) {
-    if !parent.as_ref().is_some_and(util::window_in_sight) {
+    let watched = |w: &gtk::Window| w.is_visible() && w.is_active();
+    if !parent.as_ref().is_some_and(watched) && !OPS_WINDOW.with(|w| w.borrow().as_ref().is_some_and(watched)) {
         util::notify("Arkha", "Process completed");
     }
 }
