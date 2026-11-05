@@ -28,7 +28,8 @@ thread_local! {
     static QUEUED: RefCell<HashSet<(String, i64)>> = RefCell::new(HashSet::new());
     static MAKERS: RefCell<Option<Arc<JobQueue>>> = const { RefCell::new(None) };
     /// The custom thumbnailer for each content type asked about.
-    static CUSTOM_FOR: RefCell<HashMap<String, Option<Thumbnailer>>> = RefCell::new(HashMap::new());
+    /// Shared, not copied: asked about for every file of a folder.
+    static CUSTOM_FOR: RefCell<HashMap<String, Option<Arc<Thumbnailer>>>> = RefCell::new(HashMap::new());
     static LISTENERS: RefCell<Vec<(usize, Listener)>> = RefCell::new(Vec::new());
     static NEXT_LISTENER: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     /// The custom thumbnailers whose programs are installed, loaded on
@@ -36,14 +37,14 @@ thread_local! {
     static CUSTOM: RefCell<Option<Vec<Thumbnailer>>> = const { RefCell::new(None) };
 }
 
-fn custom_for(ctype: &str) -> Option<Thumbnailer> {
+fn custom_for(ctype: &str) -> Option<Arc<Thumbnailer>> {
     if let Some(t) = CUSTOM_FOR.with(|c| c.borrow().get(ctype).cloned()) {
         return t;
     }
     let t = CUSTOM.with(|c| {
         let mut c = c.borrow_mut();
         let list = c.get_or_insert_with(|| thumbnailers::load().into_iter().filter(thumbnailers::installed).collect());
-        thumbnailers::find(list, ctype)
+        thumbnailers::find(list, ctype).map(Arc::new)
     });
     CUSTOM_FOR.with(|c| c.borrow_mut().insert(ctype.to_string(), t.clone()));
     t
@@ -314,7 +315,7 @@ struct ThumbJob {
     mtime: i64,
     out: std::path::PathBuf,
     /// A custom thumbnailer to make the picture; None for built-in images.
-    custom: Option<Thumbnailer>,
+    custom: Option<Arc<Thumbnailer>>,
 }
 
 pub fn thumb_path_for(uri: &str) -> std::path::PathBuf {
