@@ -65,6 +65,9 @@ pub struct Settings {
     pub thumbnails: bool,
     /// Side pane entries the user hid, by URI (or "label:Name" for unmounted drives).
     pub hidden_places: Vec<String>,
+    /// The Computer entries' order in the side pane, by the same keys
+    /// (empty: the usual order; see sidebar::ordered_places).
+    pub places_order: Vec<String>,
     /// Built-in context menu items the user hid (keys from actions.rs).
     pub hidden_menu_items: Vec<String>,
     /// Order of the context menu for selected items and for a folder's
@@ -211,6 +214,7 @@ impl Default for Settings {
             single_click: false,
             thumbnails: true,
             hidden_places: vec![],
+            places_order: vec![],
             hidden_menu_items: vec![],
             menu_order: vec![],
             menu_order_bg: vec![],
@@ -403,6 +407,9 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     if let Ok(v) = kf.string_list(g, "hidden_places") {
         s.hidden_places = v.iter().map(|x| x.to_string()).collect();
     }
+    if let Ok(v) = kf.string_list(g, "places_order") {
+        s.places_order = v.iter().map(|x| x.to_string()).collect();
+    }
     if let Ok(v) = kf.string_list(g, "menu_order") {
         s.menu_order = v.iter().map(|x| x.to_string()).collect();
     }
@@ -518,6 +525,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
         set_string_list(&kf, "Keybindings", action, accels);
     }
     set_string_list(&kf, g, "hidden_places", &s.hidden_places);
+    set_string_list(&kf, g, "places_order", &s.places_order);
     set_string_list(&kf, g, "automounters_noticed", &s.automounters_noticed);
     set_string_list(&kf, g, "sidebar_collapsed", &s.sidebar_collapsed);
     set_string_list(&kf, g, "hidden_menu_items", &s.hidden_menu_items);

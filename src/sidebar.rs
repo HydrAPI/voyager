@@ -22,6 +22,10 @@ pub const SECTIONS: &[(&str, &str)] = &[("computer", "Computer"), ("devices", "D
 
 const SECTION_TARGET: &str = "ARKHA_SIDEBAR_SECTION";
 const BOOKMARK_TARGET: &str = "ARKHA_SIDEBAR_BOOKMARK";
+/// A Computer entry being dragged to another place in its section. Only
+/// this (no file list) goes with it, so it can't be dropped on a folder,
+/// here or anywhere, and move the folder.
+const PLACE_TARGET: &str = "ARKHA_SIDEBAR_PLACE";
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum OpenIn {
@@ -512,8 +516,15 @@ impl Sidebar {
             }
             glib::Propagation::Proceed
         });
-        if let Some(uri) = item.bookmark.clone() {
-            let targets = [gtk::TargetEntry::new(BOOKMARK_TARGET, gtk::TargetFlags::SAME_APP, 0)];
+        // Bookmarks and Computer entries can be dragged to another place in
+        // their section (a drag of their own kind, see PLACE_TARGET).
+        let dragged = match (&item.bookmark, item.section, &item.key) {
+            (Some(uri), _, _) => Some((BOOKMARK_TARGET, uri.clone())),
+            (None, "computer", Some(key)) => Some((PLACE_TARGET, key.clone())),
+            _ => None,
+        };
+        if let Some((target, uri)) = dragged {
+            let targets = [gtk::TargetEntry::new(target, gtk::TargetFlags::SAME_APP, 0)];
             ev.drag_source_set(gdk::ModifierType::BUTTON1_MASK, &targets, gdk::DragAction::MOVE);
             let w = Rc::downgrade(self);
             ev.connect_drag_begin(move |ev, ctx| {
@@ -770,6 +781,7 @@ impl Sidebar {
         let targets = [
             gtk::TargetEntry::new(SECTION_TARGET, gtk::TargetFlags::SAME_APP, 0),
             gtk::TargetEntry::new(BOOKMARK_TARGET, gtk::TargetFlags::SAME_APP, 1),
+            gtk::TargetEntry::new(PLACE_TARGET, gtk::TargetFlags::SAME_APP, 3),
             gtk::TargetEntry::new("text/uri-list", gtk::TargetFlags::empty(), 2),
         ];
         let l = &self.list;
@@ -828,6 +840,10 @@ impl Sidebar {
                 Some("bookmarks") => (Some(row), gdk::DragAction::MOVE),
                 _ => none,
             },
+            Some(PLACE_TARGET) => match self.item_at(i) {
+                Some(Item { section: "computer", key: Some(_), .. }) => (Some(row), gdk::DragAction::MOVE),
+                _ => none,
+            },
             Some(_) => match (self.section_at(i), self.item_at(i)) {
                 // Folders dropped on the Bookmarks heading become bookmarks.
                 (Some("bookmarks"), None) => (Some(row), gdk::DragAction::LINK),
@@ -859,6 +875,21 @@ impl Sidebar {
                     s.sidebar_sections.retain(|x| *x != src);
                     s.sidebar_sections.insert(at.min(s.sidebar_sections.len()), src.clone());
                 });
+                refresh_all();
+                true
+            }
+            Some(PLACE_TARGET) => {
+                // Only to another place in the list: the order is all that
+                // changes.
+                let (Ok(src), Some(Item { section: "computer", key: Some(dest), .. })) = (String::from_utf8(data.data()), self.item_at(i)) else { return false };
+                if src == dest {
+                    return false;
+                }
+                let mut order = ordered_places(&computer_keys());
+                let at = order.iter().position(|k| *k == dest).unwrap_or(0);
+                order.retain(|k| *k != src);
+                order.insert(at.min(order.len()), src);
+                config::update(|s| s.places_order = order);
                 refresh_all();
                 true
             }
@@ -978,8 +1009,16 @@ fn place(f: gio::File, label: &str, icon: &str) -> Item {
 }
 
 /// Home, Desktop, the user's folders (Documents, Music, …), File System and
-/// Trash.
+/// Trash, in the order the user set (see ordered_places).
 fn computer_items() -> Vec<Item> {
+    let mut out = usual_computer_items();
+    let order = ordered_places(&out.iter().filter_map(|i| i.key.clone()).collect::<Vec<_>>());
+    out.sort_by_key(|i| i.key.as_ref().and_then(|k| order.iter().position(|o| o == k)));
+    out
+}
+
+/// The Computer entries in their usual order.
+fn usual_computer_items() -> Vec<Item> {
     let home = glib::home_dir();
     let mut out = vec![place(gio::File::for_path(&home), "Home", "user-home-symbolic")];
     let mut seen = vec![home.clone()];
@@ -1021,6 +1060,20 @@ fn computer_items() -> Vec<Item> {
     t.trash = true;
     out.push(t);
     out
+}
+
+/// The keys of the Computer entries, in the usual order.
+pub fn computer_keys() -> Vec<String> {
+    usual_computer_items().into_iter().filter_map(|i| i.key).collect()
+}
+
+/// `keys` (the Computer entries, in the usual order) in the order the user
+/// set: as saved, with ones not saved yet (a new user folder, say) after
+/// the one they follow in the usual order, as new context menu entries go.
+pub fn ordered_places(keys: &[String]) -> Vec<String> {
+    let saved = config::with(|s| s.places_order.clone());
+    let defaults: Vec<&str> = keys.iter().map(String::as_str).collect();
+    crate::actions::menu_order(&saved, &defaults, &[])
 }
 
 fn extra_user_dirs() -> Vec<std::path::PathBuf> {

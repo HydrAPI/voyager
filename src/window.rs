@@ -3602,45 +3602,21 @@ impl AppWindow {
 
         // Side Pane
         let sp = page();
-        head(&sp, "Show in the Side Pane");
-        let mut places = self.sidebar.places();
-        {
-            let mut seen = vec![];
-            places.retain(|p| {
-                let new = !seen.contains(&p.key);
-                seen.push(p.key.clone());
-                new
-            });
-        }
-        // In two columns, top to bottom.
-        let place_grid = gtk::Grid::new();
-        place_grid.set_row_spacing(2);
-        place_grid.set_column_spacing(24);
-        place_grid.set_margin_start(40);
-        let rows = places.len().div_ceil(2).max(1);
-        for (i, p) in places.into_iter().enumerate() {
-            let cb = gtk::CheckButton::new();
-            let hb = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-            if let Some(icon) = &p.icon {
-                hb.add(&gtk::Image::from_gicon(icon, gtk::IconSize::Menu));
-            }
-            hb.add(&gtk::Label::new(Some(&p.label)));
-            cb.add(&hb);
-            cb.set_active(!s.hidden_places.contains(&p.key));
-            let key = p.key.clone();
-            cb.connect_toggled(move |c| {
-                let show = c.is_active();
-                config::update(|s| {
-                    s.hidden_places.retain(|k| *k != key);
-                    if !show {
-                        s.hidden_places.push(key.clone());
-                    }
-                });
-                crate::sidebar::refresh_all();
-            });
-            place_grid.attach(&cb, (i / rows) as i32, (i % rows) as i32, 1, 1);
-        }
-        sp.add(&place_grid);
+        head(&sp, "Computer Entries");
+        let hint = gtk::Label::new(Some("Unchecked entries are hidden. Drag an entry by its handle, or select it and use the arrows, to move it; they can also be dragged in the side pane itself."));
+        hint.set_xalign(0.0);
+        hint.set_line_wrap(true);
+        hint.set_max_width_chars(60);
+        hint.style_context().add_class("dim-label");
+        indent(&sp, hint.upcast_ref());
+        let sidebar = self.sidebar.clone();
+        let (places, places_refresh) = places_editor(move || sidebar.places());
+        indent(&sp, places.upcast_ref());
+        // Entries dragged in the side pane while the dialog is open.
+        d.connect_focus_in_event(move |_, _| {
+            places_refresh();
+            glib::Propagation::Proceed
+        });
         head(&sp, "Removable Media");
         let automount = check("_Mount drives and media when they're inserted");
         automount.set_tooltip_text(Some("Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they're mounted when you click them in the side pane."));
@@ -3816,6 +3792,7 @@ impl AppWindow {
 }
 
 const MENU_ROW_TARGET: &str = "ARKHA_MENU_ROW";
+const PLACE_ROW_TARGET: &str = "ARKHA_PLACE_ROW";
 
 /// A list the user puts in order, for the preferences: entries by key,
 /// each row with a handle to drag it by; the selected one moves with the
@@ -4121,6 +4098,79 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
         hb.add(&flow);
         outer.add(&hb);
     }
+    (outer, refresh)
+}
+
+/// The side pane's Computer entries: which are shown (their checkbox) and
+/// in which order (dragging their handle, the arrows, or dragging them in
+/// the side pane itself). Returns the editor and a function that reloads
+/// it (they may have been dragged in the side pane meanwhile).
+fn places_editor(places: impl Fn() -> Vec<crate::sidebar::Place> + 'static) -> (gtk::Box, Rc<dyn Fn()>) {
+    let outer = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let shown: Rc<RefCell<Vec<crate::sidebar::Place>>> = Rc::default();
+    let row = {
+        let shown = shown.clone();
+        move |k: &str| -> gtk::Widget {
+            let hb = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            if let Some(p) = shown.borrow().iter().find(|p| p.key == k) {
+                if let Some(icon) = &p.icon {
+                    hb.add(&gtk::Image::from_gicon(icon, gtk::IconSize::Menu));
+                }
+                hb.add(&gtk::Label::new(Some(&p.label)));
+            }
+            // In a box: the rest of the row selects it, not the checkbox.
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            row.add(&shown_check(hb.upcast_ref(), k, |s| &mut s.hidden_places, crate::sidebar::refresh_all));
+            row.upcast()
+        }
+    };
+    let ol = order_list(PLACE_ROW_TARGET, row, |o| {
+        let o = o.to_vec();
+        config::update(|s| s.places_order = o);
+        crate::sidebar::refresh_all();
+    });
+    outer.add(&ol.widget);
+    let refresh: Rc<dyn Fn()> = {
+        let ol = ol.clone();
+        Rc::new(move || {
+            let mut p = places();
+            let mut seen = vec![];
+            p.retain(|p| {
+                let new = !seen.contains(&p.key);
+                seen.push(p.key.clone());
+                new
+            });
+            // Unchanged: the rows stay. (The dialog gets the focus back
+            // during a drag of a row on Wayland, and rebuilt, the dragged
+            // row would be gone before it gives its data.)
+            let keys: Vec<String> = p.iter().map(|p| p.key.clone()).collect();
+            let same_labels = shown.borrow().iter().map(|p| &p.label).eq(p.iter().map(|p| &p.label));
+            if *ol.order.borrow() == keys && same_labels {
+                return;
+            }
+            *ol.order.borrow_mut() = keys;
+            *shown.borrow_mut() = p;
+            let sel = ol.selected();
+            (ol.rebuild)(sel);
+        })
+    };
+    refresh();
+    let (up, down) = ol.arrows();
+    let reset = gtk::Button::with_mnemonic("Reset _Order");
+    reset.set_tooltip_text(Some("Put every entry back in its usual place (which entries are hidden stays as it is)"));
+    {
+        let refresh = refresh.clone();
+        reset.connect_clicked(move |_| {
+            config::update(|s| s.places_order.clear());
+            crate::sidebar::refresh_all();
+            refresh();
+        });
+    }
+    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    buttons.add(&up);
+    buttons.add(&down);
+    buttons.pack_end(&reset, false, false, 0);
+    outer.add(&buttons);
     (outer, refresh)
 }
 
