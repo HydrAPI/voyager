@@ -298,6 +298,8 @@ class Run:
         self.rss = []
         self.stop = threading.Event()
         self.timeline = []
+        self.closes_failed = 0
+        self.unanswered = set()
         self.started = time.monotonic()
         self.done = 0
         self.churned = 0
@@ -471,6 +473,29 @@ class Run:
             pass
         return found
 
+    def is_modal(self, w):
+        try:
+            return w.get_state_set().contains(self.Atspi.StateType.MODAL)
+        except Exception:
+            return False
+
+    def describe_tree(self, a, depth=0, out=None, limit=60):
+        """role 'name' of `a` and what's in it, for notes."""
+        out = [] if out is None else out
+        try:
+            if len(out) < limit:
+                out.append("  " * depth + f"{a.get_role_name()} {a.get_name()!r}")
+                for i in range(min(a.get_child_count(), 40)):
+                    c = a.get_child_at_index(i)
+                    if c:
+                        self.describe_tree(c, depth + 1, out, limit)
+        except Exception as e:
+            out.append(f"(error {e})")
+        return "\n" + "\n".join(out) if depth == 0 else out
+
+    def describe_dialogs(self):
+        return [(w.get_role_name(), w.get_name(), [n for r, n, _ in self.buttons(w)]) for w in self.dialogs()]
+
     def describe_windows(self):
         out = []
         try:
@@ -514,7 +539,13 @@ class Run:
             ds = self.dialogs()
             if not ds:
                 return True
-            for w in ds:
+            # A modal dialog holds the input: nothing else can close while
+            # it's open, and modal dialogs run inside each other, so one
+            # finishes only once those opened after it have. So a modal one
+            # is answered first, the last listed (AT-SPI lists them in no
+            # set order), as a person would answer the one in front.
+            modal = [w for w in ds if self.is_modal(w)]
+            for w in (modal or ds)[-1:]:
                 bs = self.buttons(w)
                 press = lambda a: a.get_action_iface().do_action(0)
                 try:
@@ -523,6 +554,15 @@ class Run:
                         press(self.rnd.choice(checks))
                     named = [(n, a) for r, n, a in bs if r != "check box" and n]
                     answers = [(n, a) for n, a in named if n.replace("_", "") in ANSWERS] or named
+                    # Retrying what failed mostly fails again: only now and then.
+                    if len(answers) > 1 and self.rnd.random() > 0.05:
+                        answers = [(n, a) for n, a in answers if n.replace("_", "") != "Retry"] or answers
+                    if not answers:
+                        # Noted once per kind of dialog: what it has instead.
+                        key = (w.get_role_name(), w.get_name())
+                        if key not in self.unanswered:
+                            self.unanswered.add(key)
+                            self.note(f"no button to answer {key}: {self.describe_tree(w)}")
                     if answers:
                         n, a = self.rnd.choice(answers)
                         self.counts["answer:" + n.replace("_", "")] = self.counts.get("answer:" + n.replace("_", ""), 0) + 1
@@ -710,10 +750,22 @@ class Run:
                 self.call(APP_PATH, "org.gtk.Application", "Activate", self.GLib.Variant("(a{sv})", ({},)))
                 time.sleep(0.3)
                 continue
-            if len(wins) > 6:
-                # Plenty: close one now and then instead of opening more.
+            if len(wins) > 6 and self.closes_failed < 5:
+                # Plenty: close one instead of opening more. While a modal
+                # dialog is open GTK ignores that: after a few tries, go on
+                # with other actions (which answer dialogs now and then).
                 self.activate(self.rnd.choice(wins), "close-window", None)
+                time.sleep(0.2)
+                self.answer_dialogs()
+                if len(self.windows()) >= len(wins):
+                    self.closes_failed += 1
+                    if self.closes_failed == 5:
+                        self.note(f"windows don't close; dialogs: {self.describe_dialogs()}")
+                else:
+                    self.closes_failed = 0
                 continue
+            if len(wins) <= 6:
+                self.closes_failed = 0
             name, kind, _, how = self.rnd.choices(actions, weights)[0]
             win = self.rnd.choice(wins)
             if how == "plain":
