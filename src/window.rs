@@ -3342,17 +3342,6 @@ impl AppWindow {
             config::update(|s| s.tabs_at_end = v);
         });
         indent(&b, at_end.upcast_ref());
-        let tabs = check("Always show the _tab bar");
-        tabs.set_tooltip_text(Some("Also show it when a window has only one tab, so that tab can be dragged to another window or out into a new one"));
-        tabs.set_active(s.always_show_tabs);
-        tabs.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.always_show_tabs = v);
-            for w in all_windows() {
-                w.update_tabs_visibility();
-            }
-        });
-        indent(&b, tabs.upcast_ref());
         head(&b, "Split View");
         let ffm = check("_Focus the pane under the mouse pointer");
         ffm.set_tooltip_text(Some("With two panes open (F3), moving the pointer over a pane makes it the active one, without clicking (Shift+F3 switches this)"));
@@ -3376,6 +3365,24 @@ impl AppWindow {
             config::update(|s| s.confirm_trash = v);
         });
         indent(&b, confirm.upcast_ref());
+        head(&b, "Removable Media");
+        let automount = check("Mount drives and media when they're _inserted");
+        automount.set_tooltip_text(Some("Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they're mounted when you click them in the side pane."));
+        automount.set_active(s.automount);
+        automount.connect_toggled(|c| {
+            let v = c.is_active();
+            config::update(|s| s.automount = v);
+        });
+        indent(&b, automount.upcast_ref());
+        let unmount_only = check("The eject button only _unmounts");
+        unmount_only.set_tooltip_text(Some("Clicking the button next to a drive in the side pane unmounts it, but doesn't eject it or power it off (the drive stays in the list, ready to be mounted again)"));
+        unmount_only.set_active(s.unmount_only);
+        unmount_only.connect_toggled(|c| {
+            let v = c.is_active();
+            config::update(|s| s.unmount_only = v);
+            crate::sidebar::refresh_all();
+        });
+        indent(&b, unmount_only.upcast_ref());
         head(&b, "Scrolling");
         let auto = check("_Middle-click on empty space (or an item in the list view) to autoscroll");
         auto.set_tooltip_text(Some("Like Firefox: a marker appears where you clicked and the view scrolls towards the pointer, faster the further away it is. Click, press a key or use the wheel to stop (after dragging with the button held, letting go stops it). In the list view this works on files and folders too, if the list can scroll; otherwise, or with Shift, a middle-click opens them there (a folder in a new tab)."));
@@ -3442,6 +3449,17 @@ impl AppWindow {
         });
         indent(&dp, status_hidden.upcast_ref());
         status_hidden.set_margin_start(status_hidden.margin_start() + 24);
+        let tabs = check("Always show the _tab bar");
+        tabs.set_tooltip_text(Some("Also show it when a window has only one tab, so that tab can be dragged to another window or out into a new one"));
+        tabs.set_active(s.always_show_tabs);
+        tabs.connect_toggled(|c| {
+            let v = c.is_active();
+            config::update(|s| s.always_show_tabs = v);
+            for w in all_windows() {
+                w.update_tabs_visibility();
+            }
+        });
+        indent(&dp, tabs.upcast_ref());
         let text = check("Show te_xt on toolbar buttons");
         text.set_tooltip_text(Some("The Back and Forward buttons show their name next to the icon"));
         text.set_active(s.toolbar_text);
@@ -3617,24 +3635,6 @@ impl AppWindow {
             places_refresh();
             glib::Propagation::Proceed
         });
-        head(&sp, "Removable Media");
-        let automount = check("_Mount drives and media when they're inserted");
-        automount.set_tooltip_text(Some("Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they're mounted when you click them in the side pane."));
-        automount.set_active(s.automount);
-        automount.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.automount = v);
-        });
-        indent(&sp, automount.upcast_ref());
-        let unmount_only = check("The eject button only _unmounts");
-        unmount_only.set_tooltip_text(Some("Clicking the button next to a drive in the side pane unmounts it, but doesn't eject it or power it off (the drive stays in the list, ready to be mounted again)"));
-        unmount_only.set_active(s.unmount_only);
-        unmount_only.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.unmount_only = v);
-            crate::sidebar::refresh_all();
-        });
-        indent(&sp, unmount_only.upcast_ref());
         head(&sp, "Appearance");
         let custom = check("Custom _row height:");
         let height = gtk::SpinButton::with_range(16.0, 80.0, 1.0);
