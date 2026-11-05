@@ -91,8 +91,10 @@ pub struct Sidebar {
     refresh_queued: Cell<bool>,
     /// Where a drop landed, kept from drag-drop until the data arrives.
     drop_y: Cell<i32>,
-    /// The row a left button press started on (rows open on release).
-    pressed: Cell<Option<usize>>,
+    /// The item a left button press was on (its signature), opened if the
+    /// button is let go on it: by what it is, not where, as the rows may
+    /// have been rebuilt meanwhile.
+    pressed: RefCell<Option<String>>,
     /// Likewise for headings, which collapse / expand their section.
     pressed_header: Cell<Option<&'static str>>,
 }
@@ -132,7 +134,7 @@ impl Sidebar {
             _trash_monitor: RefCell::new(None),
             refresh_queued: Cell::new(false),
             drop_y: Cell::new(0),
-            pressed: Cell::new(None),
+            pressed: RefCell::new(None),
             pressed_header: Cell::new(None),
         });
         s.connect();
@@ -260,6 +262,18 @@ impl Sidebar {
             if !cfg.sidebar_collapsed.iter().any(|c| c == id) {
                 rows.extend(items.into_iter().map(Row::Item));
             }
+        }
+        // Unchanged (the trash or a device sends many changes, right after
+        // starting most of all): the rows stay. Rebuilt under a click, the
+        // row it began on would be gone.
+        let same = {
+            let old = self.rows.borrow();
+            old.len() == rows.len() && old.iter().zip(&rows).all(|(a, b)| a.signature() == b.signature())
+        };
+        if same && !self.list.children().is_empty() {
+            *self.rows.borrow_mut() = rows;
+            self.select_location();
+            return;
         }
         for c in self.list.children() {
             self.list.remove(&c);
@@ -474,7 +488,7 @@ impl Sidebar {
             }
             match e.button() {
                 1 => {
-                    s.pressed.set(Some(index));
+                    *s.pressed.borrow_mut() = s.item_at(index as i32).map(|i| i.signature());
                     glib::Propagation::Proceed
                 }
                 2 => {
@@ -491,7 +505,8 @@ impl Sidebar {
         let w = Rc::downgrade(self);
         ev.connect_button_release_event(move |_, e| {
             if let (Some(s), 1) = (w.upgrade(), e.button()) {
-                if s.pressed.take() == Some(index) {
+                let pressed = s.pressed.borrow_mut().take();
+                if pressed.is_some() && pressed == s.item_at(index as i32).map(|i| i.signature()) {
                     s.activate(index as i32, OpenIn::Current);
                 }
             }
@@ -504,7 +519,7 @@ impl Sidebar {
             ev.connect_drag_begin(move |ev, ctx| {
                 // A drag, not a click.
                 if let Some(s) = w.upgrade() {
-                    s.pressed.set(None);
+                    s.pressed.borrow_mut().take();
                 }
                 drag_picture(ev.upcast_ref(), ctx);
             });
@@ -910,7 +925,29 @@ fn is_folder(uri: &str) -> bool {
     gio::File::for_uri(uri).query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE) == gio::FileType::Directory
 }
 
+impl Row {
+    fn signature(&self) -> String {
+        match self {
+            Row::Header(id) => format!("header:{id}"),
+            Row::Item(i) => i.signature(),
+        }
+    }
+}
+
 impl Item {
+    /// Everything its row shows and does, as text: two items with the same
+    /// signature have the same row.
+    fn signature(&self) -> String {
+        let target = match &self.target {
+            Target::Location(f) => f.uri().to_string(),
+            Target::Volume(v) => format!("volume:{}:{}", v.name(), v.uuid().unwrap_or_default()),
+            Target::Drive(d) => format!("drive:{}", d.name()),
+        };
+        let icon = self.icon.as_ref().and_then(IconExt::to_string).unwrap_or_default();
+        let removal = eject_kind(self).map_or(0, |k| k as u8 + 1);
+        format!("{}\n{:?}\n{}\n{icon}\n{:?}\n{target}\n{removal}\n{:?}\n{}", self.section, self.key, self.label, self.tooltip, self.bookmark, self.trash)
+    }
+
     fn blank(section: &'static str) -> Item {
         Item {
             section,
