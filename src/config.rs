@@ -123,8 +123,8 @@ pub const SIDEBAR_SECTIONS: [&str; 3] = ["computer", "devices", "bookmarks"];
 /// panel, and the file operations button.
 pub const BAR_GROUPS: [&str; 5] = ["zoom", "view", "split", "info", "ops"];
 /// Everything in the location bar that `bar_order` arranges: the path
-/// (breadcrumbs or text) and the button groups.
-pub const BAR_ITEMS: [&str; 6] = ["path", "zoom", "view", "split", "info", "ops"];
+/// (breadcrumbs or text) and the button groups, in their default order.
+pub const BAR_ITEMS: [&str; 6] = ["path", "ops", "split", "view", "zoom", "info"];
 
 // Default zoom levels.
 pub const ICON_SIZES: [i32; 8] = [24, 32, 48, 64, 96, 128, 192, 256];
@@ -222,7 +222,7 @@ impl Default for Settings {
             sidebar_row_height: 0,
             per_folder: true,
             striped_rows: false,
-            rename_striped_rows: false,
+            rename_striped_rows: true,
             iec_units: false,
             cover_names: "folder.jpg; folder.png; cover.jpg; cover.png; front.jpg".into(),
             info_several: "summary".into(),
@@ -653,8 +653,9 @@ mod tests {
     fn old_and_invalid_values() {
         let kf = glib::KeyFile::new();
         let g = "General";
-        // An older version's toolbar order, without the path and the info
-        // button: those go first and after the split button.
+        // An older version's toolbar order, without the path, the view
+        // buttons and the info button: the path goes first, the others after
+        // the item they follow by default (split view, zoom).
         kf.set_value(g, "bar_order", "ops;zoom;bogus;split;zoom;");
         kf.set_value(g, "rename_tab_order", "regex;case;nope;case;");
         kf.set_value(g, "sidebar_sections", "bookmarks;");
@@ -666,7 +667,7 @@ mod tests {
         kf.set_integer(g, "list_zoom", 99);
         kf.set_value(g, "list_levels", "big;");
         let s = from_keyfile(&kf);
-        assert_eq!(s.bar_order, ["path", "ops", "zoom", "view", "split", "info"]);
+        assert_eq!(s.bar_order, ["path", "ops", "zoom", "info", "split", "view"]);
         assert_eq!(s.rename_tab_order, ["regex", "case", "insert", "remove", "replace", "enumerate"]);
         assert_eq!(s.sidebar_sections, ["bookmarks", "computer", "devices"]);
         assert_eq!(s.sidebar_collapsed, ["devices"]);
