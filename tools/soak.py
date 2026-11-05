@@ -365,6 +365,10 @@ class Run:
         env = dict(os.environ)
         if self.args.fatal_criticals:
             env["G_DEBUG"] = "fatal-criticals"
+        if self.args.no_a11y:
+            # Arkha without its accessibility bridge (dialogs then can't be
+            # answered: for rounds without any).
+            env["NO_AT_BRIDGE"] = "1"
         self.arkha = subprocess.Popen(cmd, stdout=self.log, stderr=subprocess.STDOUT, env=env)
         for _ in range(200):
             if self.windows():
@@ -601,6 +605,17 @@ class Run:
             ("go-uri", uri("churn")), ("reload", None), ("escape", None),
         ]
         del s
+        if self.args.round:
+            # A round of one's own: "new-tab,go-uri:tree,view-mode:list,close-tab".
+            round_ = []
+            for a in self.args.round.split(","):
+                name, _, arg = a.partition(":")
+                param = None
+                if name == "go-uri":
+                    param = uri(arg)
+                elif arg:
+                    param = self.GLib.Variant("s", arg)
+                round_.append((name, param))
         self.cycle_rss = []
         n = 0
         while time.monotonic() < end and self.alive():
@@ -834,6 +849,8 @@ def main():
     ap.add_argument("--pause", type=float, default=0.15, help="longest pause between actions, in seconds")
     ap.add_argument("--binary", help="the arkha to run (default: one built with debug info in target/soak-build)")
     ap.add_argument("--heaptrack", action="store_true", help="run under heaptrack, to find memory that's never freed")
+    ap.add_argument("--no-a11y", action="store_true", help="run Arkha without its accessibility bridge (no dialogs get answered)")
+    ap.add_argument("--round", help='with --cycle: the round\'s actions, e.g. "new-tab,go-uri:tree,close-tab"')
     ap.add_argument("--cycle", action="store_true", help="repeat one round of actions instead of random ones, to see whether memory keeps growing")
     ap.add_argument("--fatal-criticals", action="store_true", help="stop Arkha at the first GLib/GTK critical warning, for its backtrace")
     ap.add_argument("--inner", action="store_true", help=argparse.SUPPRESS)
