@@ -1739,6 +1739,26 @@ impl AppWindow {
                 nw.notebook.clone()
             });
         }
+        // GTK 3 on Wayland reports a tab dropped where nothing takes it as
+        // an error, not as dropped on nothing (gdkselection-wayland.c), so
+        // GtkNotebook never opens a window for it: that's done here then,
+        // as it would. (The window can't be put where the tab was dropped.)
+        {
+            let w = w.clone();
+            nb.connect_drag_failed(move |nb, _, result| {
+                if result != gtk::DragResult::Error || nb.display().type_().name() == "GdkX11Display" {
+                    return glib::Propagation::Proceed;
+                }
+                let (Some(s), Some(page)) = (w.upgrade(), nb.nth_page(nb.current_page())) else { return glib::Propagation::Proceed };
+                let Some(app) = s.window.application() else { return glib::Propagation::Proceed };
+                let label = nb.tab_label(&page);
+                let nw = AppWindow::create(&app, &[], false);
+                nb.detach_tab(&page);
+                // adopt_page then takes the pane over, as for a dragged tab.
+                nw.notebook.append_page(&page, label.as_ref());
+                glib::Propagation::Stop
+            });
+        }
         {
             let w = w.clone();
             nb.connect_switch_page(move |nb, page, _| {
