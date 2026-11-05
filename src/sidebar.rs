@@ -1133,9 +1133,13 @@ pub fn ordered_places(keys: &[String]) -> Vec<String> {
 }
 
 fn extra_user_dirs() -> Vec<std::path::PathBuf> {
+    let text = std::fs::read_to_string(config::config_home().join("user-dirs.dirs")).unwrap_or_default();
+    parse_user_dirs(&text, &glib::home_dir())
+}
+
+/// The folders of a user-dirs.dirs other than the usual ones.
+fn parse_user_dirs(text: &str, home: &std::path::Path) -> Vec<std::path::PathBuf> {
     const KNOWN: &[&str] = &["DESKTOP", "DOWNLOAD", "TEMPLATES", "PUBLICSHARE", "DOCUMENTS", "MUSIC", "PICTURES", "VIDEOS"];
-    let Ok(text) = std::fs::read_to_string(glib::user_config_dir().join("user-dirs.dirs")) else { return vec![] };
-    let home = glib::home_dir();
     text.lines()
         .filter_map(|l| {
             let (k, v) = l.trim().split_once('=')?;
@@ -1349,7 +1353,7 @@ impl DesktopMount {
     /// profile's when there's none yet. Then the section, key and values.
     fn pcmanfm(qt: bool) -> (Vec<std::path::PathBuf>, &'static str, &'static str, [&'static str; 2]) {
         let (app, file, profile) = if qt { ("pcmanfm-qt", "settings.conf", "lxqt") } else { ("pcmanfm", "pcmanfm.conf", "LXDE") };
-        let dir = glib::user_config_dir().join(app);
+        let dir = config::config_home().join(app);
         let mut files: Vec<_> = std::fs::read_dir(&dir)
             .map(|d| d.flatten().map(|e| e.path().join(file)).filter(|p| p.is_file()).collect())
             .unwrap_or_default();
@@ -1650,6 +1654,44 @@ mod tests {
     }
 
     #[test]
+    fn extra_user_folders() {
+        let home = std::path::Path::new("/home/u");
+        let text = "# comment\nXDG_DESKTOP_DIR=\"$HOME/Desktop\"\nXDG_PROJECTS_DIR=\"$HOME/Projects\"\n  XDG_BOOKS_DIR=\"/srv/books\"\nXDG_MUSIC_DIR=\"$HOME/Music\"\nNOT_A_DIR=x\nXDG_HOME_DIR=\"$HOME/\"\n";
+        assert_eq!(parse_user_dirs(text, home), [home.join("Projects"), "/srv/books".into(), home.to_path_buf()]);
+        assert!(parse_user_dirs("", home).is_empty());
+    }
+
+    #[test]
+    fn pcmanfm_settings_are_shared() {
+        // In the tests' settings folder (see config::config_home).
+        let dir = config::config_home().join("pcmanfm-qt");
+        let _ = std::fs::remove_dir_all(&dir);
+        let qt = DesktopMount::Pcmanfm { qt: true };
+        // Missing, it's on (PCManFM-Qt's default); set, a new profile file.
+        assert!(qt.is_on());
+        qt.set(false);
+        let lxqt = dir.join("lxqt/settings.conf");
+        assert_eq!(std::fs::read_to_string(&lxqt).unwrap(), "[Volume]\nMountRemovable=false\n");
+        assert!(!qt.is_on());
+        // Every profile changes, the rest of each file stays.
+        std::fs::create_dir_all(dir.join("other")).unwrap();
+        std::fs::write(dir.join("other/settings.conf"), "[Behavior]\nSingleClick=true\n\n[Volume]\nMountRemovable=false\nAutoRun=true\n").unwrap();
+        qt.set(true);
+        assert!(qt.is_on());
+        assert_eq!(std::fs::read_to_string(&lxqt).unwrap(), "[Volume]\nMountRemovable=true\n");
+        assert_eq!(std::fs::read_to_string(dir.join("other/settings.conf")).unwrap(), "[Behavior]\nSingleClick=true\n\n[Volume]\nMountRemovable=true\nAutoRun=true\n");
+        let _ = std::fs::remove_dir_all(&dir);
+        // PCManFM writes 0 and 1.
+        let lx = DesktopMount::Pcmanfm { qt: false };
+        let dir = config::config_home().join("pcmanfm");
+        let _ = std::fs::remove_dir_all(&dir);
+        lx.set(false);
+        assert_eq!(std::fs::read_to_string(dir.join("LXDE/pcmanfm.conf")).unwrap(), "[volume]\nmount_removable=0\n");
+        assert!(!lx.is_on());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn desktop_names() {
         assert_eq!(desktop_kind("X-Cinnamon").map(DesktopMount::name), Some("Cinnamon"));
         assert_eq!(desktop_kind("Budgie:GNOME").map(DesktopMount::name), Some("GNOME"));
@@ -1661,5 +1703,22 @@ mod tests {
         assert_eq!(desktop_kind("LXDE"), Some(DesktopMount::Pcmanfm { qt: false }));
         assert_eq!(desktop_kind("i3"), None);
         assert_eq!(desktop_kind(""), None);
+    }
+
+    #[test]
+    fn random_ini_files() {
+        let chars: Vec<char> = "[]=ab \n#;".chars().collect();
+        let names: Vec<char> = "abc".chars().collect();
+        let values: Vec<char> = "xyz01äß".chars().collect();
+        crate::testutil::cases(3000, |r| {
+            let text = r.text_of(&chars, 60);
+            let section = r.text_of(&names, 3).to_string() + "s";
+            let key = r.text_of(&names, 3).to_string() + "k";
+            let value = r.text_of(&values, 5);
+            let set = ini_set(&text, &section, &key, &value);
+            assert_eq!(ini_get(&set, &section, &key).as_deref(), Some(value.as_str()), "{text:?} → {set:?}");
+            // Setting it again changes nothing.
+            assert_eq!(ini_set(&set, &section, &key, &value), set);
+        });
     }
 }

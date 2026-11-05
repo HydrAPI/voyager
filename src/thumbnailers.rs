@@ -18,7 +18,7 @@ pub struct Thumbnailer {
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 fn path() -> PathBuf {
-    glib::user_config_dir().join("arkha").join("thumbnailers.conf")
+    crate::config::arkha_file("thumbnailers.conf")
 }
 
 /// Used until the user changes the list: ffmpegthumbnailer, else ffmpeg,
@@ -170,15 +170,28 @@ mod tests {
     }
 
     #[test]
+    fn saved_and_loaded() {
+        let _ = std::fs::remove_file(path());
+        // Never saved: the defaults; saved empty: none.
+        assert_eq!(load(), defaults());
+        save(&[]);
+        assert!(load().is_empty());
+        let t = Thumbnailer { name: "PDF".into(), types: "application/pdf".into(), command: "pdftoppm -png -scale-to %s %i > %o".into() };
+        save(std::slice::from_ref(&t));
+        assert_eq!(load(), std::slice::from_ref(&t));
+        assert_eq!(find(&load(), "application/pdf"), Some(t));
+        assert_eq!(find(&load(), "video/mp4"), None);
+        let _ = std::fs::remove_file(path());
+    }
+
+    #[test]
     fn run_with_timeout_and_result() {
-        let dir = std::env::temp_dir().join(format!("arkha-thumbtest-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let out = dir.join("o.png");
+        let dir = crate::testutil::TestDir::new("thumbnailer");
+        let out = dir.0.join("o.png");
         let ok = Thumbnailer { name: "ok".into(), types: "*".into(), command: "printf x > %o".into() };
         assert!(run(&ok, Path::new("/dev/null"), &out, 128));
         let _ = std::fs::remove_file(&out);
         let fails = Thumbnailer { name: "no".into(), types: "*".into(), command: "exit 1".into() };
         assert!(!run(&fails, Path::new("/dev/null"), &out, 128));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

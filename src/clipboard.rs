@@ -152,4 +152,17 @@ mod tests {
         // Nautilus' plain-text variant has a header line first.
         assert_eq!(parse_special(b"x-special/nautilus-clipboard\ncopy\nfile:///a"), None);
     }
+
+    #[test]
+    fn random_clipboard_data() {
+        crate::testutil::cases(3000, |r| {
+            let mut data = r.text(40).into_bytes();
+            if r.chance(3) {
+                data.splice(0..0, if r.chance(2) { b"copy\n".to_vec() } else { b"cut\n".to_vec() });
+            }
+            if let Some((_, uris)) = parse_special(&data) {
+                assert!(!uris.is_empty() && uris.iter().all(|u| !u.is_empty() && u.trim() == u), "{uris:?}");
+            }
+        });
+    }
 }

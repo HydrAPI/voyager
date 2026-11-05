@@ -4947,6 +4947,8 @@ fn completion_suffix(base: &str, dirs: &[String]) -> Option<String> {
 }
 
 fn parse_location(text: &str, base: Option<gio::File>) -> gio::File {
+    // Up to a NUL, as a text field would have it: paths can't hold one.
+    let text = text.split('\0').next().unwrap_or_default();
     // "~" and "~/…" are in the home folder; "~notes" is a name like any other.
     if text == "~" || text.starts_with("~/") {
         return gio::File::for_path(format!("{}{}", glib::home_dir().to_string_lossy(), &text[1..]));
@@ -5012,5 +5014,19 @@ mod tests {
         // Shown as a path for local files, else as the URI.
         assert_eq!(location_text(&gio::File::for_path("/a b")), "/a b");
         assert_eq!(location_text(&gio::File::for_uri("trash:///")), "trash:///");
+    }
+
+    #[test]
+    fn random_typed_locations() {
+        crate::testutil::cases(2000, |r| {
+            let text = r.text(20);
+            let base = r.chance(2).then(|| gio::File::for_path("/srv/data"));
+            let _ = parse_location(&text, base);
+            let dirs: Vec<String> = (0..r.below(6)).map(|_| r.text(8)).collect();
+            // What's added leads to one of the folders.
+            if let Some(more) = completion_suffix(&text, &dirs) {
+                assert!(dirs.iter().any(|d| format!("{d}/").starts_with(&format!("{text}{more}"))), "{text:?} + {more:?} in {dirs:?}");
+            }
+        });
     }
 }

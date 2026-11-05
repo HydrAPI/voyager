@@ -546,3 +546,27 @@ mod imp {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_break_after_separators() {
+        let z = '\u{200b}';
+        assert_eq!(breakable("my_long-file.name.txt"), format!("my_{z}long-{z}file.{z}name.{z}txt"));
+        // Not inside a number ("1.5"), nor where nothing follows the dot.
+        assert_eq!(breakable("v1.5.tar"), format!("v1.5.{z}tar"));
+        assert_eq!(breakable("plain"), "plain");
+        assert_eq!(breakable(""), "");
+    }
+
+    #[test]
+    fn random_names_keep_their_characters() {
+        crate::testutil::cases(3000, |r| {
+            let name = r.text(20);
+            assert_eq!(breakable(&name).replace('\u{200b}', ""), name.replace('\u{200b}', ""));
+            let _ = crate::pane::collate_key(&name);
+        });
+    }
+}

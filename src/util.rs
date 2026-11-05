@@ -373,7 +373,7 @@ fn guess_content_type(name: &str) -> String {
 
 /// Bookmarks are shared with Caja / GTK file chooser.
 pub fn bookmarks_file() -> std::path::PathBuf {
-    glib::user_config_dir().join("gtk-3.0").join("bookmarks")
+    crate::config::config_home().join("gtk-3.0").join("bookmarks")
 }
 
 pub fn read_bookmarks() -> Vec<(String, String)> {
@@ -614,11 +614,12 @@ mod tests {
     }
 
     #[test]
-    fn archives() {
-        assert!(is_archive("application/zip"));
-        assert!(is_archive("application/x-compressed-tar"));
-        assert!(!is_archive("text/plain"));
-        assert!(!is_archive("application/zip2"));
+    fn locations_and_hidden_names() {
+        assert_eq!(pretty_location(&home_file()), "~");
+        assert_eq!(pretty_location(&gio::File::for_path("/a b/c")), "/a b/c");
+        assert_eq!(pretty_location(&gio::File::for_uri("sftp://host/My%20Files")), "sftp://host/My Files");
+        assert!(name_hidden(".bashrc") && name_hidden("notes.txt~"));
+        assert!(!name_hidden("a.txt") && !name_hidden("a~b"));
     }
 
     #[test]
@@ -678,5 +679,40 @@ mod tests {
         std::fs::write(&p, "file:///a\n\nfile:///b B").unwrap();
         edit_bookmarks_at(&p, |_| {}).unwrap();
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "file:///a\n\nfile:///b B");
+    }
+
+    #[test]
+    fn random_names_patterns_and_bookmarks() {
+        use crate::testutil::cases;
+        cases(3000, |r| {
+            let name = r.text(20);
+            let (a, b) = split_ext(&name);
+            assert_eq!(format!("{a}{b}"), name, "split_ext({name:?})");
+            let n: Vec<char> = name.chars().collect();
+            // Without its special characters a pattern matches itself; "*" anything.
+            let plain: Vec<char> = n.iter().copied().filter(|c| !"*?[".contains(*c)).collect();
+            assert!(glob_match(&plain, &plain), "{plain:?}");
+            assert!(glob_match(&['*'], &n));
+            let pat: Vec<char> = r.text(12).chars().collect();
+            let _ = glob_match(&pat, &n);
+            let _ = name_hidden(&name);
+        });
+        // Bookmarks read back as written.
+        let t = TestDir::new("random-bookmarks");
+        let p = t.0.join("bookmarks");
+        let uri_chars: Vec<char> = "abcäß日/%:.-_~".chars().collect();
+        cases(300, |r| {
+            let list: Vec<(String, String)> = (0..r.below(6))
+                .map(|_| (format!("file:///{}", r.text_of(&uri_chars, 12)), r.text(10).replace(['\n', '\r'], "")))
+                .collect();
+            let _ = std::fs::remove_file(&p);
+            edit_bookmarks_at(&p, |b| *b = list.clone()).unwrap();
+            let text = std::fs::read_to_string(&p).unwrap_or_default();
+            let want: Vec<(String, String)> = list
+                .iter()
+                .map(|(u, l)| (u.clone(), if *l == default_bookmark_label(u) { String::new() } else { l.clone() }))
+                .collect();
+            assert_eq!(bookmark_lines(&text), want, "{text:?}");
+        });
     }
 }

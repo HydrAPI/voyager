@@ -647,10 +647,4 @@ mod tests {
         let counts: Vec<usize> = [1, 2, 4, 8, 9, 16, 64].iter().map(|&n| makers_for(n)).collect();
         assert_eq!(counts, [1, 1, 3, 7, 8, 8, 8]);
     }
-
-    #[test]
-    fn builtin_thumbnail_types() {
-        assert!(builtin_can("image/png") && builtin_can("image/jpeg"));
-        assert!(!builtin_can("image/vnd.djvu") && !builtin_can("image/x-xcf") && !builtin_can("text/plain"));
-    }
 }

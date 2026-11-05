@@ -19,7 +19,7 @@ thread_local! {
 }
 
 fn path() -> std::path::PathBuf {
-    glib::user_config_dir().join("arkha").join("folders.conf")
+    crate::config::arkha_file("folders.conf")
 }
 
 fn with_store<R>(f: impl FnOnce(&glib::KeyFile) -> R) -> R {
@@ -28,15 +28,6 @@ fn with_store<R>(f: impl FnOnce(&glib::KeyFile) -> R) -> R {
         let kf = s.get_or_insert_with(|| {
             let kf = glib::KeyFile::new();
             let _ = kf.load_from_file(path(), glib::KeyFileFlags::NONE);
-            // Settings kept before only defaults were: tidied once.
-            let groups: Vec<String> = kf.groups().iter().map(|g| g.to_string()).collect();
-            let mut changed = false;
-            for g in &groups {
-                changed |= drop_defaults(&kf, g);
-            }
-            if changed {
-                save(&kf);
-            }
             kf
         });
         f(kf)
@@ -151,5 +142,28 @@ mod tests {
         assert_eq!(keys("b"), ["view"]);
         assert_eq!(keys("c"), ["sort_by", "sort_desc", "info_panel"]);
         assert!(!drop_defaults(&kf, "b"), "nothing more to drop");
+    }
+
+    #[test]
+    fn remembered_and_forgotten() {
+        let _ = std::fs::remove_file(path());
+        let (view, by, desc) = crate::config::with(|s| (s.default_view.clone(), s.sort_by.clone(), s.sort_desc));
+        let other_view = if view == "list" { "icon" } else { "list" };
+        set_view("file:///a", other_view);
+        set_sort("file:///b", &by, !desc);
+        set_info_panel("file:///b", true);
+        assert_eq!(get("file:///a"), FolderView { view: Some(other_view.into()), ..Default::default() });
+        assert_eq!(get("file:///b"), FolderView { view: None, sort: Some((by.clone(), !desc)), info_panel: Some(true) });
+        assert_eq!(get("file:///elsewhere"), FolderView::default());
+        assert_eq!(count(), 2);
+        // Back to the defaults: the folder goes, from the file too.
+        set_view("file:///a", &view);
+        assert_eq!(count(), 1);
+        let kf = glib::KeyFile::new();
+        kf.load_from_file(path(), glib::KeyFileFlags::NONE).unwrap();
+        assert!(!kf.has_group("file:///a") && kf.has_group("file:///b"));
+        forget_all();
+        assert_eq!(count(), 0);
+        let _ = std::fs::remove_file(path());
     }
 }

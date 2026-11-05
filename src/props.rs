@@ -488,4 +488,14 @@ mod tests {
         assert_eq!(s[0].1, vec![("Complete name".into(), "/a/b c.mp4".into()), ("Format".into(), "MPEG-4".into())]);
         assert_eq!(s[1].1[1], ("Format/Info".to_string(), "Advanced Video Codec : x".to_string()));
     }
+
+    #[test]
+    fn random_media_info_text() {
+        crate::testutil::cases(3000, |r| {
+            let text = (0..r.below(8)).map(|_| r.text(30)).collect::<Vec<_>>().join(if r.chance(2) { " : " } else { "\n" });
+            for (section, rows) in super::parse_media_info(&text) {
+                assert!(!section.is_empty() && !rows.is_empty());
+            }
+        });
+    }
 }

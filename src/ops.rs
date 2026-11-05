@@ -1603,6 +1603,7 @@ fn stream_copy(src: &gio::File, dst: &gio::File, overwrite: bool, cancel: &gio::
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::TestDir;
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -1656,20 +1657,12 @@ mod tests {
         (created, ui.join().unwrap())
     }
 
-    struct Scratch(PathBuf);
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
+    fn home_scratch(name: &str) -> TestDir {
+        TestDir::new(name)
     }
-    fn scratch(base: &str, name: &str) -> Scratch {
-        let p = Path::new(base).join(format!("arkha-optest-{}-{name}", std::process::id()));
-        let _ = fs::remove_dir_all(&p);
-        fs::create_dir_all(&p).unwrap();
-        Scratch(p)
-    }
-    fn home_scratch(name: &str) -> Scratch {
-        scratch(concat!(env!("CARGO_MANIFEST_DIR"), "/target"), name)
+    /// On another file system than target/, for moves across them.
+    fn scratch(base: &str, name: &str) -> TestDir {
+        TestDir::in_dir(Path::new(base), name)
     }
     fn write(p: &Path, s: &str) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -1840,6 +1833,116 @@ mod tests {
         assert_eq!(asked.len(), 1);
         assert!(asked[0].starts_with("error:Cannot move"), "{asked:?}");
         assert_eq!(read(&s.0.join("d/f")), "f");
+    }
+
+    #[test]
+    fn delete_leaves_what_links_point_to() {
+        let s = home_scratch("deletelinks");
+        write(&s.0.join("d/sub/f"), "f");
+        write(&s.0.join("outside/keep.txt"), "keep");
+        std::os::unix::fs::symlink(s.0.join("outside"), s.0.join("d/sub/dir-link")).unwrap();
+        std::os::unix::fs::symlink(s.0.join("outside/keep.txt"), s.0.join("d/file-link")).unwrap();
+        let (_, asked) = run_job(Job::Delete(vec![uri(&s.0.join("d"))]), &[]);
+        assert!(asked.is_empty(), "{asked:?}");
+        assert!(!s.0.join("d").exists());
+        assert_eq!(read(&s.0.join("outside/keep.txt")), "keep");
+    }
+
+    #[test]
+    fn copies_into_the_same_folder_get_new_names() {
+        let s = home_scratch("samefolder");
+        write(&s.0.join("a.txt"), "a");
+        write(&s.0.join("d/f"), "f");
+        for _ in 0..2 {
+            let (_, asked) = run_job(transfer(Kind::Copy, &s.0.join("a.txt"), &s.0), &[]);
+            assert!(asked.is_empty(), "{asked:?}");
+        }
+        let (created, _) = run_job(transfer(Kind::Copy, &s.0.join("d"), &s.0), &[]);
+        assert_eq!(read(&s.0.join("a (copy).txt")), "a");
+        assert_eq!(read(&s.0.join("a (copy 2).txt")), "a");
+        assert_eq!(read(&s.0.join("d (copy)/f")), "f");
+        assert_eq!(created, [uri(&s.0.join("d (copy)"))]);
+        // Moving something to where it is changes nothing.
+        let (_, asked) = run_job(transfer(Kind::Move, &s.0.join("a.txt"), &s.0), &[]);
+        assert!(asked.is_empty(), "{asked:?}");
+        assert_eq!(read(&s.0.join("a.txt")), "a");
+    }
+
+    #[test]
+    fn copied_links_stay_links() {
+        let s = home_scratch("copylinks");
+        write(&s.0.join("src/target.txt"), "t");
+        std::os::unix::fs::symlink("target.txt", s.0.join("src/link")).unwrap();
+        std::os::unix::fs::symlink("/no/such/place", s.0.join("src/dangling")).unwrap();
+        fs::create_dir_all(s.0.join("dst")).unwrap();
+        let (_, asked) = run_job(transfer(Kind::Copy, &s.0.join("src"), &s.0.join("dst")), &[]);
+        assert!(asked.is_empty(), "{asked:?}");
+        assert_eq!(fs::read_link(s.0.join("dst/src/link")).unwrap(), Path::new("target.txt"));
+        assert_eq!(fs::read_link(s.0.join("dst/src/dangling")).unwrap(), Path::new("/no/such/place"));
+        assert_eq!(read(&s.0.join("dst/src/link")), "t");
+    }
+
+    #[test]
+    fn unreadable_files_are_skipped_without_a_partial_copy() {
+        use std::os::unix::fs::PermissionsExt;
+        // Root reads everything: nothing to test then.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let s = home_scratch("unreadable");
+        write(&s.0.join("src/d/ok"), "ok");
+        write(&s.0.join("src/d/secret"), "secret");
+        fs::set_permissions(s.0.join("src/d/secret"), fs::Permissions::from_mode(0o000)).unwrap();
+        fs::create_dir_all(s.0.join("dst")).unwrap();
+        let (_, asked) = run_job(transfer(Kind::Copy, &s.0.join("src/d"), &s.0.join("dst")), &[]);
+        assert_eq!(asked, ["error:Error while copying “secret”"]);
+        assert_eq!(read(&s.0.join("dst/d/ok")), "ok");
+        assert!(!s.0.join("dst/d/secret").exists(), "a skipped file leaves nothing behind");
+        fs::set_permissions(s.0.join("src/d/secret"), fs::Permissions::from_mode(0o644)).unwrap();
+    }
+
+    #[test]
+    fn links_point_to_the_original() {
+        let s = home_scratch("link");
+        write(&s.0.join("a.txt"), "a");
+        fs::create_dir_all(s.0.join("dst")).unwrap();
+        run_job(transfer(Kind::Link, &s.0.join("a.txt"), &s.0.join("dst")), &[]);
+        assert_eq!(fs::read_link(s.0.join("dst/a.txt")).unwrap(), s.0.join("a.txt"));
+        // In the same folder, as Caja names them.
+        let (created, _) = run_job(transfer(Kind::Link, &s.0.join("a.txt"), &s.0), &[]);
+        assert_eq!(fs::read_link(s.0.join("Link to a.txt")).unwrap(), s.0.join("a.txt"));
+        assert_eq!(created, [uri(&s.0.join("Link to a.txt"))]);
+    }
+
+    #[test]
+    fn keep_both_for_a_folder() {
+        let s = home_scratch("keepbothdir");
+        write(&s.0.join("src/d/new"), "new");
+        write(&s.0.join("dst/d/old"), "old");
+        let (created, asked) = run_job(transfer(Kind::Copy, &s.0.join("src/d"), &s.0.join("dst")), &[Resolution::KeepBoth]);
+        assert_eq!(asked, ["conflict:d"]);
+        assert_eq!(read(&s.0.join("dst/d/old")), "old");
+        assert!(!s.0.join("dst/d/new").exists());
+        assert_eq!(read(&s.0.join("dst/d (2)/new")), "new");
+        assert_eq!(created, [uri(&s.0.join("dst/d (2)"))]);
+    }
+
+    #[test]
+    fn cancel_stops_the_remaining_items() {
+        let s = home_scratch("cancel");
+        for n in ["a", "b"] {
+            write(&s.0.join("src").join(n), "new");
+        }
+        write(&s.0.join("dst/a"), "old");
+        let job = Job::Transfer {
+            kind: Kind::Move,
+            items: ["a", "b"].iter().map(|n| Item { src: uri(&s.0.join("src").join(n)), dest_dir: uri(&s.0.join("dst")), name: None }).collect(),
+        };
+        let (_, asked) = run_job(job, &[Resolution::Cancel]);
+        assert_eq!(asked, ["conflict:a"]);
+        assert_eq!(read(&s.0.join("dst/a")), "old");
+        assert!(!s.0.join("dst/b").exists());
+        assert_eq!(read(&s.0.join("src/b")), "new");
     }
 
     #[test]

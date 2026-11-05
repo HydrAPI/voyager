@@ -172,7 +172,17 @@ pub fn labels(accels: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::BINDINGS;
+    use super::*;
+
+    #[test]
+    fn user_shortcuts_replace_the_defaults() {
+        let mut s = config::Settings::default();
+        assert_eq!(current_in(&s, "win.new-folder"), ["<Ctrl><Shift>n"]);
+        s.keybindings = vec![("win.new-folder".into(), vec!["F7".into()]), ("win.about".into(), vec![])];
+        assert_eq!(current_in(&s, "win.new-folder"), ["F7"]);
+        assert!(current_in(&s, "win.about").is_empty());
+        assert!(current_in(&s, "win.no-such-action").is_empty());
+    }
 
     #[test]
     fn catalogue_is_consistent() {

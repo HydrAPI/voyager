@@ -831,4 +831,14 @@ mod tests {
         q.criteria.push(Criterion::FileType(FileType::Group(8)));
         assert_eq!(search(q), ["Notes.txt", "notes-old.txt"]);
     }
+
+    #[test]
+    fn random_names_find_themselves() {
+        crate::testutil::cases(3000, |r| {
+            let name = r.text(16);
+            let words: Vec<String> = fold(&name).split(' ').filter(|w| !w.is_empty()).map(str::to_string).collect();
+            assert!(name_matches(&words, &name), "{name:?} with {words:?}");
+            let _ = tags_of(&r.text(16));
+        });
+    }
 }

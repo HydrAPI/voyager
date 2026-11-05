@@ -721,4 +721,34 @@ mod tests {
         assert_eq!(title_case("notes: a list"), "Notes: A List");
         assert_eq!(title_case("holiday photo.jpg"), "Holiday photo.jpg");
     }
+
+    #[test]
+    fn random_rename_options() {
+        let patterns = [r"\d+", "a", "^(.)(.*)$", r"(?P<x>\w)", "", ".", r"\s"];
+        crate::testutil::cases(3000, |r| {
+            let name = r.text(16);
+            assert_eq!(new_name(&name, 0, &o()), name);
+            let opts = Options {
+                case: *r.pick(&[Case::Upper, Case::Lower, Case::Title, Case::Unchanged]),
+                insert_text: r.text(4),
+                insert_pos: r.below(30),
+                insert_from_end: r.chance(2),
+                insert_before_ext: r.chance(2),
+                remove_from: r.int(-30, 30) as i32,
+                remove_len: r.below(30),
+                replace_target: r.text(2),
+                replace_with: r.text(3),
+                replace_keep_ext: r.chance(2),
+                regex: if r.chance(2) { regex::Regex::new(r.pick(&patterns)).ok() } else { None },
+                regex_with: r.text(4),
+                regex_keep_ext: r.chance(2),
+                digits: r.below(5),
+                start: r.below(1000) as u64,
+                number_at_end: r.chance(2),
+                number_before_ext: r.chance(2),
+            };
+            let _ = new_name_for(&name, r.chance(3), r.below(100), &opts);
+            let _ = title_case(&name);
+        });
+    }
 }

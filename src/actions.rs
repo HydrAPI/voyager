@@ -152,7 +152,7 @@ pub struct CustomAction {
 }
 
 fn path() -> PathBuf {
-    glib::user_config_dir().join("arkha").join("actions.conf")
+    crate::config::arkha_file("actions.conf")
 }
 
 pub fn load() -> Vec<CustomAction> {
@@ -166,18 +166,13 @@ pub fn load() -> Vec<CustomAction> {
         .filter_map(|g| Some((g.strip_prefix("Action ")?.parse().ok()?, g.to_string())))
         .collect();
     groups.sort();
-    let mut gave_ids = false;
-    let list: Vec<CustomAction> = groups
+    groups
         .into_iter()
         .filter_map(|(_, g)| {
             let s = |k: &str| kf.string(&g, k).map(|v| v.to_string()).unwrap_or_default();
             let b = |k: &str| kf.boolean(&g, k).unwrap_or(false);
-            let mut id = s("id");
-            if id.is_empty() {
-                // Made before actions had ids.
-                id = new_id();
-                gave_ids = true;
-            }
+            // One written by hand may have none.
+            let id = Some(s("id")).filter(|i| !i.is_empty()).unwrap_or_else(new_id);
             let a = CustomAction {
                 id,
                 name: s("name"),
@@ -190,11 +185,7 @@ pub fn load() -> Vec<CustomAction> {
             };
             (!a.name.is_empty() && !a.command.is_empty()).then_some(a)
         })
-        .collect();
-    if gave_ids {
-        save(&list);
-    }
-    list
+        .collect()
 }
 
 pub fn save(actions: &[CustomAction]) {
@@ -349,6 +340,32 @@ mod tests {
     }
 
     #[test]
+    fn saved_and_loaded() {
+        let _ = std::fs::remove_file(path());
+        assert!(load().is_empty());
+        let a = CustomAction {
+            id: new_id(),
+            name: "Odd; \"name\"\n[x]".into(),
+            command: "echo %f \\ 'q' # c".into(),
+            files: true,
+            folders: false,
+            background: true,
+            patterns: "*.jpg; *.PNG".into(),
+            types: "video;audio".into(),
+        };
+        let b = CustomAction { id: new_id(), name: "B".into(), command: "b".into(), ..Default::default() };
+        save(&[a.clone(), b.clone()]);
+        assert_eq!(load(), [a, b]);
+        // Ones without a name or command are left out; one without an id gets one.
+        std::fs::write(path(), "[Action 0]\nname=x\ncommand=\n[Action 1]\nname=y\ncommand=y\n").unwrap();
+        let l = load();
+        assert_eq!(l.len(), 1);
+        assert_eq!((l[0].name.as_str(), l[0].id.len()), ("y", 12));
+        assert_ne!(new_id(), new_id());
+        let _ = std::fs::remove_file(path());
+    }
+
+    #[test]
     fn applies_rules() {
         let f = |n: &str, ct: &str| (n.to_string(), false, ct.to_string());
         let dir = |n: &str| (n.to_string(), true, "inode/directory".to_string());
@@ -368,5 +385,26 @@ mod tests {
         let both = CustomAction { patterns: "*.srt".into(), types: "video;audio".into(), ..a };
         assert!(applies(&both, &[f("a.mkv", "video/x-matroska"), f("a.srt", "application/x-subrip"), f("s.flac", "audio/flac")]));
         assert!(!applies(&both, &[f("c.jpg", "image/jpeg")]));
+    }
+
+    #[test]
+    fn random_commands_and_orders() {
+        crate::testutil::cases(2000, |r| {
+            let cmd = r.text(20);
+            let sel: Vec<PathBuf> = (0..r.below(3)).map(|_| Path::new("/d").join(r.text(6))).collect();
+            let out = expand(&cmd, &sel, Path::new("/d"));
+            if !cmd.contains('%') {
+                assert_eq!(out, cmd);
+            }
+            let _ = crate::thumbnailers::expand(&cmd, Path::new("/in"), Path::new("/out"), 128);
+            // Every default entry once, whatever was saved.
+            let d: &[&str] = &["a", "b", SEPARATOR, "c", "properties"];
+            let saved: Vec<String> = (0..r.below(8)).map(|_| r.pick(&["a", "b", "c", "-", "x", "custom:1", "properties"]).to_string()).collect();
+            let order = menu_order(&saved, d, &["custom:1".into()]);
+            for k in ["a", "b", "c", "properties", "custom:1"] {
+                assert_eq!(order.iter().filter(|o| *o == k).count(), 1, "{k} in {order:?} from {saved:?}");
+            }
+            assert!(!order.contains(&"x".to_string()));
+        });
     }
 }

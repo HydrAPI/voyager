@@ -245,8 +245,22 @@ thread_local! {
     static SETTINGS: RefCell<Settings> = RefCell::new(load());
 }
 
+/// Where settings are kept (~/.config). For the unit tests a folder in
+/// target/, so they never read or change the real ones.
+pub fn config_home() -> std::path::PathBuf {
+    #[cfg(not(test))]
+    return glib::user_config_dir();
+    #[cfg(test)]
+    return std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("test-config");
+}
+
+/// A file in Arkha's own settings folder.
+pub fn arkha_file(name: &str) -> std::path::PathBuf {
+    config_home().join("arkha").join(name)
+}
+
 fn path() -> std::path::PathBuf {
-    glib::user_config_dir().join("arkha").join("arkha.conf")
+    arkha_file("arkha.conf")
 }
 
 fn load() -> Settings {
@@ -297,15 +311,6 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     levels!(icon_levels);
     levels!(list_levels);
     levels!(compact_levels);
-    // Older versions stored the zoom as an index into the default levels,
-    // with list and compact view sharing one.
-    if let Ok(i) = kf.integer(g, "icon_zoom") {
-        s.icon_size = ICON_SIZES[i.clamp(0, ICON_SIZES.len() as i32 - 1) as usize];
-    }
-    if let Ok(i) = kf.integer(g, "list_zoom") {
-        s.list_size = LIST_SIZES[i.clamp(0, LIST_SIZES.len() as i32 - 1) as usize];
-        s.compact_size = COMPACT_SIZES[i.clamp(0, COMPACT_SIZES.len() as i32 - 1) as usize];
-    }
     i!(icon_size);
     i!(list_size);
     i!(compact_size);
@@ -355,11 +360,10 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     b!(automount);
     b!(unmount_only);
     if let Ok(v) = kf.string_list(g, "bar_order") {
-        // Keep known ids once each (older versions didn't list the path,
-        // which then goes first). Items added since (the info panel button)
-        // go after the one they follow by default.
+        // Known ids once each. Missing ones (items added since it was
+        // saved) go after the one they follow by default, or first.
         let mut order: Vec<String> = vec![];
-        for id in std::iter::once("path".to_string()).filter(|p| !v.iter().any(|x| x.as_str() == p)).chain(v.iter().map(|x| x.to_string())) {
+        for id in v.iter().map(|x| x.to_string()) {
             if BAR_ITEMS.contains(&id.as_str()) && !order.contains(&id) {
                 order.push(id);
             }
@@ -368,7 +372,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
             if order.iter().any(|o| o == id) {
                 continue;
             }
-            let at = BAR_ITEMS[..i].iter().rev().find_map(|prev| order.iter().position(|o| o == prev)).map_or(order.len(), |p| p + 1);
+            let at = BAR_ITEMS[..i].iter().rev().find_map(|prev| order.iter().position(|o| o == prev)).map_or(0, |p| p + 1);
             order.insert(at, id.to_string());
         }
         s.bar_order = order;
@@ -650,22 +654,20 @@ mod tests {
     }
 
     #[test]
-    fn old_and_invalid_values() {
+    fn incomplete_and_invalid_values() {
         let kf = glib::KeyFile::new();
         let g = "General";
-        // An older version's toolbar order, without the path, the view
-        // buttons and the info button: the path goes first, the others after
-        // the item they follow by default (split view, zoom).
+        // A toolbar order without the path, the view buttons and the info
+        // button: the path goes first, the others after the item they follow
+        // by default (split view, zoom). Unknown and repeated ids go.
         kf.set_value(g, "bar_order", "ops;zoom;bogus;split;zoom;");
         kf.set_value(g, "rename_tab_order", "regex;case;nope;case;");
         kf.set_value(g, "sidebar_sections", "bookmarks;");
         kf.set_value(g, "sidebar_collapsed", "devices;network;");
         kf.set_integer(g, "sidebar_row_height", 999);
         kf.set_integer(g, "info_panel_width", 5);
-        // Zoom stored as an index into the default levels.
-        kf.set_integer(g, "icon_zoom", 3);
-        kf.set_integer(g, "list_zoom", 99);
         kf.set_value(g, "list_levels", "big;");
+        kf.set_integer(g, "list_size", 99);
         let s = from_keyfile(&kf);
         assert_eq!(s.bar_order, ["path", "ops", "zoom", "info", "split", "view"]);
         assert_eq!(s.rename_tab_order, ["regex", "case", "insert", "remove", "replace", "enumerate"]);
@@ -673,11 +675,47 @@ mod tests {
         assert_eq!(s.sidebar_collapsed, ["devices"]);
         assert_eq!(s.sidebar_row_height, 200);
         assert_eq!(s.info_panel_width, 120);
-        assert_eq!(s.icon_size, ICON_SIZES[3]);
-        assert_eq!((s.list_size, s.compact_size), (64, 48));
+        // Invalid levels are the default ones; a size beyond them is the
+        // largest.
         assert_eq!(s.list_levels, LIST_SIZES);
+        assert_eq!(s.list_size, 64);
         // A size that isn't one of the levels snaps to the nearest.
         kf.set_integer(g, "icon_size", 50);
         assert_eq!(from_keyfile(&kf).icon_size, 48);
+    }
+
+    #[test]
+    fn random_values_load_into_valid_settings() {
+        let def = Settings::default();
+        let keys: Vec<String> = fields(&def).into_iter().map(|(k, _)| k).collect();
+        let level_chars: Vec<char> = "0123456789, ;px-".chars().collect();
+        crate::testutil::cases(2000, |r| {
+            let text = r.text_of(&level_chars, 20);
+            if let Some(v) = parse_levels(&text) {
+                assert!(v.windows(2).all(|w| w[0] < w[1]) && v.iter().all(|l| (MIN_LEVEL..=MAX_LEVEL).contains(l)), "{text:?} → {v:?}");
+                assert_eq!(parse_levels(&format_levels(&v)), Some(v.clone()));
+                let size = r.int(-100, 700) as i32;
+                assert!(v.contains(&snap(&v, size)));
+                let s = step(&v, size, if r.chance(2) { 1 } else { -1 });
+                assert!(v.contains(&s) || s == size);
+            }
+            // Any keys with any values: still a valid configuration.
+            let kf = to_keyfile(&def);
+            for _ in 0..r.below(6) {
+                let value = if r.chance(2) { r.int(-1000, 1000).to_string() } else { r.text(12) };
+                kf.set_value("General", r.pick(&keys), &value.replace('\n', " "));
+            }
+            let s = from_keyfile(&kf);
+            assert!(s.icon_levels.contains(&s.icon_size) && s.list_levels.contains(&s.list_size) && s.compact_levels.contains(&s.compact_size));
+            let mut bar = s.bar_order.clone();
+            bar.sort();
+            let mut all: Vec<String> = BAR_ITEMS.iter().map(|x| x.to_string()).collect();
+            all.sort();
+            assert_eq!(bar, all);
+            let mut secs = s.sidebar_sections.clone();
+            secs.sort();
+            assert_eq!(secs, ["bookmarks", "computer", "devices"]);
+            assert_eq!(s.rename_tab_order.len(), RENAME_TABS.len());
+        });
     }
 }
