@@ -3246,26 +3246,19 @@ impl AppWindow {
             }
         });
         option(&v, "Arrange items:", arrange.upcast_ref());
-        let rev = check("_Reverse sort");
-        rev.set_active(s.sort_desc);
-        rev.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.sort_desc = v);
-            reapply_view_settings();
-        });
+        let rev = setting_check("_Reverse sort", None, s.sort_desc, |s, v| s.sort_desc = v, |_| reapply_view_settings());
         indent(&v, rev.upcast_ref());
         let ff = check("Sort _folders before files");
         ff.set_action_name(Some("win.folders-first"));
         indent(&v, ff.upcast_ref());
         head(&v, "Individual Folders");
-        let per = check("Remember _view and sorting for each folder");
-        per.set_tooltip_text(Some("Changing the view or sorting then only affects the folder you're in, and it's restored the next time you open that folder. Other folders use the defaults above."));
-        per.set_active(s.per_folder);
-        per.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.per_folder = v);
-            reapply_view_settings();
-        });
+        let per = setting_check(
+            "Remember _view and sorting for each folder",
+            Some("Changing the view or sorting then only affects the folder you're in, and it's restored the next time you open that folder. Other folders use the defaults above."),
+            s.per_folder,
+            |s, v| s.per_folder = v,
+            |_| reapply_view_settings(),
+        );
         indent(&v, per.upcast_ref());
         let remembered = |n: usize| match n {
             0 => "No folders remembered".to_string(),
@@ -3325,22 +3318,16 @@ impl AppWindow {
         // Behavior
         let b = page();
         head(&b, "Opening");
-        let single = check("_Single click to open items");
-        single.set_active(s.single_click);
-        single.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.single_click = v);
-            for_all_panes(|p| p.apply_click_policy());
-        });
+        let single = setting_check("_Single click to open items", None, s.single_click, |s, v| s.single_click = v, |_| for_all_panes(|p| p.apply_click_policy()));
         indent(&b, single.upcast_ref());
         head(&b, "Tabs");
-        let at_end = check("Add new tabs at the _end");
-        at_end.set_tooltip_text(Some("Like a browser: new tabs go to the end of the tab bar. Turned off, they open right after the current tab."));
-        at_end.set_active(s.tabs_at_end);
-        at_end.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.tabs_at_end = v);
-        });
+        let at_end = setting_check(
+            "Add new tabs at the _end",
+            Some("Like a browser: new tabs go to the end of the tab bar. Turned off, they open right after the current tab."),
+            s.tabs_at_end,
+            |s, v| s.tabs_at_end = v,
+            |_| {},
+        );
         indent(&b, at_end.upcast_ref());
         head(&b, "Split View");
         let ffm = check("_Focus the pane under the mouse pointer");
@@ -3358,12 +3345,7 @@ impl AppWindow {
         let after = inline(&b, "After the pointer rests on it for", &[delay.upcast_ref(), gtk::Label::new(Some("ms")).upcast_ref()]);
         after.set_margin_start(after.margin_start() + 24);
         head(&b, "Trash");
-        let confirm = check("Ask before moving files to the T_rash");
-        confirm.set_active(s.confirm_trash);
-        confirm.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.confirm_trash = v);
-        });
+        let confirm = setting_check("Ask before moving files to the T_rash", None, s.confirm_trash, |s, v| s.confirm_trash = v, |_| {});
         indent(&b, confirm.upcast_ref());
         head(&b, "Removable Media");
         let automount = check("Mount drives and media when they're _inserted");
@@ -3382,23 +3364,22 @@ impl AppWindow {
             glib::Propagation::Proceed
         }));
         indent(&b, automount.upcast_ref());
-        let unmount_only = check("The eject button only _unmounts");
-        unmount_only.set_tooltip_text(Some("Clicking the button next to a drive in the side pane unmounts it, but doesn't eject it or power it off (the drive stays in the list, ready to be mounted again)"));
-        unmount_only.set_active(s.unmount_only);
-        unmount_only.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.unmount_only = v);
-            crate::sidebar::refresh_all();
-        });
+        let unmount_only = setting_check(
+            "The eject button only _unmounts",
+            Some("Clicking the button next to a drive in the side pane unmounts it, but doesn't eject it or power it off (the drive stays in the list, ready to be mounted again)"),
+            s.unmount_only,
+            |s, v| s.unmount_only = v,
+            |_| crate::sidebar::refresh_all(),
+        );
         indent(&b, unmount_only.upcast_ref());
         head(&b, "Scrolling");
-        let auto = check("_Middle-click on empty space (or an item in the list view) to autoscroll");
-        auto.set_tooltip_text(Some("Like Firefox: a marker appears where you clicked and the view scrolls towards the pointer, faster the further away it is. Click, press a key or use the wheel to stop (after dragging with the button held, letting go stops it). In the list view this works on files and folders too, if the list can scroll; otherwise, or with Shift, a middle-click opens them there (a folder in a new tab)."));
-        auto.set_active(s.autoscroll);
-        auto.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.autoscroll = v);
-        });
+        let auto = setting_check(
+            "_Middle-click on empty space (or an item in the list view) to autoscroll",
+            Some("Like Firefox: a marker appears where you clicked and the view scrolls towards the pointer, faster the further away it is. Click, press a key or use the wheel to stop (after dragging with the button held, letting go stops it). In the list view this works on files and folders too, if the list can scroll; otherwise, or with Shift, a middle-click opens them there (a folder in a new tab)."),
+            s.autoscroll,
+            |s, v| s.autoscroll = v,
+            |_| {},
+        );
         indent(&b, auto.upcast_ref());
         add_page("behavior", "Behavior", "view-more-symbolic", &b);
 
@@ -3408,31 +3389,26 @@ impl AppWindow {
         let hid = check("Show _hidden and backup files");
         hid.set_action_name(Some("win.show-hidden"));
         indent(&dp, hid.upcast_ref());
-        let stripes = check("_List view");
-        stripes.set_active(s.striped_rows);
-        stripes.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.striped_rows = v);
-            for_all_panes(|p| p.redraw());
-        });
-        let rename_stripes = check("_Bulk rename list");
-        rename_stripes.set_tooltip_text(Some("Shade every second row of the file list in the Rename All… window (applies the next time it opens)"));
-        rename_stripes.set_active(s.rename_striped_rows);
-        rename_stripes.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.rename_striped_rows = v);
-        });
+        let stripes = setting_check("_List view", None, s.striped_rows, |s, v| s.striped_rows = v, |_| for_all_panes(|p| p.redraw()));
+        let rename_stripes = setting_check(
+            "_Bulk rename list",
+            Some("Shade every second row of the file list in the Rename All… window (applies the next time it opens)"),
+            s.rename_striped_rows,
+            |s, v| s.rename_striped_rows = v,
+            |_| {},
+        );
         inline(&dp, "Alternating row colors:", &[stripes.upcast_ref(), rename_stripes.upcast_ref()]);
-        let iec = check("Show file sizes in _IEC units (KiB, MiB, GiB)");
-        iec.set_tooltip_text(Some("Sizes in powers of 1024 (1 KiB = 1024 bytes) instead of powers of 1000 (1 kB = 1000 bytes)"));
-        iec.set_active(s.iec_units);
-        iec.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.iec_units = v);
-            util::set_iec_units(v);
-            // Sizes are formatted when rows are made.
-            for_all_panes(|p| p.reload());
-        });
+        let iec = setting_check(
+            "Show file sizes in _IEC units (KiB, MiB, GiB)",
+            Some("Sizes in powers of 1024 (1 KiB = 1024 bytes) instead of powers of 1000 (1 kB = 1000 bytes)"),
+            s.iec_units,
+            |s, v| s.iec_units = v,
+            |v| {
+                util::set_iec_units(v);
+                // Sizes are formatted when rows are made.
+                for_all_panes(|p| p.reload());
+            },
+        );
         indent(&dp, iec.upcast_ref());
         head(&dp, "Window");
         let side = check("Show the side _pane");
@@ -3441,70 +3417,56 @@ impl AppWindow {
         let status = check("Show the status_bar");
         status.set_action_name(Some("win.show-statusbar"));
         indent(&dp, status.upcast_ref());
-        let status_hidden = check("Say how many items are _hidden");
-        status_hidden.set_tooltip_text(Some("The status bar adds how many items of the folder are hidden, as in “12 items (3 hidden)”"));
-        status_hidden.set_active(s.status_hidden);
+        let status_hidden = setting_check(
+            "Say how many items are _hidden",
+            Some("The status bar adds how many items of the folder are hidden, as in “12 items (3 hidden)”"),
+            s.status_hidden,
+            |s, v| s.status_hidden = v,
+            |_| {
+                for w in all_windows() {
+                    if let Some(p) = w.current_pane() {
+                        w.status.set_text(&p.status_text());
+                    }
+                }
+            },
+        );
         // A sub-option of the status bar: only of use while it's shown.
         status.bind_property("active", &status_hidden, "sensitive").sync_create().build();
-        status_hidden.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.status_hidden = v);
-            for w in all_windows() {
-                if let Some(p) = w.current_pane() {
-                    w.status.set_text(&p.status_text());
-                }
-            }
-        });
         indent(&dp, status_hidden.upcast_ref());
         status_hidden.set_margin_start(status_hidden.margin_start() + 24);
-        let tabs = check("Always show the _tab bar");
-        tabs.set_tooltip_text(Some("Also show it when a window has only one tab, so that tab can be dragged to another window or out into a new one"));
-        tabs.set_active(s.always_show_tabs);
-        tabs.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.always_show_tabs = v);
-            for w in all_windows() {
-                w.update_tabs_visibility();
-            }
-        });
+        let tabs = setting_check(
+            "Always show the _tab bar",
+            Some("Also show it when a window has only one tab, so that tab can be dragged to another window or out into a new one"),
+            s.always_show_tabs,
+            |s, v| s.always_show_tabs = v,
+            |_| all_windows().iter().for_each(|w| w.update_tabs_visibility()),
+        );
         indent(&dp, tabs.upcast_ref());
-        let text = check("Show te_xt on toolbar buttons");
-        text.set_tooltip_text(Some("The Back and Forward buttons show their name next to the icon"));
-        text.set_active(s.toolbar_text);
-        text.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.toolbar_text = v);
-            for w in all_windows() {
-                for l in &w.toolbar_labels {
-                    l.set_visible(v);
+        let text = setting_check(
+            "Show te_xt on toolbar buttons",
+            Some("The Back and Forward buttons show their name next to the icon"),
+            s.toolbar_text,
+            |s, v| s.toolbar_text = v,
+            |v| {
+                for w in all_windows() {
+                    for l in &w.toolbar_labels {
+                        l.set_visible(v);
+                    }
                 }
-            }
-        });
+            },
+        );
         indent(&dp, text.upcast_ref());
         head(&dp, "Location Bar");
-        let as_text = check("Always show the _location as text");
-        as_text.set_tooltip_text(Some("Show the folder's path as editable text instead of buttons for each folder"));
-        as_text.set_active(s.path_as_text);
-        as_text.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.path_as_text = v);
-            for w in all_windows() {
-                w.apply_path_mode();
-            }
-        });
+        let as_text = setting_check(
+            "Always show the _location as text",
+            Some("Show the folder's path as editable text instead of buttons for each folder"),
+            s.path_as_text,
+            |s, v| s.path_as_text = v,
+            |_| all_windows().iter().for_each(|w| w.apply_path_mode()),
+        );
         indent(&dp, as_text.upcast_ref());
         let bar_button = |label: &str, tip: &str, on: bool, set: fn(&mut config::Settings, bool), widget: fn(&AppWindow) -> gtk::Widget| {
-            let c = check(label);
-            c.set_tooltip_text(Some(tip));
-            c.set_active(on);
-            c.connect_toggled(move |c| {
-                let v = c.is_active();
-                config::update(|s| set(s, v));
-                for w in all_windows() {
-                    widget(&w).set_visible(v);
-                }
-            });
-            c
+            setting_check(label, Some(tip), on, set, move |v| all_windows().iter().for_each(|w| widget(w).set_visible(v)))
         };
         let zoom_b = bar_button("_Zoom", "Zoom in, zoom out and the zoom level", s.show_zoom_buttons, |s, v| s.show_zoom_buttons = v, |w| w.zoom_box.clone().upcast());
         let view_b = bar_button("Vi_ew", "Icon, list and compact view", s.show_view_buttons, |s, v| s.show_view_buttons = v, |w| w.view_box.clone().upcast());
@@ -3516,38 +3478,29 @@ impl AppWindow {
         // Previews: thumbnails and the Media Info tab
         let pv = page();
         head(&pv, "Thumbnails");
-        let th = check("Show thumb_nails");
-        th.set_tooltip_text(Some("Images get thumbnails built in; other file types through the custom thumbnailers below"));
-        th.set_active(s.thumbnails);
-        th.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.thumbnails = v);
-            for_all_panes(|p| p.reload());
-        });
+        let th = setting_check(
+            "Show thumb_nails",
+            Some("Images get thumbnails built in; other file types through the custom thumbnailers below"),
+            s.thumbnails,
+            |s, v| s.thumbnails = v,
+            |_| for_all_panes(|p| p.reload()),
+        );
         indent(&pv, th.upcast_ref());
         let thumbs = thumbnailers_editor(d.upcast_ref());
         thumbs.set_margin_start(40);
         pv.add(&thumbs);
         head(&pv, "Media Info");
-        let mi = check("Show a _Media Info tab in file properties");
-        mi.set_tooltip_text(Some("Shows what the mediainfo program reports about a file: codecs, resolution, duration, bit rate and more"));
-        mi.set_active(s.media_info);
-        mi.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.media_info = v);
-        });
+        let mi = setting_check(
+            "Show a _Media Info tab in file properties",
+            Some("Shows what the mediainfo program reports about a file: codecs, resolution, duration, bit rate and more"),
+            s.media_info,
+            |s, v| s.media_info = v,
+            |_| {},
+        );
         indent(&pv, mi.upcast_ref());
         let kinds = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         kinds.add(&gtk::Label::new(Some("For:")));
-        let kind = |label: &str, on: bool, set: fn(&mut config::Settings, bool)| {
-            let c = gtk::CheckButton::with_mnemonic(label);
-            c.set_active(on);
-            c.connect_toggled(move |c| {
-                let v = c.is_active();
-                config::update(|s| set(s, v));
-            });
-            kinds.add(&c);
-        };
+        let kind = |label: &str, on: bool, set: fn(&mut config::Settings, bool)| kinds.add(&setting_check(label, None, on, set, |_| {}));
         kind("_Videos", s.media_info_video, |s, v| s.media_info_video = v);
         kind("_Audio", s.media_info_audio, |s, v| s.media_info_audio = v);
         kind("_Images", s.media_info_image, |s, v| s.media_info_image = v);
@@ -3563,19 +3516,11 @@ impl AppWindow {
         if !props::mediainfo_available() {
             mi.set_sensitive(false);
             kinds.set_sensitive(false);
-            let note = gtk::Label::new(Some("Install mediainfo to use this: the tab shows codecs, resolution, duration, bit rate and more."));
-            note.set_xalign(0.0);
-            note.set_line_wrap(true);
-            note.set_max_width_chars(60);
-            note.style_context().add_class("dim-label");
+            let note = hint_label("Install mediainfo to use this: the tab shows codecs, resolution, duration, bit rate and more.");
             indent(&pv, note.upcast_ref());
         }
         head(&pv, "Info Panel");
-        let note = gtk::Label::new(Some("Beside the files (View → Info Panel, F11, or its toolbar button), in the folders where you turn it on. It shows the selected item: a folder's cover picture, an image, or a file's thumbnail. Only local folders are searched for covers."));
-        note.set_xalign(0.0);
-        note.set_line_wrap(true);
-        note.set_max_width_chars(60);
-        note.style_context().add_class("dim-label");
+        let note = hint_label("Beside the files (View → Info Panel, F11, or its toolbar button), in the folders where you turn it on. It shows the selected item: a folder's cover picture, an image, or a file's thumbnail. Only local folders are searched for covers.");
         indent(&pv, note.upcast_ref());
         let names = gtk::Entry::new();
         names.set_text(&s.cover_names);
@@ -3616,24 +3561,14 @@ impl AppWindow {
         option(&pv, "With several items selected:", other.upcast_ref());
         let missing = choice(&[("icon", "Show its icon and the details"), ("none", "Show nothing")], &s.info_no_cover, |s, v| s.info_no_cover = v);
         option(&pv, "Folders without a cover:", missing.upcast_ref());
-        let details = check("Show the _details (type, size, date, …)");
-        details.set_active(s.info_details);
-        details.connect_toggled(|c| {
-            let v = c.is_active();
-            config::update(|s| s.info_details = v);
-            for_all_panes(|p| p.refresh_info());
-        });
+        let details = setting_check("Show the _details (type, size, date, …)", None, s.info_details, |s, v| s.info_details = v, |_| for_all_panes(|p| p.refresh_info()));
         indent(&pv, details.upcast_ref());
         add_page("previews", "Previews", "image-x-generic-symbolic", &pv);
 
         // Side Pane
         let sp = page();
         head(&sp, "Computer Entries");
-        let hint = gtk::Label::new(Some("Unchecked entries are hidden. Drag an entry by its handle, or select it and use the arrows, to move it; they can also be dragged in the side pane itself."));
-        hint.set_xalign(0.0);
-        hint.set_line_wrap(true);
-        hint.set_max_width_chars(60);
-        hint.style_context().add_class("dim-label");
+        let hint = hint_label("Unchecked entries are hidden. Drag an entry by its handle, or select it and use the arrows, to move it; they can also be dragged in the side pane itself.");
         indent(&sp, hint.upcast_ref());
         let sidebar = self.sidebar.clone();
         let (places, places_refresh) = places_editor(move || sidebar.places());
@@ -3673,11 +3608,7 @@ impl AppWindow {
         // Context Menu: order and visibility of the entries, per menu
         let cm = page();
         head(&cm, "Context Menu Entries");
-        let hint = gtk::Label::new(Some("Drag an entry by its handle, or select it and use the arrows, to move it. Unchecked entries are hidden. Entries that don't apply are left out of the menu (Restore outside the Trash, say)."));
-        hint.set_xalign(0.0);
-        hint.set_line_wrap(true);
-        hint.set_max_width_chars(60);
-        hint.style_context().add_class("dim-label");
+        let hint = hint_label("Drag an entry by its handle, or select it and use the arrows, to move it. Unchecked entries are hidden. Entries that don't apply are left out of the menu (Restore outside the Trash, say).");
         indent(&cm, hint.upcast_ref());
         let menus = gtk::Stack::new();
         let (items_editor, items_refresh) = menu_order_editor(false);
@@ -3801,6 +3732,30 @@ impl AppWindow {
 
 const MENU_ROW_TARGET: &str = "ARKHA_MENU_ROW";
 const PLACE_ROW_TARGET: &str = "ARKHA_PLACE_ROW";
+
+/// A check box for a setting: `set` stores it when it's toggled, then
+/// `then` applies it.
+fn setting_check(label: &str, tip: Option<&str>, on: bool, set: fn(&mut config::Settings, bool), then: impl Fn(bool) + 'static) -> gtk::CheckButton {
+    let c = gtk::CheckButton::with_mnemonic(label);
+    c.set_tooltip_text(tip);
+    c.set_active(on);
+    c.connect_toggled(move |c| {
+        let v = c.is_active();
+        config::update(|s| set(s, v));
+        then(v);
+    });
+    c
+}
+
+/// A dimmed explanation under a setting, wrapped.
+fn hint_label(text: &str) -> gtk::Label {
+    let l = gtk::Label::new(Some(text));
+    l.set_xalign(0.0);
+    l.set_line_wrap(true);
+    l.set_max_width_chars(60);
+    l.style_context().add_class("dim-label");
+    l
+}
 
 /// A list the user puts in order, for the preferences: entries by key,
 /// each row with a handle to drag it by; the selected one moves with the
@@ -4210,23 +4165,16 @@ fn bookmark_editor(parent: &gtk::Window) -> gtk::Box {
     let save = {
         let store = store.clone();
         move || {
-            let mut out = String::new();
+            let mut list = vec![];
             if let Some(it) = store.iter_first() {
                 loop {
-                    let label: String = store.gv(&it, 0);
-                    let uri: String = store.gv(&it, 1);
-                    let default = gio::File::for_uri(&uri).basename().map(|b| b.to_string_lossy().to_string()).unwrap_or_default();
-                    if label.is_empty() || label == default {
-                        out.push_str(&format!("{uri}\n"));
-                    } else {
-                        out.push_str(&format!("{uri} {label}\n"));
-                    }
+                    list.push((store.gv::<String>(&it, 1), store.gv::<String>(&it, 0)));
                     if !store.iter_next(&it) {
                         break;
                     }
                 }
             }
-            let _ = std::fs::write(util::bookmarks_file(), out);
+            let _ = util::edit_bookmarks(|b| *b = list);
         }
     };
     let save = Rc::new(save);
@@ -4598,11 +4546,7 @@ fn thumbnailers_editor(parent: &gtk::Window) -> gtk::Box {
     buttons.pack_start(&add, false, false, 0);
     buttons.pack_start(&edit, false, false, 0);
     buttons.pack_start(&remove, false, false, 0);
-    let hint = gtk::Label::new(Some("Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used."));
-    hint.set_line_wrap(true);
-    hint.set_xalign(0.0);
-    hint.set_max_width_chars(60);
-    hint.style_context().add_class("dim-label");
+    let hint = hint_label("Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used.");
     let bx = gtk::Box::new(gtk::Orientation::Vertical, 6);
     bx.add(&sw);
     bx.add(&buttons);
@@ -4785,11 +4729,7 @@ fn custom_actions_editor(parent: &gtk::Window) -> gtk::Box {
     };
     sync(None);
     tv.selection().connect_changed(move |_| sync(selected()));
-    let hint = gtk::Label::new(Some("Commands run in the current folder. %f selected file, %F all selected files, %n / %N their names, %d current folder."));
-    hint.set_line_wrap(true);
-    hint.set_xalign(0.0);
-    hint.set_max_width_chars(60);
-    hint.style_context().add_class("dim-label");
+    let hint = hint_label("Commands run in the current folder. %f selected file, %F all selected files, %n / %N their names, %d current folder.");
     let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     buttons.pack_start(&add, false, false, 0);
     buttons.pack_start(&edit, false, false, 0);

@@ -509,7 +509,7 @@ impl Sidebar {
         label.set_hexpand(true);
         label.style_context().add_class("sidebar-label");
         hb.add(&label);
-        if eject_kind(item).is_some() {
+        if let Some(kind) = eject_kind(item) {
             let b = gtk::Button::from_icon_name(Some("media-eject-symbolic"), gtk::IconSize::Menu);
             b.set_relief(gtk::ReliefStyle::None);
             b.set_can_focus(false);
@@ -517,10 +517,10 @@ impl Sidebar {
             // taller than the others.
             b.style_context().add_class("sidebar-button");
             b.set_valign(gtk::Align::Center);
-            b.set_tooltip_text(Some(match eject_kind(item) {
-                Some(Removal::Unmount) => "Unmount",
-                Some(Removal::Stop) => "Safely remove",
-                _ => "Eject",
+            b.set_tooltip_text(Some(match kind {
+                Removal::Unmount => "Unmount",
+                Removal::Stop => "Safely remove",
+                Removal::Eject => "Eject",
             }));
             let w = Rc::downgrade(self);
             b.connect_clicked(move |_| {
@@ -766,7 +766,7 @@ impl Sidebar {
             }));
             let u2 = uri.clone();
             add("_Remove", Box::new(move || {
-                edit_bookmarks(|b| b.retain(|(u, _)| *u != u2));
+                let _ = util::edit_bookmarks(|b| b.retain(|(u, _)| *u != u2));
             }));
         }
         if item.trash {
@@ -820,7 +820,7 @@ impl Sidebar {
         if d.run() == gtk::ResponseType::Accept {
             let name = e.text().trim().to_string();
             let uri = uri.to_string();
-            edit_bookmarks(|b| {
+            let _ = util::edit_bookmarks(|b| {
                 for (u, l) in b.iter_mut() {
                     if *u == uri {
                         *l = name.clone();
@@ -955,7 +955,7 @@ impl Sidebar {
                 if dest.as_deref() == Some(src.as_str()) {
                     return false;
                 }
-                edit_bookmarks(|b| {
+                let _ = util::edit_bookmarks(|b| {
                     let at = dest.as_ref().and_then(|d| b.iter().position(|(u, _)| u == d)).unwrap_or(0);
                     let Some(from) = b.iter().position(|(u, _)| *u == src) else { return };
                     let moved = b.remove(from);
@@ -977,7 +977,7 @@ impl Sidebar {
                     }
                     (_, Some(Item { bookmark: Some(at), .. })) if bookmarking(self.list.upcast_ref()) && uris.iter().all(|u| is_folder(u)) => {
                         // In the dropped-on bookmark's place, in their order.
-                        edit_bookmarks(|b| {
+                        let _ = util::edit_bookmarks(|b| {
                             let mut pos = b.iter().position(|(u, _)| *u == at).unwrap_or(b.len());
                             for u in &uris {
                                 if !b.iter().any(|(x, _)| x == u) {
@@ -1255,32 +1255,6 @@ pub fn drag_picture(w: &gtk::Widget, ctx: &gdk::DragContext) {
         surface.set_device_offset(-8.0, -(height as f64) / 2.0);
         ctx.drag_set_icon_surface(&surface);
     }
-}
-
-/// Changes the bookmarks file (uri, label; label empty = the folder's name).
-/// The windows watch it and update their bookmarks.
-fn edit_bookmarks(f: impl FnOnce(&mut Vec<(String, String)>)) {
-    let path = util::bookmarks_file();
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
-    let mut b: Vec<(String, String)> = text
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| match l.split_once(' ') {
-            Some((u, n)) => (u.to_string(), n.to_string()),
-            None => (l.to_string(), String::new()),
-        })
-        .collect();
-    f(&mut b);
-    let mut out = String::new();
-    for (u, l) in &b {
-        out.push_str(u);
-        if !l.is_empty() {
-            out.push(' ');
-            out.push_str(l);
-        }
-        out.push('\n');
-    }
-    let _ = std::fs::write(&path, out);
 }
 
 /// The desktop's own setting for mounting inserted media. Arkha's "Mount

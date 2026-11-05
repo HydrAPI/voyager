@@ -385,50 +385,75 @@ pub fn read_bookmarks() -> Vec<(String, String)> {
 /// (URI, label) of each line of a bookmarks file; without a label, the
 /// URI's file name.
 fn parse_bookmarks(text: &str) -> Vec<(String, String)> {
-    text.lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| {
-            let (uri, label) = match l.split_once(' ') {
-                Some((u, n)) => (u.to_string(), n.to_string()),
-                None => (l.to_string(), String::new()),
-            };
-            let label = if label.is_empty() {
-                let f = gio::File::for_uri(&uri);
-                f.basename()
-                    .map(|b| b.to_string_lossy().to_string())
-                    .unwrap_or_else(|| uri.clone())
-            } else {
-                label
-            };
+    bookmark_lines(text)
+        .into_iter()
+        .map(|(uri, label)| {
+            let label = if label.is_empty() { default_bookmark_label(&uri) } else { label };
             (uri, label)
         })
         .collect()
+}
+
+/// (URI, label) of each line as written: the label empty without one.
+fn bookmark_lines(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| match l.split_once(' ') {
+            Some((u, n)) => (u.to_string(), n.to_string()),
+            None => (l.to_string(), String::new()),
+        })
+        .collect()
+}
+
+/// What a bookmark without a label is called: its folder's name.
+fn default_bookmark_label(uri: &str) -> String {
+    gio::File::for_uri(uri).basename().map(|b| b.to_string_lossy().to_string()).unwrap_or_else(|| uri.to_string())
+}
+
+/// Changes the bookmarks file: `f` gets its (URI, label) lines, the label
+/// empty for the folder's name. A label that's just the folder's name isn't
+/// written. The windows watch the file and update their bookmarks.
+pub fn edit_bookmarks(f: impl FnOnce(&mut Vec<(String, String)>)) -> std::io::Result<()> {
+    edit_bookmarks_at(&bookmarks_file(), f)
+}
+
+fn edit_bookmarks_at(path: &std::path::Path, f: impl FnOnce(&mut Vec<(String, String)>)) -> std::io::Result<()> {
+    let old = bookmark_lines(&std::fs::read_to_string(path).unwrap_or_default());
+    let mut b = old.clone();
+    f(&mut b);
+    if b == old {
+        return Ok(());
+    }
+    let mut out = String::new();
+    for (uri, label) in &b {
+        out.push_str(uri);
+        if !label.is_empty() && *label != default_bookmark_label(uri) {
+            out.push(' ');
+            out.push_str(label);
+        }
+        out.push('\n');
+    }
+    if let Some(p) = path.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    std::fs::write(path, out)
 }
 
 pub fn add_bookmark(uri: &str) -> std::io::Result<bool> {
     add_bookmark_to(&bookmarks_file(), uri)
 }
 
-/// Adds `uri` to the bookmarks file `path`; false if it's there already.
+/// Adds `uri` at the end of the bookmarks file `path`; false if it's there
+/// already.
 fn add_bookmark_to(path: &std::path::Path, uri: &str) -> std::io::Result<bool> {
-    let existing = std::fs::read_to_string(path).unwrap_or_default();
-    if existing
-        .lines()
-        .any(|l| l.split(' ').next() == Some(uri))
-    {
-        return Ok(false);
-    }
-    if let Some(p) = path.parent() {
-        std::fs::create_dir_all(p)?;
-    }
-    let mut out = existing;
-    if !out.is_empty() && !out.ends_with('\n') {
-        out.push('\n');
-    }
-    out.push_str(uri);
-    out.push('\n');
-    std::fs::write(path, out)?;
-    Ok(true)
+    let mut added = false;
+    edit_bookmarks_at(path, |b| {
+        if !b.iter().any(|(u, _)| u == uri) {
+            b.push((uri.to_string(), String::new()));
+            added = true;
+        }
+    })?;
+    Ok(added)
 }
 
 /// Minimal shell-style glob: * ? and [abc].
@@ -640,5 +665,18 @@ mod tests {
         assert!(!add_bookmark_to(&p, "file:///a").unwrap());
         assert!(add_bookmark_to(&p, "file:///ab").unwrap());
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "file:///a A\nfile:///ab\n");
+        // A label that's just the folder's name isn't written; an empty one
+        // means the folder's name.
+        edit_bookmarks_at(&p, |b| {
+            b[0].1 = "a".into();
+            b[1].1 = "Other".into();
+            b.push(("file:///c".into(), String::new()));
+        })
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "file:///a\nfile:///ab Other\nfile:///c\n");
+        // Nothing changed: the file isn't written.
+        std::fs::write(&p, "file:///a\n\nfile:///b B").unwrap();
+        edit_bookmarks_at(&p, |_| {}).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "file:///a\n\nfile:///b B");
     }
 }
