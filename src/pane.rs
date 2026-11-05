@@ -1581,6 +1581,9 @@ impl Pane {
                 let Some(p) = w.upgrade() else {
                     return glib::Propagation::Proceed;
                 };
+                if p.enter_opens(ev) {
+                    return glib::Propagation::Stop;
+                }
                 p.typeahead_key(ev)
             });
             // Clicking or leaving the view ends typing to select.
@@ -2658,6 +2661,22 @@ impl Pane {
     /// shows bottom right for 5 seconds after the last key (GTK's and
     /// Caja's search timeout). Backspace edits it, Up / Down go to the
     /// previous / next match, Escape ends it.
+    /// Enter (without Ctrl and such) opens the selected items. The views'
+    /// own binding opens the cursor item only: after selecting with the
+    /// rubber band there's none (so nothing opened), and it needn't be one
+    /// of those selected at all.
+    fn enter_opens(self: &Rc<Self>, ev: &gdk::EventKey) -> bool {
+        use gdk::keys::constants as k;
+        let key = ev.keyval();
+        let mods = gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK | gdk::ModifierType::MOD1_MASK | gdk::ModifierType::SUPER_MASK;
+        if !(key == k::Return || key == k::KP_Enter || key == k::ISO_Enter) || ev.state().intersects(mods) || self.selected().is_empty() {
+            return false;
+        }
+        self.end_typeahead();
+        self.emit(Event::Activate);
+        true
+    }
+
     pub fn typeahead_key(self: &Rc<Self>, ev: &gdk::EventKey) -> glib::Propagation {
         use gdk::keys::constants as k;
         let mods = ev.state()
