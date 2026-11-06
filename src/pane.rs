@@ -86,7 +86,20 @@ impl Place {
 /// Compares two rows' text in column `col` where it is, without copying it.
 fn cmp_text(m: &gtk::TreeModel, a: &gtk::TreeIter, b: &gtk::TreeIter, col: u32) -> Ordering {
     let (va, vb) = (m.value(a, col as i32), m.value(b, col as i32));
-    va.get::<&str>().unwrap_or("").cmp(vb.get::<&str>().unwrap_or(""))
+    value_str(&va).cmp(value_str(&vb))
+}
+
+/// A string column's text, without copying it or checking it again for
+/// UTF-8 (as Value::get does): it's read for every item at every layout and
+/// sort, and the models only ever hold Rust strings. Empty if unset.
+fn value_str(v: &glib::Value) -> &str {
+    debug_assert!(v.is::<String>());
+    // SAFETY: a string Value (asserted above); its text lives as long as
+    // `v`, and was valid UTF-8 when it was stored.
+    unsafe {
+        let p = glib::gobject_ffi::g_value_get_string(glib::translate::ToGlibPtr::to_glib_none(v).0);
+        if p.is_null() { "" } else { std::str::from_utf8_unchecked(std::ffi::CStr::from_ptr(p).to_bytes()) }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -491,6 +504,10 @@ pub struct Pane {
     pending_context: RefCell<Option<(gdk::Event, bool)>>,
     /// Keep the strip of columns scrolled to its end while it's laid out.
     columns_to_end: Rc<Cell<bool>>,
+    /// Scroll the strip to its end once it's shown (see scroll_columns_to_end).
+    columns_end_on_map: Cell<bool>,
+    /// Shut down (see shutdown): its tab is closing, nothing more is done.
+    closed: Cell<bool>,
     me: RefCell<std::rc::Weak<Pane>>,
     /// An icon view scroll waiting for its item to be laid out (see
     /// scroll_icon_view): the item's URI, center, row alignment, whether
@@ -589,7 +606,7 @@ impl Pane {
         }
 
         // ---- icon view
-        let icon_view = gtk::IconView::with_model(&filter);
+        let icon_view = crate::iconview::IconView::with_model(&filter);
         *icon_view_ref.borrow_mut() = Some(icon_view.downgrade());
         icon_view.set_selection_mode(gtk::SelectionMode::Multiple);
         IconViewExt::set_margin(&icon_view, 8);
@@ -617,7 +634,6 @@ impl Pane {
         let drop_path: Rc<RefCell<Option<gtk::TreePath>>> = Rc::default();
         icon_view.pack_start(&icon_pix, false);
         CellLayoutExt::pack_start(&icon_view, &icon_text, false);
-        icon_view.add_attribute(&icon_text, "text", COL_NAME as i32);
         // The item being renamed doesn't draw its name: the edit field over
         // it would show it through (see inline rename in setup_signals).
         let edit_hidden: Rc<RefCell<Option<String>>> = Rc::default();
@@ -634,13 +650,14 @@ impl Pane {
                     cell.set_visible(shown.get() && !hit_off.get());
                     label.set_drop_target(drop_path.borrow().as_ref().is_some_and(|d| m.path(it).as_ref() == Some(d)));
                     if hidden.borrow().as_deref().is_some_and(|u| m.gv::<String>(it, COL_URI as i32) == u) {
-                        cell.set_property("text", "");
+                        label.set_label_text("");
                         return;
                     }
                     if iv.item_orientation() == gtk::Orientation::Horizontal {
+                        label.set_label_text(value_str(&m.value(it, COL_NAME as i32)));
                         return;
                     }
-                    cell.set_property("text", icon_cell_text(m, it, captions.get(), columns.get()));
+                    label.set_label_text(&icon_cell_text(m, it, captions.get(), columns.get()));
                 })),
             );
         }
@@ -661,12 +678,12 @@ impl Pane {
                     // picture is made when drawn.
                     let drawn = icons::drawing();
                     if iv.item_orientation() == gtk::Orientation::Horizontal {
-                        cell.set_property("pixbuf", if drawn { row_pixbuf(m, it, lsz.get().min(48)) } else { None });
+                        image.set_picture(if drawn { row_pixbuf(m, it, lsz.get().min(48)) } else { None });
                         return;
                     }
                     let (w, h) = icon_view_dims(m, it, sz.get(), tsz.get());
                     cell.set_fixed_size(w, h);
-                    cell.set_property("pixbuf", if drawn { icon_view_pixbuf(m, it, sz.get(), tsz.get()) } else { None });
+                    image.set_picture(if drawn { icon_view_pixbuf(m, it, sz.get(), tsz.get()) } else { None });
                 })),
             );
         }
@@ -798,8 +815,9 @@ impl Pane {
         let columns_to_end = Rc::new(Cell::new(false));
         {
             let to_end = columns_to_end.clone();
+            let sw = strip_sw.downgrade();
             strip_sw.hadjustment().connect_changed(move |a| {
-                if to_end.get() {
+                if to_end.get() && sw.upgrade().is_some_and(|sw| sw.is_realized()) {
                     a.set_value(a.upper() - a.page_size());
                 }
             });
@@ -944,6 +962,8 @@ impl Pane {
             select_first: Cell::new(false),
             pending_context: RefCell::new(None),
             columns_to_end,
+            columns_end_on_map: Cell::new(false),
+            closed: Cell::new(false),
             me: RefCell::new(std::rc::Weak::new()),
             selection_pending: Cell::new(false),
             folder_name: RefCell::new(None),
@@ -993,6 +1013,9 @@ impl Pane {
     }
 
     fn emit(&self, e: Event) {
+        if self.closed.get() {
+            return;
+        }
         if matches!(e, Event::Selection) {
             // Selections change item by item (selecting all, a rubber band
             // over thousands), and what follows looks at all that's
@@ -1001,7 +1024,7 @@ impl Pane {
                 let w = self.me.borrow().clone();
                 glib::idle_add_local_once(move || {
                     if let Some(p) = w.upgrade() {
-                        if p.selection_pending.replace(false) {
+                        if p.selection_pending.replace(false) && !p.closed.get() {
                             p.selection_changed();
                         }
                     }
@@ -1032,6 +1055,16 @@ impl Pane {
     }
 
     fn setup_signals(self: &Rc<Self>) {
+        {
+            let w = Rc::downgrade(self);
+            self.strip_sw.connect_map(move |_| {
+                if let Some(p) = w.upgrade() {
+                    if p.columns_end_on_map.replace(false) {
+                        p.scroll_columns_to_end();
+                    }
+                }
+            });
+        }
         let w = Rc::downgrade(self);
         // The query editor's rows are kept with the search; Reload (or Enter
         // in a row) searches again.
@@ -1905,10 +1938,14 @@ impl Pane {
     /// gtk_tree_model_filter_real_unref_node assertion (seen when going to
     /// another folder in the list view).
     fn clear_rows(&self) {
+        let many = self.index.borrow().len() > 1000;
         self.index.borrow_mut().clear();
         self.detach_model();
         self.store.clear();
         self.attach_model();
+        if many {
+            util::release_memory_soon();
+        }
     }
 
     fn load(self: &Rc<Self>) {
@@ -3201,6 +3238,14 @@ impl Pane {
     /// Scrolls the strip of columns all the way right, following it for a
     /// moment while the new columns get their sizes.
     fn scroll_columns_to_end(&self) {
+        // Not while the strip isn't in a shown window (a tab not shown
+        // yet, or closed): GTK 3 lets a scrolled window that was taken out
+        // of one keep handling its scrollbar's changes, and the scrollbar
+        // it then looks for is gone (GTK warnings). Done once it shows.
+        if !self.strip_sw.is_realized() {
+            self.columns_end_on_map.set(true);
+            return;
+        }
         let adj = self.strip_sw.hadjustment();
         adj.set_value(adj.upper() - adj.page_size());
         self.columns_to_end.set(true);
@@ -3872,6 +3917,7 @@ impl Pane {
         view.style_context().add_provider(&rename_css(), gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
         frame.add(&view);
         let ed = Rc::new(RenameEditor { frame: frame.clone(), view: view.clone(), uri: uri.to_string(), name: row.name.clone() });
+        let this_editor = Rc::downgrade(&ed);
         *self.rename_editor.borrow_mut() = Some(ed);
         // The item's own name would show around the editor.
         *self.edit_hidden.borrow_mut() = Some(uri.to_string());
@@ -3901,9 +3947,17 @@ impl Pane {
         });
         let w = self.me.borrow().clone();
         view.connect_focus_out_event(move |_, _| {
-            if let Some(p) = w.upgrade() {
-                p.close_rename_editor(true);
-            }
+            // Once the focus has moved: taken out of the window while GTK
+            // is moving the focus away from it, GtkWindow goes on with the
+            // field already gone (g_object_ref warnings).
+            let (w, ed) = (w.clone(), this_editor.clone());
+            glib::idle_add_local_once(move || {
+                if let (Some(p), Some(ed)) = (w.upgrade(), ed.upgrade()) {
+                    if p.rename_editor.borrow().as_ref().is_some_and(|cur| Rc::ptr_eq(cur, &ed)) {
+                        p.close_rename_editor(true);
+                    }
+                }
+            });
             glib::Propagation::Proceed
         });
         // As the text wraps onto more lines, the editor grows.
@@ -3923,10 +3977,19 @@ impl Pane {
             .and_then(|b| b.text(&b.start_iter(), &b.end_iter(), false))
             .map(|t| t.replace(['\n', '\r'], ""))
             .unwrap_or_default();
-        self.overlay.remove(&ed.frame);
+        // The view gets the focus back, unless it went elsewhere (a click
+        // on the location bar, say: the field then lost it).
+        let window = ed.view.toplevel().and_downcast::<gtk::Window>();
+        let focus_here = window.and_then(|w| gtk::prelude::GtkWindowExt::focused_widget(&w)).is_none_or(|f| &f == ed.view.upcast_ref::<gtk::Widget>());
+        // (Gone already with the window, if that was closed.)
+        if ed.frame.parent().as_ref() == Some(self.overlay.upcast_ref()) {
+            self.overlay.remove(&ed.frame);
+        }
         self.editing.borrow_mut().take();
         self.show_edited_name();
-        self.icon_view.grab_focus();
+        if focus_here {
+            self.icon_view.grab_focus();
+        }
         if commit && !text.is_empty() && text != ed.name {
             self.emit(Event::Rename { uri: ed.uri.clone(), new_name: text });
         }
@@ -4081,13 +4144,23 @@ impl Pane {
         self.tree_view.queue_draw();
     }
 
+    /// Called before the pane is taken out of its window (while its views
+    /// are still in it: see detach_model there), and nothing it was still
+    /// to do is done after.
     pub fn shutdown(&self) {
+        if self.closed.replace(true) {
+            return;
+        }
         // While everything is still there: an icon view not in the window
         // (in the list view) is disposed before it's destroyed, and its
         // destroy then lets go of the model with its cells already gone
-        // (the selection-changed handlers ask for them).
+        // (the selection-changed handlers ask for them). Also, GTK 3 lets a
+        // scrolled window taken out of its window keep handling its
+        // scrollbars' changes, for scrollbars it no longer has (warnings):
+        // letting go of the models scrolls the views back to the top.
         *self.pending_scroll.borrow_mut() = None;
         self.detach_model();
+        util::release_memory_soon();
         self.gen.set(self.gen.get() + 1);
         let taken = self.monitor.borrow_mut().take();
         if let Some(m) = taken {
@@ -4220,7 +4293,7 @@ fn icon_cell_text(m: &gtk::TreeModel, it: &gtk::TreeIter, captions: u32, columns
 /// An icon view label's text: the name, then the captions Caja shows at
 /// large zoom levels (the size or number of items, then the date).
 fn icon_label_text(m: &gtk::TreeModel, it: &gtk::TreeIter, captions: u32) -> String {
-    let mut text: String = m.gv(it, COL_NAME as i32);
+    let mut text = value_str(&m.value(it, COL_NAME as i32)).to_string();
     if captions >= 1 {
         let size: String = m.gv(it, COL_SIZE_TEXT as i32);
         text.push(crate::iconlabel::CAPTION_SEP);
@@ -4243,7 +4316,7 @@ fn icon_view_thumb(m: &gtk::TreeModel, it: &gtk::TreeIter) -> Option<(String, (i
     // Asked for every item at every layout, and most have none: not copied
     // out unless there is one.
     let v = m.value(it, COL_THUMB as i32);
-    let thumb = v.get::<&str>().ok().filter(|t| !t.is_empty())?;
+    let thumb = Some(value_str(&v)).filter(|t| !t.is_empty())?;
     let head = icons::thumb_header(thumb)?;
     let shadow = !(head.alpha && m.value(it, COL_CTYPE as i32).get::<&str>().is_ok_and(|t| t.starts_with("image/")));
     Some((thumb.to_string(), (head.width, head.height), shadow))

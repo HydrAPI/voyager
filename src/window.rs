@@ -1821,9 +1821,12 @@ impl AppWindow {
                 self.moving_tabs.set(true);
                 while let Some(page) = closing.nth_page(Some(0)) {
                     let pane = self.panes.borrow().iter().find(|p| p.root.upcast_ref::<gtk::Widget>() == &page).cloned();
+                    // Shut down while still in the window (see Pane::shutdown).
+                    if let Some(p) = &pane {
+                        p.shutdown();
+                    }
                     closing.remove_page(Some(0));
                     if let Some(p) = pane {
-                        p.shutdown();
                         self.panes.borrow_mut().retain(|q| !Rc::ptr_eq(q, &p));
                     }
                 }
@@ -1987,9 +1990,12 @@ impl AppWindow {
             if self.window.focused_widget().is_some_and(|f| f.is_ancestor(&pane.root)) {
                 self.window.set_focus(None::<&gtk::Widget>);
             }
+            // Shut down while still in the window (see Pane::shutdown).
+            pane.shutdown();
             nb.remove_page(Some(n));
         }
         self.set_enabled("reopen-tab", true);
+        // (Done already if it was in a notebook.)
         pane.shutdown();
         self.panes.borrow_mut().retain(|p| !Rc::ptr_eq(p, pane));
         self.update_tabs_visibility();
@@ -2323,7 +2329,9 @@ impl AppWindow {
             glib::idle_add_local_once(move || {
                 // The window may have been closed meanwhile: a destroyed
                 // scrolled window has no scrollbar (and no adjustment).
-                if b.parent().is_none() || sw.hscrollbar().is_none() {
+                // Nor if it's not in a shown window (see
+                // Pane::scroll_columns_to_end).
+                if b.parent().is_none() || sw.hscrollbar().is_none() || !sw.is_realized() {
                     return;
                 }
                 let adj = sw.hadjustment();
@@ -3889,6 +3897,11 @@ fn order_list(target: &'static str, content: impl Fn(&str) -> gtk::Widget + 'sta
                 // their sizes).
                 let adj = sw.vadjustment();
                 glib::idle_add_local_once(move || {
+                    // Not once the dialog is closed (see
+                    // Pane::scroll_columns_to_end).
+                    if !r.is_realized() {
+                        return;
+                    }
                     let a = r.allocation();
                     adj.clamp_page(a.y() as f64, (a.y() + a.height()) as f64);
                 });

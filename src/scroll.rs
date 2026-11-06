@@ -50,6 +50,30 @@ fn install(sw: &gtk::ScrolledWindow) {
         }
         sw.set_data("arkha-scroll", true);
     }
+    // GTK 3 bug: a scrolled window unrealized while it has overlay
+    // scrollbars (a tab taken out of its window, a view whose window goes)
+    // leaves their handlers on its adjustments, for scrollbars it has
+    // forgotten: any scrolling of it until it's realized again warns
+    // (gtk_widget_get_mapped, gtk_widget_set_opacity, gdk_window_is_visible).
+    // With overlay scrolling switched off first, it lets go of them
+    // properly; switched back on once it's realized again.
+    let was_overlay = Rc::new(Cell::new(false));
+    {
+        let was = was_overlay.clone();
+        sw.connect_unrealize(move |sw| {
+            // Not when its window is gone already (it goes with it): the
+            // switch makes new windows for the scrollbars.
+            if sw.is_overlay_scrolling() && sw.window().is_some_and(|w| !w.is_destroyed()) {
+                was.set(true);
+                sw.set_overlay_scrolling(false);
+            }
+        });
+    }
+    sw.connect_realize(move |sw| {
+        if was_overlay.replace(false) {
+            sw.set_overlay_scrolling(true);
+        }
+    });
     sw.connect_scroll_event(|sw, ev| {
         let mods = gtk::accelerator_get_default_mod_mask();
         if !(ev.state() & mods).is_empty() || can_scroll(&sw.vadjustment(), sw.vscrollbar_policy()) {

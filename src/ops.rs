@@ -360,12 +360,18 @@ impl Worker {
         }
     }
 
-    fn delete_rec(&mut self, f: &gio::File) -> Flow {
+    /// Deletes `f` and all inside it. `inner`: it's inside what was asked
+    /// to be deleted (see remove_path).
+    fn delete_rec(&mut self, f: &gio::File, inner: bool) -> Flow {
+        let remove = |f: &gio::File, cancel: &gio::Cancellable| match f.path().filter(|_| inner) {
+            Some(path) => remove_path(&path),
+            None => f.delete(Some(cancel)),
+        };
         loop {
             if self.cancelled() {
                 return Err(Cancelled);
             }
-            match f.delete(Some(&self.cancel)) {
+            match remove(f, &self.cancel) {
                 Ok(()) => {
                     self.done_items += 1;
                     self.progress(&format!("Deleting “{}”", base_name(f)), false);
@@ -377,13 +383,13 @@ impl Worker {
                     };
                     let before = self.skipped;
                     for c in children {
-                        self.delete_rec(&f.child(c))?;
+                        self.delete_rec(&f.child(c), true)?;
                     }
                     if self.skipped != before {
                         return Ok(()); // something inside was kept
                     }
                     // try deleting the (now empty) dir again
-                    match f.delete(Some(&self.cancel)) {
+                    match remove(f, &self.cancel) {
                         Ok(()) => {
                             self.done_items += 1;
                             return Ok(());
@@ -448,7 +454,7 @@ impl Worker {
                                     break; // merge
                                 }
                                 let before = self.skipped;
-                                self.delete_rec(&dst)?;
+                                self.delete_rec(&dst, false)?;
                                 if self.skipped != before {
                                     return Ok(()); // couldn't remove it, give up on this item
                                 }
@@ -576,7 +582,7 @@ impl Worker {
                         Resolution::Replace => {
                             if dst_dir {
                                 let before = self.skipped;
-                                self.delete_rec(&dst)?;
+                                self.delete_rec(&dst, false)?;
                                 if self.skipped != before {
                                     self.done_bytes += size;
                                     return Ok(()); // couldn't remove it, give up on this item
@@ -654,7 +660,7 @@ impl Worker {
                             }
                             if dst_dir {
                                 let before = self.skipped;
-                                self.delete_rec(&dst)?;
+                                self.delete_rec(&dst, false)?;
                                 if self.skipped != before {
                                     return Ok(()); // couldn't remove it, keep the source
                                 }
@@ -687,7 +693,7 @@ impl Worker {
                     (self.by_bytes, self.total_bytes, self.done_bytes) = saved;
                     r?;
                     if self.skipped == before {
-                        self.delete_rec(src)?;
+                        self.delete_rec(src, false)?;
                     }
                     return Ok(());
                 }
@@ -807,7 +813,7 @@ impl Worker {
                             ) {
                                 ErrChoice::Retry => continue,
                                 ErrChoice::DeletePermanently => {
-                                    let _ = self.delete_rec(&f);
+                                    let _ = self.delete_rec(&f, false);
                                     break;
                                 }
                                 _ => break,
@@ -828,7 +834,7 @@ impl Worker {
                 }
                 self.progress("Preparing…", true);
                 for u in uris {
-                    if self.delete_rec(&gio::File::for_uri(&u)).is_err() {
+                    if self.delete_rec(&gio::File::for_uri(&u), false).is_err() {
                         break;
                     }
                 }
@@ -849,7 +855,7 @@ impl Worker {
                 self.total_items = kids.len() as u64;
                 self.progress("Preparing…", true);
                 for k in kids {
-                    if self.delete_rec(&k).is_err() {
+                    if self.delete_rec(&k, false).is_err() {
                         break;
                     }
                 }
@@ -1497,14 +1503,36 @@ const PIECE: usize = 32 * 1024 * 1024;
 /// Pausing happens in `progress`. With `overwrite` an existing `dst` is
 /// replaced, otherwise that fails with G_IO_ERROR_EXISTS. A copy that
 /// fails or is cancelled is removed.
+/// A system error as GIO reports it (with its kind, as G_IO_ERROR_*).
+fn io_error(e: &std::io::Error) -> glib::Error {
+    io_error_with(e, &e.to_string())
+}
+
+fn io_error_with(e: &std::io::Error, message: &str) -> glib::Error {
+    let code = unsafe { gio::ffi::g_io_error_from_errno(e.raw_os_error().unwrap_or(libc::EIO)) };
+    let kind = unsafe { <gio::IOErrorEnum as glib::translate::FromGlib<_>>::from_glib(code) };
+    glib::Error::new(kind, message)
+}
+
+/// Removes a file, link or empty folder as g_file_delete does, failing
+/// alike (with G_IO_ERROR_NOT_EMPTY for a folder that isn't), but without
+/// telling GVfs's metadata store: g_file_delete waits for it on every
+/// file, which made deleting a big folder several times slower, and kept
+/// the store busy for everything else asking it meanwhile (GTK loading an
+/// icon, for one). It's told once, about the item deleted (see delete_rec):
+/// it then forgets everything inside.
+fn remove_path(path: &std::path::Path) -> Result<(), glib::Error> {
+    let removed = std::fs::symlink_metadata(path).and_then(|m| if m.is_dir() { std::fs::remove_dir(path) } else { std::fs::remove_file(path) });
+    removed.map_err(|e| {
+        let reason = e.to_string();
+        let reason = reason.split(" (os error").next().unwrap_or(&reason);
+        io_error_with(&e, &format!("Error removing file {}: {reason}", path.display()))
+    })
+}
+
 fn copy_in_pieces(src: &std::path::Path, dst: &std::path::Path, overwrite: bool, cancel: &gio::Cancellable, progress: &mut dyn FnMut(i64, i64)) -> Option<Result<(), glib::Error>> {
     use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
     use std::os::unix::io::AsRawFd;
-    let io_error = |e: &std::io::Error| {
-        let code = unsafe { gio::ffi::g_io_error_from_errno(e.raw_os_error().unwrap_or(libc::EIO)) };
-        let kind = unsafe { <gio::IOErrorEnum as glib::translate::FromGlib<_>>::from_glib(code) };
-        glib::Error::new(kind, &e.to_string())
-    };
     let input = std::fs::File::open(src).ok()?;
     let meta = input.metadata().ok()?;
     // The kernel copies only within one kind of file system: don't make
@@ -1850,6 +1878,49 @@ mod tests {
         assert!(asked.is_empty(), "{asked:?}");
         assert!(!s.0.join("d").exists());
         assert_eq!(read(&s.0.join("outside/keep.txt")), "keep");
+    }
+
+    #[test]
+    fn items_inside_are_removed_as_gio_would() {
+        use std::os::unix::fs::PermissionsExt;
+        let s = home_scratch("removepath");
+        write(&s.0.join("full/f"), "f");
+        let not_empty = remove_path(&s.0.join("full")).unwrap_err();
+        assert!(not_empty.matches(gio::IOErrorEnum::NotEmpty), "{not_empty}");
+        assert!(remove_path(&s.0.join("missing")).unwrap_err().matches(gio::IOErrorEnum::NotFound));
+        // A link to a folder goes, not the folder.
+        std::os::unix::fs::symlink(s.0.join("full"), s.0.join("link")).unwrap();
+        remove_path(&s.0.join("link")).unwrap();
+        assert_eq!(read(&s.0.join("full/f")), "f");
+        remove_path(&s.0.join("full/f")).unwrap();
+        remove_path(&s.0.join("full")).unwrap();
+        assert!(!s.0.join("full").exists());
+        if unsafe { libc::geteuid() } != 0 {
+            write(&s.0.join("ro/f"), "f");
+            fs::set_permissions(s.0.join("ro"), fs::Permissions::from_mode(0o555)).unwrap();
+            let denied = remove_path(&s.0.join("ro/f")).unwrap_err();
+            fs::set_permissions(s.0.join("ro"), fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(denied.matches(gio::IOErrorEnum::PermissionDenied), "{denied}");
+            assert_eq!(denied.message(), format!("Error removing file {}: Permission denied", s.0.join("ro/f").display()));
+        }
+    }
+
+    #[test]
+    fn what_cant_be_deleted_inside_a_folder_is_asked_about_and_kept() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let s = home_scratch("deletestuck");
+        write(&s.0.join("d/gone/a"), "a");
+        write(&s.0.join("d/ro/kept"), "kept");
+        write(&s.0.join("d/b"), "b");
+        fs::set_permissions(s.0.join("d/ro"), fs::Permissions::from_mode(0o555)).unwrap();
+        let (_, asked) = run_job(Job::Delete(vec![uri(&s.0.join("d"))]), &[]);
+        fs::set_permissions(s.0.join("d/ro"), fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(asked, ["error:Error while deleting “kept”"]);
+        assert_eq!(read(&s.0.join("d/ro/kept")), "kept");
+        assert!(!s.0.join("d/gone").exists() && !s.0.join("d/b").exists());
     }
 
     #[test]

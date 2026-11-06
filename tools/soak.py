@@ -226,7 +226,7 @@ def outer(args):
     target/soak/ is written on disk."""
     if not args.binary:
         args.binary = build()
-    run = os.path.join(ROOT, "target", "soak", f"{args.backend}-seed{args.seed}")
+    run = os.path.join(ROOT, "target", "soak", f"{args.backend}-seed{args.seed}" + (f"-{args.name}" if args.name else ""))
     if os.path.exists(run):
         unlock(run)
         shutil.rmtree(run)
@@ -355,14 +355,18 @@ class Run:
         binary = self.args.binary
         cmd = [binary, self.files]
         if self.args.heaptrack:
-            cmd = ["heaptrack", "-o", os.path.join(self.dir, "heaptrack")] + cmd
+            cmd = ["heaptrack", "--record-only", "-o", os.path.join(self.dir, "heaptrack")] + cmd
         else:
             # Under gdb from the start (attaching later isn't allowed with
             # ptrace_scope 1): a crash prints its backtrace, and so does a
             # hang, which is interrupted (see backtrace).
+            # debuginfod off: the sandbox has no network, and gdb 18 has
+            # crashed on it while stopping. The stopped thread's backtrace
+            # comes first, in case listing every thread goes wrong.
             cmd = ["gdb", "-q", "-batch", "-ex", "set pagination off", "-ex", "set print thread-events off",
+                   "-ex", "set debuginfod enabled off",
                    "-ex", "handle SIGPIPE nostop noprint pass", "-ex", "run",
-                   "-ex", "thread apply all bt 120", "-ex", "kill", "--args"] + cmd
+                   "-ex", "bt 120", "-ex", "thread apply all bt 120", "-ex", "kill", "--args"] + cmd
         self.log = open(os.path.join(self.dir, "arkha.log"), "a")
         env = dict(os.environ)
         if self.args.fatal_criticals:
@@ -534,10 +538,11 @@ class Run:
                 pass
         return found
 
-    def answer_dialogs(self, rounds=1):
+    def answer_dialogs(self, rounds=1, ending=False):
         """Presses a button in each open dialog (now and then ticking a
         check box first, as "Apply this action to all"); whether none are
-        left."""
+        left. `ending`: Cancel or Close where there is one, to end what's
+        asking (a copy of many files asks about each conflict in turn)."""
         for _ in range(rounds):
             ds = self.dialogs()
             if not ds:
@@ -566,6 +571,8 @@ class Run:
                         if key not in self.unanswered:
                             self.unanswered.add(key)
                             self.note(f"no button to answer {key}: {self.describe_tree(w)}")
+                    if ending:
+                        answers = [(n, a) for n, a in answers if n.replace("_", "") in ("Cancel", "Close")] or answers
                     if answers:
                         n, a = self.rnd.choice(answers)
                         self.counts["answer:" + n.replace("_", "")] = self.counts.get("answer:" + n.replace("_", ""), 0) + 1
@@ -802,12 +809,14 @@ class Run:
             if time.monotonic() - last_report > 60:
                 last_report = time.monotonic()
                 rss = self.rss[-1][1] if self.rss else 0
-                self.note(f"{n} actions, {len(self.windows())} windows, {self.churned} file changes, {rss} MB")
+                st = os.statvfs(os.path.expanduser("~"))
+                free = st.f_bavail * st.f_frsize // (1 << 20)
+                self.note(f"{n} actions, {len(self.windows())} windows, {self.churned} file changes, {rss} MB, home {free} MB free")
         self.actions_done = n
         self.stop.set()
         # Quitting must work and be quick (once nothing waits for an answer,
         # which no one could give then).
-        if self.alive() and not self.answer_dialogs(rounds=40):
+        if self.alive() and not self.answer_dialogs(rounds=40, ending=True):
             self.problem("dialogs still open after 40 answers")
         if self.alive():
             self.sample_rss()
@@ -904,6 +913,7 @@ def main():
     ap.add_argument("--backend", choices=["x11", "wayland"], default="x11")
     ap.add_argument("--minutes", type=float, default=10)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--name", help="added to the run's folder name (target/soak/<backend>-seed<N>-<name>), to keep runs of the same seed apart")
     ap.add_argument("--pause", type=float, default=0.15, help="longest pause between actions, in seconds")
     ap.add_argument("--binary", help="the arkha to run (default: one built with debug info in target/soak-build)")
     ap.add_argument("--heaptrack", action="store_true", help="run under heaptrack, to find memory that's never freed")

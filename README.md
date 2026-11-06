@@ -4,15 +4,17 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
 
 ## Features
 
-- **Caja layout:** menubar, toolbar (Back / Forward / Up / Reload / Home / File System / Filter), breadcrumb path bar that switches to a text location bar (Ctrl+L) with path completion, side pane with Computer, Devices and Bookmarks sections (reorder them by dragging their headings), tabs, status bar with selection info and free space.
-- **Split view (F3):** a second pane side by side, each with its own tabs; the toolbar and menus act on the pane you last clicked, and Edit → Copy/Move to Other Pane transfers the selection across.
+- **Caja layout:** menubar, toolbar (Back / Forward / Up / Reload / Home / File System / Search), breadcrumb path bar that switches to a text location bar (Ctrl+L) with path completion, side pane with Computer, Devices and Bookmarks sections (reorder them by dragging their headings), tabs, status bar with selection info and free space.
+- **The bar beside the path:** file operations, split view, view, zoom and info panel buttons; drag them to rearrange the bar, and hide the ones you don't use (Preferences → Display).
+- **Split view (F3):** a second pane side by side, each with its own tabs; the toolbar and menus act on the pane you last clicked (or, optionally, the one under the mouse pointer), and Edit → Copy/Move to Other Pane transfers the selection across.
 - **Tabs like a browser:** reopen closed tabs (Ctrl+Shift+T), drag tabs between windows or out into a new window, optionally always show the tab bar.
 - **Customizable keyboard shortcuts** for every action (Preferences → Keyboard).
 - **Four views:** Icons, List (sortable Name / Size / Type / Modified columns), Compact and Columns (like macOS Finder: the folders on the way in columns side by side, the selected folder's contents or file's preview on the right; ← / → move between them, and every column has context menus, drag and drop and live updates); zoom with Ctrl+plus/minus or Ctrl+scroll, through zoom levels you can set per view.
 - **Per-folder views** (on by default): remember the view and sorting of each folder, so a folder opens the way you left it.
-- Optional alternating row colors in the list view.
+- Optional alternating row colors in the list view and the bulk rename list.
+- **Scrolling:** the mouse wheel scrolls sideways where there's only a horizontal scrollbar, and a middle-click on empty space starts Firefox-style autoscrolling (can be turned off).
 - **Customizable context menu:** hide and reorder its entries (drag them, separators included), and add your own entries that run a shell command on the selected files (with `%f`, `%F`, `%n`, `%N`, `%d` placeholders), optionally limited to files, folders, a folder's empty space, file types (videos, audio, images, text, documents, archives) and/or name patterns like `*.jpg`.
-- **Thumbnails:** built in for images, and for any other file type through custom thumbnailer commands, set up in Preferences → Display. Videos work out of the box with ffmpegthumbnailer or ffmpeg if either is installed; thumbnailers whose program is missing are skipped. Stored in the shared `~/.cache/thumbnails`, so Caja's thumbnails are reused and vice versa.
+- **Thumbnails:** built in for images, and for any other file type through custom thumbnailer commands, set up in Preferences → Previews. Videos work out of the box with ffmpegthumbnailer or ffmpeg if either is installed; thumbnailers whose program is missing are skipped. Stored in the shared `~/.cache/thumbnails`, so Caja's thumbnails are reused and vice versa.
 - **File operations:** these run on a background thread with a progress window and cancel button.
   - Copy, cut and paste, using the same clipboard format as Caja and Nautilus (you can copy in one and paste in the other)
   - Drag and drop: Shift moves, Ctrl copies, Alt asks; a plain drag moves on the same filesystem and copies across filesystems
@@ -20,6 +22,7 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
   - Move to Trash, Delete permanently, Restore from Trash, Empty Trash
   - Conflict dialog (Skip / Keep Both / Replace or Merge, with "apply to all")
 - Inline rename (F2) that pre-selects the name without its extension.
+- **Bulk rename** (Rename All…, for several items): Case, Insert, Remove, Replace, Enumerate and Regex tabs with a live preview, as MATE's caja-rename extension does it, optionally working before or after the extension.
 - New folder, new empty document, and new documents from your `~/Templates` folder.
 - Live updates when files change on disk.
 - **Opening files:** Open / Open With (the apps for the file type, or any other app) / Run or Display for executables, Open in Terminal (F4), and Extract Here / Compress via Engrampa or File Roller.
@@ -28,13 +31,14 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
 - Devices: flash drives, memory cards, discs, phones (MTP) and network mounts. Click to mount, unmount / eject / safely remove with the button next to them or the context menu. Newly inserted media are mounted by Arkha itself (no desktop environment needed); this can be turned off, and the eject button can be set to only unmount. As in Caja, a notification says when a removed drive can be unplugged (and, while data is still being written to it, that it shouldn't be yet). On GNOME, Cinnamon, MATE, Xfce, KDE, LXDE and LXQt, that setting is the desktop's own, as Caja's is MATE's: changing it in Arkha changes it in the desktop's settings and the other way round, so there's one setting and nothing to undo when Arkha is removed. The desktop mounts media first; Arkha mounts any it left. Separate automounters (udiskie, devmon, ldm, udisks-glue) can't be switched off from outside: Arkha says so once if it finds one running.
 - **Info panel:** beside the files (View → Info Panel, F11, or its toolbar button), turned on per folder. It shows the selected item with a few details: a folder's cover picture (`folder.jpg`, `cover.jpg`, … — the names are a setting, matched ignoring case), an image itself, or a file's thumbnail (videos and the like); for several items their number and total size. Folder sizes are left out on network shares (SMB, NFS, SSHFS…), where adding them up would ask the server about every file. Custom icons set in Caja are shown too.
 - Bookmarks are shared with Caja and the GTK file chooser (`~/.config/gtk-3.0/bookmarks`). Includes a bookmark editor (Ctrl+B).
-- Preferences: single-click mode, default view and sorting, per-folder views, zoom levels, hidden files, file sizes in IEC units (KiB, MiB), thumbnails, confirmation before trashing, the number of hidden items in the status bar (off by default), and which side pane entries to show and their row height.
+- Preferences: single-click mode, default view and sorting, per-folder views, zoom levels, hidden files, file sizes in IEC units (KiB, MiB), thumbnails, confirmation before trashing, where new tabs go, text on the toolbar buttons, an always-text location bar, the number of hidden items in the status bar (off by default), and which side pane entries to show and their row height.
+- **Light on resources:** opens folders with less CPU than Caja and Nemo (big ones too: 20,000 files in about 1.8 s of CPU against Caja's 2.2 s), uses the least memory of the three, and gives memory back when big tabs are closed.
 
 Settings live in `~/.config/arkha/arkha.conf`; per-folder views in `~/.config/arkha/folders.conf`; custom context menu actions in `~/.config/arkha/actions.conf`; custom thumbnailers in `~/.config/arkha/thumbnailers.conf`.
 
 ## Building
 
-Needs Rust (1.70+) and the GTK 3 development files:
+Needs Rust (1.82+) and the GTK 3 development files:
 
 ```sh
 # Debian / Ubuntu / Mint
@@ -78,9 +82,10 @@ ARKHA_RANDOM_CASES=50 cargo test --release random     # the randomized tests, 50
 cargo test --release -- --ignored stress              # file operation stress tests (ARKHA_STRESS_FILES=n)
 tools/soak.py --backend x11 --minutes 30              # the whole program, driven at random
 tools/soak.py --backend wayland --minutes 30 --cycle  # one round repeated: does memory keep growing?
+tools/soak.py --backend x11 --minutes 10 --heaptrack   # memory recorded by heaptrack
 ```
 
-`tools/soak.py` runs Arkha in a bubblewrap sandbox (the system read-only, `/home` and `/mnt` hidden, its own D-Bus session, a headless X server, and for Wayland Weston inside it) and drives it through its D-Bus actions and its dialogs through accessibility (AT-SPI), while files keep changing underneath. It reports crashes (with backtraces, as Arkha runs under gdb), GLib/GTK warnings, slow or missing responses, and memory over time, in `target/soak/<run>/`. `--fatal-criticals` stops at the first critical warning for its backtrace. Needs `bubblewrap`, `xorg-server-xvfb`, `weston`, `gdb`, `xdotool`, `at-spi2-core` and `python-gobject`.
+`tools/soak.py` runs Arkha in a bubblewrap sandbox (the system read-only, `/home` and `/mnt` hidden, its own D-Bus session, a headless X server, and for Wayland Weston inside it) and drives it through its D-Bus actions and its dialogs through accessibility (AT-SPI), while files keep changing underneath. It reports crashes (with backtraces, as Arkha runs under gdb), GLib/GTK warnings, slow or missing responses, and memory over time, in `target/soak/<run>/`. `--fatal-criticals` stops at the first critical warning for its backtrace; `--name` keeps runs of the same seed apart (`target/soak/<backend>-seed<N>-<name>`). Its once-a-minute status line includes the sandbox home's free space: GTK and GVfs warnings about writing files there mean the 512 MiB home has filled up. Needs `bubblewrap`, `xorg-server-xvfb`, `weston`, `gdb`, `xdotool`, `at-spi2-core` and `python-gobject`.
 
 ## Code layout
 
@@ -91,18 +96,23 @@ tools/soak.py --backend wayland --minutes 30 --cycle  # one round repeated: does
 | `src/columns.rs` | The side columns of the columns view (folders above, selected folder's contents): clicks, context menus, drag and drop, live updates |
 | `src/info.rs` | The info panel: folder covers, image previews and thumbnails, details |
 | `src/sidebar.rs` | Side pane: places, devices (mount, eject, automount), bookmarks, section order |
-| `src/scroll.rs` | Sideways wheel scrolling and middle-click autoscroll in every scrolled area |
+| `src/scroll.rs` | Sideways wheel scrolling and middle-click autoscroll in every scrolled area, and a workaround for a GTK 3 overlay-scrollbar bug |
 | `src/pane.rs` | One tab: folder loading, monitoring, icon/list views, selection, DnD, inline rename |
+| `src/search.rs` | Searching a folder and its subfolders by name |
+| `src/bulkrename.rs` | Rename All…: renaming several items at once |
+| `src/keys.rs` | Keyboard shortcuts and their editor |
 | `src/iconlabel.rs` | The icon view's cells drawn like Caja's: wrapped names cut to three lines, captions, tinted selected icons, boxed selected names |
+| `src/iconview.rs` | The icon view, sized in big folders without measuring every item again for each size request |
 | `src/ops.rs` | Copy / move / link / trash / delete engine on a worker thread, progress + conflict dialogs |
 | `src/clipboard.rs` | Caja/Nautilus-compatible file clipboard |
 | `src/props.rs` | Properties dialog |
-| `src/icons.rs` | Icon cache and background thumbnailer |
+| `src/icons.rs` | Icon cache, background thumbnailer, thumbnail caches |
 | `src/thumbnailers.rs` | Custom thumbnailer commands |
 | `src/config.rs` | Settings file, zoom levels |
 | `src/actions.rs` | Context menu entries (hiding, order), custom actions |
 | `src/folders.rs` | View and sorting remembered per folder |
-| `src/util.rs` | Formatting, naming, bookmarks, helpers |
+| `src/util.rs` | Formatting, naming, bookmarks, notifications, helpers |
+| `src/testutil.rs` | Test helpers: scratch folders, random inputs |
 
 ## Not done yet (ideas)
 

@@ -18,6 +18,9 @@ thread_local! {
     static THUMBS: RefCell<HashMap<String, HashMap<i32, Option<Pixbuf>>>> = RefCell::new(HashMap::new());
     /// Thumbnails with their shadow (see framed_thumb), and their sizes.
     static FRAMED: RefCell<HashMap<(String, i32), Pixbuf>> = RefCell::new(HashMap::new());
+    /// The memory the pictures in THUMBS and FRAMED take (see CACHED_BYTES).
+    static THUMB_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static FRAMED_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static DIMS: RefCell<HashMap<String, Option<ThumbHeader>>> = RefCell::new(HashMap::new());
     /// Thumbnails being loaded, and the loaders' queue (see thumb_pixbuf).
     static LOADING: RefCell<HashSet<(String, i32)>> = RefCell::new(HashSet::new());
@@ -62,7 +65,18 @@ pub fn reload_thumbnailers() {
 #[allow(dead_code)]
 pub fn clear_cache() {
     ICONS.with(|c| c.borrow_mut().clear());
+    ICONS_GEN.with(|g| g.set(g.get() + 1));
 }
+
+thread_local! {
+    /// Changes when ICONS is emptied: the pictures kept on icons (see
+    /// icon_pixbuf) are then out of date.
+    static ICONS_GEN: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static PICTURES_KEY: glib::Quark = glib::Quark::from_str("arkha-icon-pictures");
+}
+
+/// Pictures kept on an icon: (ICONS_GEN, size, picture).
+type KeptPictures = RefCell<Vec<(u32, i32, Option<Pixbuf>)>>;
 
 /// A GIcon's text, which names it in the cache. Making it takes long for
 /// what views do for every item each time they measure them, so it's
@@ -80,6 +94,36 @@ fn icon_key(icon: &gio::Icon) -> String {
 }
 
 pub fn icon_pixbuf(icon: Option<&gio::Icon>, size: i32) -> Option<Pixbuf> {
+    // Asked for every item drawn, at every step of scrolling: kept on the
+    // icon too, which saves naming it and two lookups.
+    let generation = ICONS_GEN.with(|g| g.get());
+    let quark = PICTURES_KEY.with(|q| *q);
+    if let Some(i) = icon {
+        // SAFETY: only ever set below, with this type.
+        if let Some(kept) = unsafe { i.qdata::<KeptPictures>(quark) } {
+            let kept = unsafe { kept.as_ref() }.borrow();
+            if let Some((_, _, p)) = kept.iter().find(|(g, s, _)| *g == generation && *s == size) {
+                return p.clone();
+            }
+        }
+    }
+    let pb = icon_pixbuf_cached(icon, size);
+    if let Some(i) = icon {
+        unsafe {
+            match i.qdata::<KeptPictures>(quark) {
+                Some(kept) => {
+                    let mut kept = kept.as_ref().borrow_mut();
+                    kept.retain(|(g, s, _)| *g == generation && *s != size);
+                    kept.push((generation, size, pb.clone()));
+                }
+                None => i.set_qdata::<KeptPictures>(quark, RefCell::new(vec![(generation, size, pb.clone())])),
+            }
+        }
+    }
+    pb
+}
+
+fn icon_pixbuf_cached(icon: Option<&gio::Icon>, size: i32) -> Option<Pixbuf> {
     let key = icon.map_or_else(|| "text-x-generic".to_string(), icon_key);
     if let Some(p) = ICONS.with(|c| c.borrow().get(&key).and_then(|s| s.get(&size).cloned())) {
         return p;
@@ -189,9 +233,6 @@ fn start_loaders() -> Arc<LoadQueue> {
             }
             THUMBS.with(|c| {
                 let mut c = c.borrow_mut();
-                if c.len() > 4000 {
-                    c.clear();
-                }
                 LOADING.with(|l| {
                     let mut l = l.borrow_mut();
                     for (path, size, pixels) in done {
@@ -199,7 +240,12 @@ fn start_loaders() -> Arc<LoadQueue> {
                         let pb = pixels.map(|(bytes, alpha, w, h, stride)| {
                             Pixbuf::from_bytes(&bytes, gdk_pixbuf::Colorspace::Rgb, alpha, 8, w, h, stride)
                         });
-                        c.entry(path).or_default().insert(size, pb);
+                        if make_room(&THUMB_BYTES, c.len(), pb.as_ref().map_or(0, pixbuf_bytes)) {
+                            c.clear();
+                        }
+                        if let Some(Some(old)) = c.entry(path).or_default().insert(size, pb) {
+                            THUMB_BYTES.with(|b| b.set(b.get().saturating_sub(pixbuf_bytes(&old))));
+                        }
                     }
                 });
             });
@@ -211,9 +257,41 @@ fn start_loaders() -> Arc<LoadQueue> {
     q
 }
 
+/// The most memory loaded thumbnails may take, and so again for those
+/// with their shadow: past it they're let go (and loaded again as they're
+/// drawn). Many windows full even at the largest size, while a folder of
+/// thousands of pictures, scrolled through, would otherwise keep them all.
+const CACHED_BYTES: usize = 96 << 20;
+
+fn pixbuf_bytes(p: &Pixbuf) -> usize {
+    p.rowstride().max(0) as usize * p.height().max(0) as usize
+}
+
+/// Counts a picture of `add` bytes about to go into a cache of `len`
+/// entries; true if the cache is to be emptied first (it would hold too
+/// much), the count then starting again.
+fn make_room(count: &'static std::thread::LocalKey<std::cell::Cell<usize>>, len: usize, add: usize) -> bool {
+    count.with(|c| {
+        let full = len >= 4000 || c.get() + add > CACHED_BYTES;
+        c.set(if full { add } else { c.get() + add });
+        full
+    })
+}
+
 pub fn forget_thumb(path: &str) {
-    THUMBS.with(|c| c.borrow_mut().remove(path));
-    FRAMED.with(|c| c.borrow_mut().retain(|k, _| k.0 != path));
+    let gone = THUMBS.with(|c| c.borrow_mut().remove(path)).map_or(0, |sizes| sizes.values().flatten().map(pixbuf_bytes).sum());
+    THUMB_BYTES.with(|c| c.set(c.get().saturating_sub(gone)));
+    FRAMED.with(|c| {
+        let mut gone = 0;
+        c.borrow_mut().retain(|k, p| {
+            let keep = k.0 != path;
+            if !keep {
+                gone += pixbuf_bytes(p);
+            }
+            keep
+        });
+        FRAMED_BYTES.with(|c| c.set(c.get().saturating_sub(gone)));
+    });
     DIMS.with(|c| c.borrow_mut().remove(path));
 }
 
@@ -301,10 +379,12 @@ pub fn framed_thumb(path: &str, size: i32) -> Option<Pixbuf> {
     let framed = gdk::pixbuf_get_from_surface(&surface, 0, 0, w + 2 * SHADOW, h + SHADOW)?;
     FRAMED.with(|c| {
         let mut c = c.borrow_mut();
-        if c.len() > 4000 {
+        if make_room(&FRAMED_BYTES, c.len(), pixbuf_bytes(&framed)) {
             c.clear();
         }
-        c.insert(key, framed.clone());
+        if let Some(old) = c.insert(key, framed.clone()) {
+            FRAMED_BYTES.with(|b| b.set(b.get().saturating_sub(pixbuf_bytes(&old))));
+        }
     });
     Some(framed)
 }
@@ -575,6 +655,20 @@ fn png_thumb_mtime(path: &std::path::Path) -> Option<String> {
 mod tests {
     use super::*;
     use crate::testutil::TestDir;
+
+    #[test]
+    fn thumbnail_caches_stay_within_their_memory() {
+        THUMB_BYTES.with(|c| c.set(0));
+        // Fits: counted.
+        assert!(!make_room(&THUMB_BYTES, 0, CACHED_BYTES - 10));
+        assert!(!make_room(&THUMB_BYTES, 1, 10));
+        // One byte more: emptied, and the count starts with this picture.
+        assert!(make_room(&THUMB_BYTES, 2, 1));
+        assert_eq!(THUMB_BYTES.with(|c| c.get()), 1);
+        // Too many entries, however small.
+        assert!(make_room(&THUMB_BYTES, 4000, 1));
+        assert_eq!(THUMB_BYTES.with(|c| c.get()), 1);
+    }
 
     /// A PNG's signature and chunks. The CRCs are left zero: they aren't checked.
     fn png(chunks: &[(&[u8; 4], &[u8])]) -> Vec<u8> {

@@ -7,6 +7,25 @@ use gtk::prelude::*;
 /// A process-wide flag, as file operations format sizes on their own thread.
 static IEC_UNITS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Hands memory freed in bulk (a closed tab, a big folder left) back to
+/// the system, a moment later and once for several. Folders are many small
+/// pieces (a row, its texts), and the allocator keeps the pages they leave
+/// for later: Arkha would go on showing the most it ever used.
+pub fn release_memory_soon() {
+    thread_local! { static PENDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+    if PENDING.with(|p| p.replace(true)) {
+        return;
+    }
+    glib::timeout_add_local_once(std::time::Duration::from_secs(1), || {
+        PENDING.with(|p| p.set(false));
+        #[cfg(target_env = "gnu")]
+        // SAFETY: no arguments to get wrong; glibc's own locking.
+        unsafe {
+            libc::malloc_trim(0);
+        }
+    });
+}
+
 pub fn set_iec_units(on: bool) {
     IEC_UNITS.store(on, std::sync::atomic::Ordering::Relaxed);
 }

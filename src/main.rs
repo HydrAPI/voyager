@@ -6,6 +6,7 @@ mod clipboard;
 mod columns;
 mod config;
 mod iconlabel;
+mod iconview;
 mod info;
 mod folders;
 mod icons;

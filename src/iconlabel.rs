@@ -16,6 +16,7 @@ use gtk::subclass::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
 /// Separates the name from the captions in a label's text.
 pub const CAPTION_SEP: char = '\u{1f}';
@@ -37,6 +38,24 @@ impl IconLabel {
     /// (where Caja has them, see Pane::fit_icon_columns).
     pub fn set_x_shift(&self, px: i32) {
         self.imp().x_shift.set(px);
+    }
+
+    /// Sets the text to show. It's set for every item at every layout:
+    /// below icons the label measures and draws it itself, so it's only
+    /// kept here (setting the property costs more than the rest); beside
+    /// them GtkCellRendererText does, from the property.
+    pub fn set_label_text(&self, text: &str) {
+        let imp = self.imp();
+        {
+            let mut t = imp.text.borrow_mut();
+            if *t != text {
+                t.clear();
+                t.push_str(text);
+            }
+        }
+        if !imp.below() {
+            self.set_property("text", text);
+        }
     }
 
     /// How names are shown below icons: at most `max_lines` lines (0: all),
@@ -71,12 +90,12 @@ impl IconLabel {
         if p.wrap_width < 0 || text.is_empty() {
             return None;
         }
-        let layouts = imp.layouts(widget, text, whole);
+        let layouts = imp.drawn_layouts(widget, text, whole);
         let (x, y) = self.text_origin(area);
         // Caja's box: the lines as laid out, 4 px more on the sides and 1
         // above and below.
         let (mut left, mut right) = (f64::MAX, f64::MIN);
-        for l in &layouts {
+        for l in layouts.iter() {
             let (_, logical) = l.pixel_extents();
             left = left.min(x + logical.x() as f64);
             right = right.max(x + (logical.x() + logical.width()) as f64);
@@ -102,7 +121,7 @@ impl IconLabel {
         let Some((bx, by, bw, bh)) = self.text_box(widget, area, text, selected) else { return };
         let ctx = widget.style_context();
         let bg = ctx.lookup_color("theme_selected_bg_color").unwrap_or_else(|| gdk::RGBA::new(0.08, 0.33, 0.62, 1.0));
-        let layouts = self.imp().layouts(widget, text, selected);
+        let layouts = self.imp().drawn_layouts(widget, text, selected);
         let (x, y) = self.text_origin(area);
         ctx.save();
         if selected {
@@ -218,6 +237,27 @@ impl IconImage {
     pub fn set_drop_target(&self, on: bool) {
         self.imp().drop_target.set(on);
     }
+
+    /// Sets the picture. The same one again does nothing: it's set for
+    /// every item at every layout (None, when not drawing), and each set is
+    /// a property change with its notification.
+    pub fn set_picture(&self, picture: Option<gdk_pixbuf::Pixbuf>) {
+        let imp = self.imp();
+        if *imp.picture.borrow() == picture {
+            return;
+        }
+        self.show(picture.as_ref());
+        imp.picture.replace(picture);
+    }
+
+    /// Has GtkCellRendererPixbuf draw `picture`: from its cairo surface
+    /// if it's small (see surface_of), else as it is.
+    fn show(&self, picture: Option<&gdk_pixbuf::Pixbuf>) {
+        match picture.and_then(surface_of) {
+            Some(s) => self.set_property("surface", s),
+            None => self.set_property("pixbuf", picture),
+        }
+    }
 }
 
 impl Default for IconImage {
@@ -228,6 +268,30 @@ impl Default for IconImage {
 
 /// `pixbuf` with each color multiplied by `color`'s, like Caja's selected
 /// icons (eel_create_colorized_pixbuf).
+/// Pictures up to this many pixels keep the cairo surface they're drawn
+/// from (see surface_of).
+const KEPT_SURFACE_PIXELS: i32 = 128 * 128;
+
+/// The cairo surface a small picture is drawn from, made once and kept
+/// with it: GtkCellRendererPixbuf would make it again each time it draws
+/// one, every item in sight at every step of scrolling. Bigger pictures
+/// (thumbnails at large sizes) aren't given one, to keep the memory.
+fn surface_of(p: &gdk_pixbuf::Pixbuf) -> Option<gtk::cairo::Surface> {
+    if p.width() * p.height() > KEPT_SURFACE_PIXELS {
+        return None;
+    }
+    thread_local! { static KEY: glib::Quark = glib::Quark::from_str("arkha-surface"); }
+    let key = KEY.with(|k| *k);
+    // SAFETY: only ever set here, with this type.
+    if let Some(s) = unsafe { p.qdata::<gtk::cairo::Surface>(key) } {
+        return Some(unsafe { s.as_ref() }.clone());
+    }
+    use gdk::prelude::GdkPixbufExt;
+    let s = p.create_surface(1, None::<&gdk::Window>)?;
+    unsafe { p.set_qdata(key, s.clone()) };
+    Some(s)
+}
+
 fn colorized(pixbuf: &gdk_pixbuf::Pixbuf, color: &gdk::RGBA) -> Option<gdk_pixbuf::Pixbuf> {
     let out = pixbuf.add_alpha(false, 0, 0, 0).ok()?;
     let (w, h, stride) = (out.width() as usize, out.height() as usize, out.rowstride() as usize);
@@ -265,6 +329,10 @@ mod imp {
 
     pub struct IconLabel {
         sizes: RefCell<Sizes>,
+        /// The layouts of labels drawn lately (see drawn_layouts).
+        drawn: RefCell<HashMap<u64, Rc<[pango::Layout]>>>,
+        /// The text last set with set_label_text.
+        pub text: RefCell<String>,
         pub props: Cell<Option<Props>>,
         /// (max lines, font size change in points): see set_style.
         pub style: Cell<(i32, i32)>,
@@ -274,7 +342,15 @@ mod imp {
 
     impl Default for IconLabel {
         fn default() -> Self {
-            IconLabel { sizes: RefCell::default(), props: Cell::new(None), style: Cell::new((0, 0)), x_shift: Cell::new(0), drop_target: Cell::new(false) }
+            IconLabel {
+                sizes: RefCell::default(),
+                drawn: RefCell::default(),
+                text: RefCell::default(),
+                props: Cell::new(None),
+                style: Cell::new((0, 0)),
+                x_shift: Cell::new(0),
+                drop_target: Cell::new(false),
+            }
         }
     }
 
@@ -289,8 +365,11 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
             // The text is set for every item; anything else is read again.
-            self.obj().connect_notify_local(None, |obj, pspec| {
-                if pspec.name() != "text" {
+            // (Told apart by the property itself: its name would be checked
+            // for UTF-8 at every item.)
+            let text = self.obj().find_property("text").map(|p| p.as_ptr());
+            self.obj().connect_notify_local(None, move |obj, pspec| {
+                if Some(pspec.as_ptr()) != text {
                     obj.imp().props.set(None);
                 }
             });
@@ -325,20 +404,20 @@ mod imp {
         }
 
         /// Names below icons (else the compact view's beside them).
-        fn below(&self) -> bool {
+        pub(super) fn below(&self) -> bool {
             let p = self.props();
             p.wrap_width > -1 && !p.ellipsized
         }
 
         fn text(&self) -> String {
-            self.obj().property::<Option<String>>("text").unwrap_or_default()
+            self.text.borrow().clone()
         }
 
         /// A hash of what the text's size depends on.
         fn key(&self, widget: &gtk::Widget) -> u64 {
             let mut h = std::collections::hash_map::DefaultHasher::new();
             self.props().hash.hash(&mut h);
-            self.text().hash(&mut h);
+            self.text.borrow().hash(&mut h);
             // Hashed where the context keeps it: asked for every item's
             // every measurement, a copy each time costs more than the rest.
             let ctx = widget.pango_context();
@@ -407,6 +486,37 @@ mod imp {
                 out.push(l);
             }
             out
+        }
+
+        /// `layouts`, kept for the labels drawn lately: every label in
+        /// sight is drawn again at each step of scrolling, and laying out
+        /// its text costs more than drawing it.
+        pub fn drawn_layouts(&self, widget: &gtk::Widget, text: &str, whole: bool) -> Rc<[pango::Layout]> {
+            let ctx = widget.pango_context();
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (self.props().hash, self.style.get(), text, whole, widget.scale_factor()).hash(&mut h);
+            // The context (its font, resolution and options apply) and
+            // its font, as `key` reads it.
+            glib::translate::ToGlibPtr::<*mut pango::ffi::PangoContext>::to_glib_none(&ctx).0.hash(&mut h);
+            // SAFETY: as in `key`.
+            unsafe {
+                let d = pango::ffi::pango_context_get_font_description(glib::translate::ToGlibPtr::to_glib_none(&ctx).0);
+                if !d.is_null() {
+                    pango::ffi::pango_font_description_hash(d).hash(&mut h);
+                }
+            }
+            let k = h.finish();
+            if let Some(l) = self.drawn.borrow().get(&k) {
+                return l.clone();
+            }
+            let l: Rc<[pango::Layout]> = self.layouts(widget, text, whole).into();
+            let mut drawn = self.drawn.borrow_mut();
+            // More than a few windows full: start again.
+            if drawn.len() >= 600 {
+                drawn.clear();
+            }
+            drawn.insert(k, l.clone());
+            l
         }
 
         fn label_height(&self, widget: &gtk::Widget) -> i32 {
@@ -487,7 +597,7 @@ mod imp {
                     cr.clip();
                 }
             }
-            draw_lines(&widget.style_context(), cr, x, y, &self.layouts(widget, &text, false));
+            draw_lines(&widget.style_context(), cr, x, y, &self.drawn_layouts(widget, &text, false));
             if shifted_clip {
                 let _ = cr.restore();
             }
@@ -496,6 +606,8 @@ mod imp {
 
     #[derive(Default)]
     pub struct IconImage {
+        /// The picture set (see set_picture).
+        pub picture: RefCell<Option<gdk_pixbuf::Pixbuf>>,
         pub tint: Cell<bool>,
         pub x_shift: Cell<i32>,
         pub drop_target: Cell<bool>,
@@ -511,7 +623,45 @@ mod imp {
     impl ObjectImpl for IconImage {}
     impl CellRendererPixbufImpl for IconImage {}
 
+    impl IconImage {
+        /// The fixed size, if set: what GtkCellRenderer makes the size in
+        /// the end anyway, without GtkCellRendererPixbuf first working one
+        /// out through its style context (for every item at every layout).
+        fn fixed(&self) -> Option<(i32, i32)> {
+            let (w, h) = self.obj().fixed_size();
+            (w >= 0 && h >= 0).then_some((w, h))
+        }
+    }
+
     impl CellRendererImpl for IconImage {
+        fn preferred_width<P: IsA<gtk::Widget>>(&self, widget: &P) -> (i32, i32) {
+            match self.fixed() {
+                Some((w, _)) => (w, w),
+                None => self.parent_preferred_width(widget),
+            }
+        }
+
+        fn preferred_height<P: IsA<gtk::Widget>>(&self, widget: &P) -> (i32, i32) {
+            match self.fixed() {
+                Some((_, h)) => (h, h),
+                None => self.parent_preferred_height(widget),
+            }
+        }
+
+        fn preferred_height_for_width<P: IsA<gtk::Widget>>(&self, widget: &P, width: i32) -> (i32, i32) {
+            match self.fixed() {
+                Some((_, h)) => (h, h),
+                None => self.parent_preferred_height_for_width(widget, width),
+            }
+        }
+
+        fn preferred_width_for_height<P: IsA<gtk::Widget>>(&self, widget: &P, height: i32) -> (i32, i32) {
+            match self.fixed() {
+                Some((w, _)) => (w, w),
+                None => self.parent_preferred_width_for_height(widget, height),
+            }
+        }
+
         fn render<P: IsA<gtk::Widget>>(
             &self,
             cr: &gtk::cairo::Context,
@@ -528,18 +678,17 @@ mod imp {
             } else {
                 cell_area
             };
-            let original = obj.property::<Option<gdk_pixbuf::Pixbuf>>("pixbuf");
             let tinted = (self.tint.get() && (flags.contains(gtk::CellRendererState::SELECTED) || self.drop_target.get()))
                 .then(|| {
                     let color = widget.style_context().lookup_color("theme_selected_bg_color")?;
-                    colorized(original.as_ref()?, &color)
+                    colorized(self.picture.borrow().as_ref()?, &color)
                 })
                 .flatten();
             match tinted {
                 Some(t) => {
                     obj.set_property("pixbuf", &t);
                     self.parent_render(cr, widget, background_area, cell_area, flags);
-                    obj.set_property("pixbuf", &original);
+                    obj.show(self.picture.borrow().as_ref());
                 }
                 None => self.parent_render(cr, widget, background_area, cell_area, flags),
             }
