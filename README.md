@@ -14,7 +14,7 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
 - Optional alternating row colors in the list view and the bulk rename list.
 - **Scrolling:** the mouse wheel scrolls sideways where there's only a horizontal scrollbar, and a middle-click on empty space starts Firefox-style autoscrolling (can be turned off).
 - **Customizable context menu:** hide and reorder its entries (drag them, separators included), and add your own entries that run a shell command on the selected files (with `%f`, `%F`, `%n`, `%N`, `%d` placeholders), optionally limited to files, folders, a folder's empty space, file types (videos, audio, images, text, documents, archives) and/or name patterns like `*.jpg`.
-- **Thumbnails:** built in for images, and for any other file type through custom thumbnailer commands, set up in Preferences → Previews. Videos work out of the box with ffmpegthumbnailer or ffmpeg if either is installed; thumbnailers whose program is missing are skipped. Stored in the shared `~/.cache/thumbnails`, so Caja's thumbnails are reused and vice versa.
+- **Thumbnails:** built in for images, and through the thumbnailers installed on the system for everything they handle, as in Caja (`/usr/share/thumbnailers`: PDF, PostScript, DjVu and comics with Evince or Atril, office documents with libgsf, audio cover art with ffmpegthumbnailer, and whatever is installed later). Custom thumbnailer commands, set up in Preferences → Previews, come first for the file types they cover; videos work out of the box with ffmpegthumbnailer or ffmpeg if either is installed. Thumbnailers whose program is missing are skipped. Stored in the shared `~/.cache/thumbnails`, so Caja's thumbnails are reused and vice versa.
 - **File operations:** these run on a background thread with a progress window and cancel button.
   - Copy, cut and paste, using the same clipboard format as Caja and Nautilus (you can copy in one and paste in the other)
   - Drag and drop: Shift moves, Ctrl copies, Alt asks; a plain drag moves on the same filesystem and copies across filesystems
@@ -107,7 +107,7 @@ tools/soak.py --backend x11 --minutes 10 --heaptrack   # memory recorded by heap
 | `src/clipboard.rs` | Caja/Nautilus-compatible file clipboard |
 | `src/props.rs` | Properties dialog |
 | `src/icons.rs` | Icon cache, background thumbnailer, thumbnail caches |
-| `src/thumbnailers.rs` | Custom thumbnailer commands |
+| `src/thumbnailers.rs` | Custom thumbnailer commands, and the system's (`.thumbnailer` files) |
 | `src/config.rs` | Settings file, zoom levels |
 | `src/actions.rs` | Context menu entries (hiding, order), custom actions |
 | `src/folders.rs` | View and sorting remembered per folder |

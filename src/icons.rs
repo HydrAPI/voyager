@@ -38,8 +38,13 @@ thread_local! {
     /// The custom thumbnailers whose programs are installed, loaded on
     /// first use (see reload_thumbnailers).
     static CUSTOM: RefCell<Option<Vec<Thumbnailer>>> = const { RefCell::new(None) };
+    /// The system's thumbnailers (see thumbnailers::system), loaded on
+    /// first use.
+    static SYSTEM: RefCell<Option<Vec<Thumbnailer>>> = const { RefCell::new(None) };
 }
 
+/// The thumbnailer for `ctype`: the user's (custom) first, then for what
+/// isn't an image (those are made here) one of the system's.
 fn custom_for(ctype: &str) -> Option<Arc<Thumbnailer>> {
     if let Some(t) = CUSTOM_FOR.with(|c| c.borrow().get(ctype).cloned()) {
         return t;
@@ -49,6 +54,16 @@ fn custom_for(ctype: &str) -> Option<Arc<Thumbnailer>> {
         let list = c.get_or_insert_with(|| thumbnailers::load().into_iter().filter(thumbnailers::installed).collect());
         thumbnailers::find(list, ctype).map(Arc::new)
     });
+    let t = t.or_else(|| {
+        if builtin_can(ctype) {
+            return None;
+        }
+        SYSTEM.with(|c| {
+            let mut c = c.borrow_mut();
+            let list = c.get_or_insert_with(thumbnailers::system);
+            thumbnailers::find(list, ctype).map(Arc::new)
+        })
+    });
     CUSTOM_FOR.with(|c| c.borrow_mut().insert(ctype.to_string(), t.clone()));
     t
 }
@@ -56,6 +71,7 @@ fn custom_for(ctype: &str) -> Option<Arc<Thumbnailer>> {
 /// Re-reads the custom thumbnailers and lets files be tried again.
 pub fn reload_thumbnailers() {
     CUSTOM.with(|c| *c.borrow_mut() = None);
+    SYSTEM.with(|c| *c.borrow_mut() = None);
     CUSTOM_FOR.with(|c| c.borrow_mut().clear());
     QUEUED.with(|q| q.borrow_mut().clear());
     // Files a thumbnailer failed on may work with the new ones.
@@ -373,6 +389,12 @@ pub fn framed_thumb(path: &str, size: i32) -> Option<Pixbuf> {
             cr.set_source_rgba(0.0, 0.0, 0.0, 0.3);
             let _ = cr.fill();
         }
+        // On white, as Caja frames them: a document's preview may leave its
+        // page transparent (only the text drawn), which would show the
+        // shadow through. (Transparent pictures aren't framed at all.)
+        cr.rectangle(SHADOW as f64, 0.0, w as f64, h as f64);
+        cr.set_source_rgb(1.0, 1.0, 1.0);
+        let _ = cr.fill();
         cr.set_source_pixbuf(&pb, SHADOW as f64, 0.0);
         let _ = cr.paint();
     }

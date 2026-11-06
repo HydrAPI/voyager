@@ -3526,7 +3526,7 @@ impl AppWindow {
         head(&pv, "Thumbnails");
         let th = setting_check(
             "Show thumb_nails",
-            Some("Images get thumbnails built in; other file types through the custom thumbnailers below"),
+            Some("Images get thumbnails built in; other file types through the custom thumbnailers below, or the ones installed on the system"),
             s.thumbnails,
             |s, v| s.thumbnails = v,
             |_| for_all_panes(|p| p.reload()),
@@ -4589,7 +4589,7 @@ fn thumbnailers_editor(parent: &gtk::Window) -> gtk::Box {
     buttons.pack_start(&add, false, false, 0);
     buttons.pack_start(&edit, false, false, 0);
     buttons.pack_start(&remove, false, false, 0);
-    let hint = hint_label("Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used.");
+    let hint = hint_label("Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used. File types none of them handles use the thumbnailers installed on the system, as Caja does: PDF with Evince, office documents, audio cover art and so on.");
     let bx = gtk::Box::new(gtk::Orientation::Vertical, 6);
     bx.add(&sw);
     bx.add(&buttons);
@@ -4652,6 +4652,7 @@ fn edit_thumbnailer(parent: &gtk::Window, title: &str, cur: &thumbnailers::Thumb
         name: Some(name.text().trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| types_text.clone()),
         types: types_text,
         command: command.text().trim().to_string(),
+        system: false,
     };
     d.close();
     ok.then_some(result)
