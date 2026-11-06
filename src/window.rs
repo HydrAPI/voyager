@@ -206,6 +206,9 @@ pub struct AppWindow {
     closed_tabs: RefCell<Vec<ClosedTab>>,
     bookmarks_menu: gio::Menu,
     templates_menu: gio::Menu,
+    /// The Edit menu's Undo item, labelled with what it undoes.
+    undo_menu: gio::Menu,
+    undo_label: RefCell<Option<String>>,
     /// The folders in a folder (path, names), read for completing the
     /// location typed.
     completion_dir: RefCell<Option<(std::path::PathBuf, Vec<String>)>>,
@@ -538,6 +541,9 @@ impl AppWindow {
             closed_tabs: RefCell::new(vec![]),
             bookmarks_menu,
             templates_menu,
+            undo_menu: gio::Menu::new(),
+            // Not a label update_undo() would give: the first call sets it.
+            undo_label: RefCell::new(Some(String::new())),
             completion_dir: RefCell::new(None),
             completing: Cell::new(false),
             _bookmark_monitor: RefCell::new(None),
@@ -558,12 +564,14 @@ impl AppWindow {
             let update = move || {
                 if let Some(s) = w.upgrade() {
                     s.update_ops_button();
+                    s.update_undo();
                 }
             };
             ops::on_change(update);
         }
         this.update_ops_button();
         this.setup_actions();
+        this.update_undo();
         this.setup_signals();
         this.refresh_bookmarks();
         this.refresh_templates();
@@ -616,9 +624,11 @@ impl AppWindow {
         bar.append_submenu(Some("_File"), &file);
 
         let edit = gio::Menu::new();
+        self.undo_menu.append(Some("_Undo"), Some("win.undo"));
+        edit.append_section(None, &self.undo_menu);
         edit.append_section(None, &section(&[("Cu_t", "win.cut"), ("_Copy", "win.copy"), ("_Paste", "win.paste"), ("Paste _Into Folder", "win.paste-into")]));
         edit.append_section(None, &section(&[("Select _All", "win.select-all"), ("Select I_tems Matching…", "win.select-pattern"), ("_Invert Selection", "win.invert-selection")]));
-        edit.append_section(None, &section(&[("D_uplicate", "win.duplicate"), ("Ma_ke Link", "win.make-link"), ("_Rename…", "win.rename"), ("Copy T_o…", "win.copy-to"), ("_Move To…", "win.move-to")]));
+        edit.append_section(None, &section(&[("Dup_licate", "win.duplicate"), ("Ma_ke Link", "win.make-link"), ("_Rename…", "win.rename"), ("Copy T_o…", "win.copy-to"), ("_Move To…", "win.move-to")]));
         edit.append_section(None, &section(&[("Copy to Other _Pane", "win.copy-to-pane"), ("Move to Other Pa_ne", "win.move-to-pane")]));
         edit.append_section(None, &section(&[("Mo_ve to Trash", "win.trash"), ("_Delete", "win.delete"), ("_Restore", "win.restore")]));
         edit.append_section(None, &section(&[("Pr_eferences", "win.preferences")]));
@@ -972,6 +982,18 @@ impl AppWindow {
             .and_then(|a| a.downcast::<gio::SimpleAction>().ok())
     }
 
+    /// Labels Edit → Undo with what it would undo, greyed out with nothing.
+    fn update_undo(&self) {
+        let label = ops::undo_label();
+        if *self.undo_label.borrow() == label {
+            return;
+        }
+        self.undo_menu.remove_all();
+        self.undo_menu.append(Some(label.as_deref().unwrap_or("_Undo")), Some("win.undo"));
+        self.set_enabled("undo", label.is_some());
+        *self.undo_label.borrow_mut() = label;
+    }
+
     fn set_enabled(&self, name: &str, on: bool) {
         if let Some(a) = self.action(name) {
             a.set_enabled(on);
@@ -1015,6 +1037,11 @@ impl AppWindow {
         self.add_str("new-from-template", |w, path| w.new_file(Some(path)));
         self.add("cut", |w| w.copy_selection(true));
         self.add("copy", |w| w.copy_selection(false));
+        self.add("undo", |w| {
+            if let Err(why) = ops::undo(Some(w.window.clone().upcast())) {
+                w.flash_status(&why);
+            }
+        });
         self.add("paste", |w| {
             if let Some(p) = w.current_pane() {
                 w.paste_into(p.current());
@@ -1265,6 +1292,12 @@ impl AppWindow {
                 // where it cancels renaming (as a shortcut it would move the
                 // focus away, which renames).
                 let is_escape = key == gdk::keys::constants::Escape;
+                // Ctrl+Z in a text field never undoes a file operation.
+                let is_undo = ev.state().contains(gdk::ModifierType::CONTROL_MASK) && matches!(key.to_lower(), gdk::keys::constants::z);
+                if is_undo {
+                    win.propagate_key_event(ev);
+                    return glib::Propagation::Stop;
+                }
                 let in_text_view = win.focused_widget().is_some_and(|w| w.is::<gtk::TextView>());
                 if (!is_escape || in_text_view) && win.propagate_key_event(ev) {
                     return glib::Propagation::Stop;

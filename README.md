@@ -20,6 +20,7 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
   - Drag and drop: Shift moves, Ctrl copies, Alt asks; a plain drag moves on the same filesystem and copies across filesystems
   - Duplicate, Make Link, Copy To…, Move To…
   - Move to Trash, Delete permanently, Restore from Trash, Empty Trash
+  - Undo (Edit → Undo, Ctrl+Z) for the last 20 copies, moves and links: copies and links go to the trash, moved items go back where they were. After a merge only what was added is taken back, and a copy that replaced a file is left alone.
   - Conflict dialog (Skip / Keep Both / Replace or Merge, with "apply to all")
 - Inline rename (F2) that pre-selects the name without its extension.
 - **Bulk rename** (Rename All…, for several items): Case, Insert, Remove, Replace, Enumerate and Regex tabs with a live preview, as MATE's caja-rename extension does it, optionally working before or after the extension.
@@ -116,4 +117,4 @@ tools/soak.py --backend x11 --minutes 10 --heaptrack   # memory recorded by heap
 
 ## Not done yet (ideas)
 
-- Undo for file operations
+- Undo for trashing, deleting and renaming (copies, moves and links can be undone), and Redo

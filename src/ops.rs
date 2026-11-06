@@ -26,6 +26,15 @@ pub struct Item {
     pub name: Option<String>,
 }
 
+/// One thing a copy, move or link did: `src` went to `dst`.
+/// `replaced`: something that was at `dst` before was replaced.
+#[derive(Clone, Debug)]
+struct Moved {
+    src: String,
+    dst: String,
+    replaced: bool,
+}
+
 #[derive(Clone, Debug)]
 pub enum Job {
     Transfer { kind: Kind, items: Vec<Item> },
@@ -69,7 +78,7 @@ enum Msg {
         offer_delete: bool,
         reply: mpsc::Sender<ErrChoice>,
     },
-    Done(Vec<String>),
+    Done(Vec<String>, Vec<Moved>),
 }
 
 struct Cancelled;
@@ -78,6 +87,8 @@ type Flow = Result<(), Cancelled>;
 struct Worker {
     tx: async_channel::Sender<Msg>,
     cancel: gio::Cancellable,
+    /// What was copied, moved or linked, for Edit → Undo.
+    undo: Vec<Moved>,
     total_bytes: u64,
     done_bytes: u64,
     total_items: u64,
@@ -415,9 +426,16 @@ impl Worker {
         }
     }
 
+    /// Notes for Edit → Undo that `src` went to `dst`.
+    fn record(&mut self, src: &gio::File, dst: &gio::File, replaced: bool) {
+        self.undo.push(Moved { src: src.uri().to_string(), dst: dst.uri().to_string(), replaced });
+    }
+
     /// `overwrite`: the user already chose Replace for `dst` (a move falling
-    /// back to copy across filesystems), so don't ask again.
-    fn copy_rec(&mut self, src: &gio::File, dst: &gio::File, overwrite: bool, created: &mut Option<String>) -> Flow {
+    /// back to copy across filesystems), so don't ask again. `record`: note
+    /// `dst` for Undo if it's made here (false inside a folder made here:
+    /// undoing takes back the folder with all in it).
+    fn copy_rec(&mut self, src: &gio::File, dst: &gio::File, overwrite: bool, created: &mut Option<String>, record: bool) -> Flow {
         if self.cancelled() {
             return Err(Cancelled);
         }
@@ -432,6 +450,9 @@ impl Worker {
             }
         };
         let mut dst = dst.clone();
+        // Something at `dst` was replaced; or, for folders, merged into.
+        let mut replaced = false;
+        let mut merged = false;
         if info.file_type() == gio::FileType::Directory {
             // Create (or merge into) the destination folder.
             loop {
@@ -451,13 +472,15 @@ impl Worker {
                             }
                             Resolution::Replace => {
                                 if dst_dir {
-                                    break; // merge
+                                    merged = true;
+                                    break;
                                 }
                                 let before = self.skipped;
                                 self.delete_rec(&dst, false)?;
                                 if self.skipped != before {
                                     return Ok(()); // couldn't remove it, give up on this item
                                 }
+                                replaced = true;
                             }
                             Resolution::KeepBoth => {
                                 let parent = dst.parent().unwrap();
@@ -476,13 +499,17 @@ impl Worker {
             if created.is_none() {
                 *created = Some(dst.uri().to_string());
             }
+            // A merged folder isn't the copy's own: what goes into it is.
+            if record && !merged {
+                self.record(src, &dst, replaced);
+            }
             self.done_items += 1;
             let Some(children) = self.list_children(src, "reading")? else {
                 return Ok(());
             };
             let mut none = None;
             for c in children {
-                self.copy_rec(&src.child(&c), &dst.child(&c), false, &mut none)?;
+                self.copy_rec(&src.child(&c), &dst.child(&c), false, &mut none, record && merged)?;
             }
             // Re-read the mode: it may have changed since `info` (e.g. the user
             // fixed an unreadable folder and pressed Retry).
@@ -566,6 +593,9 @@ impl Worker {
                     if created.is_none() {
                         *created = Some(dst.uri().to_string());
                     }
+                    if record {
+                        self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
+                    }
                     self.progress(&format!("Copying “{name}”"), false);
                     return Ok(());
                 }
@@ -587,6 +617,7 @@ impl Worker {
                                     self.done_bytes += size;
                                     return Ok(()); // couldn't remove it, give up on this item
                                 }
+                                replaced = true;
                             } else {
                                 flags |= gio::FileCopyFlags::OVERWRITE;
                             }
@@ -618,10 +649,12 @@ impl Worker {
         let mut flags = gio::FileCopyFlags::NOFOLLOW_SYMLINKS
             | gio::FileCopyFlags::ALL_METADATA
             | gio::FileCopyFlags::NO_FALLBACK_FOR_MOVE;
+        let mut replaced = false;
         let name = base_name(src);
         loop {
             match src.move_(&dst, flags, Some(&self.cancel), None) {
                 Ok(()) => {
+                    self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
                     self.done_items += 1;
                     if created.is_none() {
                         *created = Some(dst.uri().to_string());
@@ -664,6 +697,7 @@ impl Worker {
                                 if self.skipped != before {
                                     return Ok(()); // couldn't remove it, keep the source
                                 }
+                                replaced = true;
                             } else {
                                 flags |= gio::FileCopyFlags::OVERWRITE;
                             }
@@ -689,7 +723,7 @@ impl Worker {
                     self.done_bytes = 0;
                     let before = self.skipped;
                     let overwrite = flags.contains(gio::FileCopyFlags::OVERWRITE);
-                    let r = self.copy_rec(src, &dst, overwrite, created);
+                    let r = self.copy_rec(src, &dst, overwrite, created, true);
                     (self.by_bytes, self.total_bytes, self.done_bytes) = saved;
                     r?;
                     if self.skipped == before {
@@ -751,7 +785,7 @@ impl Worker {
                     let r = match kind {
                         Kind::Copy => {
                             let name = if same_dir { util::copy_name(&dest_dir, &name, src_is_dir) } else { name };
-                            self.copy_rec(&src, &dest_dir.child(&name), false, &mut c)
+                            self.copy_rec(&src, &dest_dir.child(&name), false, &mut c, true)
                         }
                         Kind::Move => {
                             if same_dir && it.name.is_none() {
@@ -771,6 +805,7 @@ impl Worker {
                                 .unwrap_or_else(|| src.uri().to_string());
                             match dst.make_symbolic_link(target, Some(&self.cancel)) {
                                 Ok(()) => {
+                                    self.record(&src, &dst, false);
                                     c = Some(dst.uri().to_string());
                                     self.done_items += 1;
                                     Ok(())
@@ -1272,6 +1307,7 @@ fn bold_label(text: &str) -> gtk::Label {
 /// of only once it has taken a moment.
 fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)>, show_now: bool) {
     let (tx, rx) = async_channel::unbounded::<Msg>();
+    let undo_kind = undoable(&job);
     let op = Rc::new(Op {
         id: next_id(),
         title: title_for(&job),
@@ -1289,6 +1325,7 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
             let mut w = Worker {
                 tx: tx.clone(),
                 cancel,
+                undo: vec![],
                 total_bytes: 0,
                 done_bytes: 0,
                 total_items: 0,
@@ -1304,7 +1341,7 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
                 clock: Clock::new(),
             };
             let created = w.run(job);
-            let _ = tx.send_blocking(Msg::Done(created));
+            let _ = tx.send_blocking(Msg::Done(created, std::mem::take(&mut w.undo)));
         });
     }
     RUNNING.with(|r| r.set(r.get() + 1));
@@ -1346,7 +1383,10 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
                     let c = error_dialog(p.as_ref(), &title, &detail, offer_delete).await;
                     let _ = reply.send(c);
                 }
-                Msg::Done(created) => {
+                Msg::Done(created, undo) => {
+                    if let Some(kind) = undo_kind.filter(|_| !undo.is_empty()) {
+                        push_undo(UndoStep { kind, items: undo });
+                    }
                     RUNNING.with(|r| r.set(r.get().saturating_sub(1)));
                     finished.set(true);
                     // Also hides the window if this was the last operation.
@@ -1361,6 +1401,114 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
             }
         }
     });
+}
+
+// ---------------------------------------------------------------------------
+// Undo
+
+/// A finished copy, move or link that Edit → Undo can take back.
+struct UndoStep {
+    kind: Kind,
+    items: Vec<Moved>,
+}
+
+/// How many operations back Undo goes.
+const UNDO_STEPS: usize = 20;
+
+thread_local! {
+    static UNDO: RefCell<Vec<UndoStep>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The kind of `job` if Undo can take it back: copies, moves and links,
+/// but not restoring from the trash (or an undo itself: both give target
+/// names), nor anything out of the trash (moves can't put it back).
+fn undoable(job: &Job) -> Option<Kind> {
+    match job {
+        Job::Transfer { kind, items } if items.iter().all(|i| i.name.is_none() && !i.src.starts_with("trash:")) => Some(*kind),
+        _ => None,
+    }
+}
+
+fn push_undo(step: UndoStep) {
+    UNDO.with(|u| {
+        let mut u = u.borrow_mut();
+        u.push(step);
+        if u.len() > UNDO_STEPS {
+            u.remove(0);
+        }
+    });
+    changed();
+}
+
+/// The Edit menu's label for Undo ("_Undo Copy of “a.txt”"), or None if
+/// there's nothing to undo. Underscores are doubled for the menu.
+pub fn undo_label() -> Option<String> {
+    UNDO.with(|u| {
+        let u = u.borrow();
+        let step = u.last()?;
+        let verb = match step.kind {
+            Kind::Copy => "Copy",
+            Kind::Move => "Move",
+            Kind::Link => "Link",
+        };
+        let what = match step.items.as_slice() {
+            [one] => format!("“{}”", base_name(&gio::File::for_uri(&one.dst)).replace('_', "__")),
+            many => format!("{} Items", many.len()),
+        };
+        Some(format!("_Undo {verb} of {what}"))
+    })
+}
+
+/// Whether `uri` may still be there (only local files are checked: asking
+/// a network place could take long).
+fn may_exist(uri: &str) -> bool {
+    gio::File::for_uri(uri).path().is_none_or(|p| p.symlink_metadata().is_ok())
+}
+
+/// Takes back the last copy (its copies go to the trash, none that
+/// replaced something), move (moved back) or link (the links go to the
+/// trash). Err: why there was nothing to do.
+pub fn undo(parent: Option<gtk::Window>) -> Result<(), String> {
+    let Some(step) = UNDO.with(|u| u.borrow_mut().pop()) else {
+        return Err("There is nothing to undo.".into());
+    };
+    changed();
+    run(parent, undo_job(step)?, |_| {});
+    Ok(())
+}
+
+/// The job that takes back `step`.
+fn undo_job(step: UndoStep) -> Result<Job, String> {
+    let items: Vec<Moved> = step.items.into_iter().filter(|m| may_exist(&m.dst)).collect();
+    Ok(match step.kind {
+        Kind::Copy | Kind::Link => {
+            let uris: Vec<String> = items.into_iter().filter(|m| !m.replaced).map(|m| m.dst).collect();
+            if uris.is_empty() {
+                return Err("Nothing to undo: the copies are gone or replaced other files.".into());
+            }
+            Job::Trash(uris)
+        }
+        Kind::Move => {
+            if items.is_empty() {
+                return Err("Nothing to undo: the moved items are gone.".into());
+            }
+            // A target name makes the job recreate a missing folder (one
+            // emptied by moving into a folder of the same name), and keeps
+            // the undo itself off the Undo list.
+            let items = items
+                .into_iter()
+                .map(|m| {
+                    let src = gio::File::for_uri(&m.src);
+                    Item {
+                        src: m.dst,
+                        dest_dir: src.parent().map(|p| p.uri().to_string()).unwrap_or_default(),
+                        name: Some(base_name(&src)),
+                    }
+                })
+                .collect();
+            Job::Transfer { kind: Kind::Move, items }
+        }
+    })
 }
 
 /// Tells the desktop that the file operations are done, as Caja does,
@@ -1647,10 +1795,22 @@ mod tests {
     }
 
     fn run_job_with(job: Job, answers: &[Resolution], paused: Arc<AtomicBool>, cancel: gio::Cancellable) -> (Vec<String>, Vec<String>) {
+        let (created, asked, _) = run_job_full(job, answers, paused, cancel);
+        (created, asked)
+    }
+
+    /// run_job, also giving what the worker noted for Undo.
+    fn run_job_undo(job: Job, answers: &[Resolution]) -> (Vec<String>, Vec<Moved>) {
+        let (created, _, undo) = run_job_full(job, answers, Arc::new(AtomicBool::new(false)), gio::Cancellable::new());
+        (created, undo)
+    }
+
+    fn run_job_full(job: Job, answers: &[Resolution], paused: Arc<AtomicBool>, cancel: gio::Cancellable) -> (Vec<String>, Vec<String>, Vec<Moved>) {
         let (tx, rx) = async_channel::unbounded::<Msg>();
         let mut w = Worker {
             tx,
             cancel,
+            undo: vec![],
             total_bytes: 0,
             done_bytes: 0,
             total_items: 0,
@@ -1685,8 +1845,116 @@ mod tests {
             asked
         });
         let created = w.run(job);
+        let undo = std::mem::take(&mut w.undo);
         drop(w);
-        (created, ui.join().unwrap())
+        (created, ui.join().unwrap(), undo)
+    }
+
+    /// (dst relative to `root`, replaced) for each noted item, sorted.
+    fn noted(undo: &[Moved], root: &Path) -> Vec<(String, bool)> {
+        let mut v: Vec<(String, bool)> = undo
+            .iter()
+            .map(|m| {
+                let p = gio::File::for_uri(&m.dst).path().unwrap();
+                (p.strip_prefix(root).unwrap().to_string_lossy().to_string(), m.replaced)
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn undo_notes_a_plain_copy_as_one_item() {
+        let s = home_scratch("undocopy");
+        write(&s.0.join("src/d/sub/c"), "c");
+        write(&s.0.join("src/f"), "f");
+        fs::create_dir_all(s.0.join("dst")).unwrap();
+        let job = Job::Transfer {
+            kind: Kind::Copy,
+            items: vec![Item { src: uri(&s.0.join("src/d")), dest_dir: uri(&s.0.join("dst")), name: None }, Item { src: uri(&s.0.join("src/f")), dest_dir: uri(&s.0.join("dst")), name: None }],
+        };
+        let (_, undo) = run_job_undo(job, &[]);
+        assert_eq!(noted(&undo, &s.0), [("dst/d".to_string(), false), ("dst/f".to_string(), false)]);
+        // Undoing trashes just those two.
+        let Ok(Job::Trash(uris)) = undo_job(UndoStep { kind: Kind::Copy, items: undo }) else { panic!() };
+        assert_eq!(uris, [uri(&s.0.join("dst/d")), uri(&s.0.join("dst/f"))]);
+    }
+
+    #[test]
+    fn undo_of_a_merging_copy_keeps_what_was_there() {
+        let s = home_scratch("undocopymerge");
+        let (src, dst) = merge_setup(&s.0, &s.0);
+        let (_, undo) = run_job_undo(transfer(Kind::Copy, &src, &dst), &[Resolution::Replace, Resolution::Replace]);
+        // Not the merged folder itself; a replaced file is noted as such.
+        assert_eq!(noted(&undo, &s.0), [("dst/d/a".to_string(), true), ("dst/d/b".to_string(), false), ("dst/d/sub".to_string(), false)]);
+        let Ok(Job::Trash(uris)) = undo_job(UndoStep { kind: Kind::Copy, items: undo }) else { panic!() };
+        let mut uris = uris;
+        uris.sort();
+        assert_eq!(uris, [uri(&dst.join("d/b")), uri(&dst.join("d/sub"))], "the replaced a and the old x stay");
+    }
+
+    #[test]
+    fn undo_skips_copies_that_are_gone() {
+        let s = home_scratch("undogone");
+        write(&s.0.join("src/f"), "f");
+        fs::create_dir_all(s.0.join("dst")).unwrap();
+        let (_, undo) = run_job_undo(transfer(Kind::Copy, &s.0.join("src/f"), &s.0.join("dst")), &[]);
+        fs::remove_file(s.0.join("dst/f")).unwrap();
+        assert!(undo_job(UndoStep { kind: Kind::Copy, items: undo }).is_err());
+    }
+
+    #[test]
+    fn undo_moves_back_a_plain_move() {
+        let s = home_scratch("undomove");
+        write(&s.0.join("src/d/sub/c"), "c");
+        fs::create_dir_all(s.0.join("dst")).unwrap();
+        let (_, undo) = run_job_undo(transfer(Kind::Move, &s.0.join("src/d"), &s.0.join("dst")), &[]);
+        assert_eq!(noted(&undo, &s.0), [("dst/d".to_string(), false)]);
+        let job = undo_job(UndoStep { kind: Kind::Move, items: undo }).unwrap();
+        assert_eq!(undoable(&job), None, "an undo isn't undone");
+        let (_, undo) = run_job_undo(job, &[]);
+        assert!(undo.len() == 1);
+        assert_eq!(read(&s.0.join("src/d/sub/c")), "c");
+        assert!(!s.0.join("dst/d").exists());
+    }
+
+    /// Undoing a move that merged into a folder puts back what moved in,
+    /// leaves what was there before, and recreates the emptied source.
+    fn undo_merge(src_root: &Path, dst_root: &Path) {
+        let (src, dst) = merge_setup(src_root, dst_root);
+        let (_, undo) = run_job_undo(transfer(Kind::Move, &src, &dst), &[Resolution::Replace, Resolution::Replace]);
+        assert_eq!(noted(&undo, dst_root), [("dst/d/a".to_string(), true), ("dst/d/b".to_string(), false), ("dst/d/sub".to_string(), false)]);
+        assert!(!src.exists());
+        let job = undo_job(UndoStep { kind: Kind::Move, items: undo }).unwrap();
+        let (_, asked) = run_job(job, &[]);
+        assert!(asked.is_empty(), "{asked:?}");
+        assert_eq!(read(&src.join("a")), "new a");
+        assert_eq!(read(&src.join("b")), "b");
+        assert_eq!(read(&src.join("sub/c")), "c");
+        assert_eq!(read(&dst.join("d/x")), "x");
+        assert!(!dst.join("d/a").exists() && !dst.join("d/b").exists() && !dst.join("d/sub").exists());
+    }
+
+    #[test]
+    fn undo_merging_move_same_fs() {
+        let s = home_scratch("undomerge");
+        undo_merge(&s.0, &s.0);
+    }
+
+    #[test]
+    fn undo_merging_move_cross_fs() {
+        let s = home_scratch("undoxmerge");
+        let t = scratch("/dev/shm", "undoxmerge");
+        undo_merge(&t.0, &s.0);
+    }
+
+    #[test]
+    fn restores_and_trash_moves_are_not_undoable() {
+        let item = |src: &str, name: Option<&str>| Item { src: src.into(), dest_dir: "file:///tmp".into(), name: name.map(String::from) };
+        assert_eq!(undoable(&Job::Transfer { kind: Kind::Copy, items: vec![item("file:///a", None)] }), Some(Kind::Copy));
+        assert_eq!(undoable(&Job::Transfer { kind: Kind::Move, items: vec![item("trash:///a", None)] }), None);
+        assert_eq!(undoable(&Job::Transfer { kind: Kind::Move, items: vec![item("trash:///a", Some("a"))] }), None);
+        assert_eq!(undoable(&Job::Trash(vec!["file:///a".into()])), None);
     }
 
     fn home_scratch(name: &str) -> TestDir {

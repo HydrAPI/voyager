@@ -57,6 +57,7 @@ pub const BINDINGS: &[Binding] = &[
     b("Files", "win.copy", "Copy", &["<Ctrl>c"]),
     b("Files", "win.paste", "Paste", &["<Ctrl>v"]),
     b("Files", "win.paste-into", "Paste into folder", &[]),
+    b("Files", "win.undo", "Undo the last copy, move or link", &["<Ctrl>z"]),
     b("Files", "win.rename", "Rename", &["F2"]),
     b("Files", "win.rename-all", "Rename All… / Advanced Rename…", &[]),
     b("Files", "win.duplicate", "Duplicate", &[]),
