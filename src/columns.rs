@@ -204,7 +204,8 @@ impl Column {
         let w = Rc::downgrade(self);
         self.view.connect_button_release_event(move |_, ev| {
             if let (Some(c), 1) = (w.upgrade(), ev.button()) {
-                if let Some(uri) = c.pressed.borrow_mut().take() {
+                let taken = c.pressed.borrow_mut().take();
+                if let Some(uri) = taken {
                     (hooks.click)(&c.folder, &uri);
                 }
             }

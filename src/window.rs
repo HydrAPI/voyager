@@ -1585,7 +1585,8 @@ impl AppWindow {
             let wp = Rc::downgrade(&pane);
             let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::default();
             pane.connect_pointer_hover(move |inside| {
-                if let Some(id) = pending.borrow_mut().take() {
+                let taken = pending.borrow_mut().take();
+                if let Some(id) = taken {
                     id.remove();
                 }
                 if !inside || !config::with(|s| s.focus_follows_mouse) {

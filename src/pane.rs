@@ -1284,7 +1284,8 @@ impl Pane {
                 if let Some(p) = w.upgrade() {
                     if ev.button() == 1 {
                         p.band.borrow_mut().take();
-                        if let Some((keep, clicked)) = p.press_keep.borrow_mut().take() {
+                        let taken = p.press_keep.borrow_mut().take();
+                        if let Some((keep, clicked)) = taken {
                             iv.unselect_all();
                             iv.select_path(&clicked);
                             *p.released_keep.borrow_mut() = Some((keep, clicked));
@@ -1426,7 +1427,8 @@ impl Pane {
                 if let Some(p) = w.upgrade() {
                     if p.tv_block.get() {
                         p.tv_block.set(false);
-                        if let Some(tp) = p.tv_pending.borrow_mut().take() {
+                        let taken = p.tv_pending.borrow_mut().take();
+                        if let Some(tp) = taken {
                             let sel = tv.selection();
                             sel.unselect_all();
                             sel.select_path(&tp);
@@ -1799,7 +1801,8 @@ impl Pane {
         let id2 = id.clone();
         *id.borrow_mut() = Some(view.connect_realize(move |v| {
             v.grab_focus();
-            if let Some(id) = id2.borrow_mut().take() {
+            let taken = id2.borrow_mut().take();
+            if let Some(id) = taken {
                 v.disconnect(id);
             }
         }));
@@ -1913,7 +1916,8 @@ impl Pane {
         self.gen.set(gen);
         // A search still running stops.
         self.search_gen.store(0, std::sync::atomic::Ordering::SeqCst);
-        if let Some(m) = self.monitor.borrow_mut().take() {
+        let taken = self.monitor.borrow_mut().take();
+        if let Some(m) = taken {
             m.cancel();
         }
         self.info_bar.hide();
@@ -2026,10 +2030,14 @@ impl Pane {
             self.scroll_to_top();
         }
         // A right-click in a side column that brought us here.
-        if let Some((event, on_item)) = self.pending_context.borrow_mut().take() {
+        let taken = self.pending_context.borrow_mut().take();
+        if let Some((event, on_item)) = taken {
             self.emit(Event::Context { event: Some(event), on_item });
         }
-        if let Some(uri) = self.pending_rename.borrow_mut().take() {
+        // Taken first: borrowed in the condition, it would stay borrowed
+        // in the block (Rust 2021), and code called there may borrow it again.
+        let taken = self.pending_rename.borrow_mut().take();
+        if let Some(uri) = taken {
             self.start_rename(&uri);
         }
         self.count_dir_items(gen);
@@ -3473,7 +3481,8 @@ impl Pane {
         if !single {
             // A double click on one of several selected items opens them all:
             // the first click's release left just it selected.
-            if let Some((keep, clicked)) = self.released_keep.borrow_mut().take() {
+            let taken = self.released_keep.borrow_mut().take();
+            if let Some((keep, clicked)) = taken {
                 if clicked == path {
                     for k in &keep {
                         iv.select_path(k);
@@ -3951,9 +3960,10 @@ impl Pane {
     /// is measured again (it was laid out without its name meanwhile).
     fn show_edited_name(&self) {
         let Some(uri) = self.edit_hidden.borrow_mut().take() else { return };
-        if let Some(it) = self.index.borrow().get(&uri) {
-            if let Some(path) = self.store.path(it) {
-                self.store.row_changed(&path, it);
+        let it = self.index.borrow().get(&uri).cloned();
+        if let Some(it) = it {
+            if let Some(path) = self.store.path(&it) {
+                self.store.row_changed(&path, &it);
             }
         }
         self.icon_view.queue_draw();
@@ -4079,7 +4089,8 @@ impl Pane {
         *self.pending_scroll.borrow_mut() = None;
         self.detach_model();
         self.gen.set(self.gen.get() + 1);
-        if let Some(m) = self.monitor.borrow_mut().take() {
+        let taken = self.monitor.borrow_mut().take();
+        if let Some(m) = taken {
             m.cancel();
         }
         if let Some(id) = self.thumb_listener.take() {

@@ -281,7 +281,8 @@ fn with_active<R>(f: impl FnOnce(&Auto) -> R) -> Option<R> {
 
 fn stop() {
     let Some(a) = ACTIVE.with(|c| c.borrow_mut().take()) else { return };
-    if let Some(id) = a.tick.borrow_mut().take() {
+    let taken = a.tick.borrow_mut().take();
+    if let Some(id) = taken {
         id.remove();
     }
     a.seat.ungrab();
