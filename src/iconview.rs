@@ -88,6 +88,8 @@ mod imp {
         /// width, row height) → context. Emptied when anything changes.
         contexts: RefCell<HashMap<RowKey, gtk::CellAreaContext>>,
         model_handlers: RefCell<Vec<(gtk::TreeModel, glib::SignalHandlerId)>>,
+        /// The cells whose visibility is watched (see watch_cells).
+        watched_cells: Cell<bool>,
         pub(super) filler: RefCell<Option<Filler>>,
         /// Whether a cell's background and frame show anything, by state
         /// flags (see plain_cell).
@@ -138,6 +140,11 @@ mod imp {
             for (m, id) in self.model_handlers.take() {
                 m.disconnect(id);
             }
+            // The filler holds on to the view (through the pane's cells):
+            // let go of it, or a closed tab's view would never be freed.
+            self.filler.take();
+            self.contexts.borrow_mut().clear();
+            self.selected.take();
         }
     }
     impl ContainerImpl for IconView {}
@@ -181,6 +188,34 @@ mod imp {
                 None
             }));
             *self.model_handlers.borrow_mut() = ids.into_iter().map(|id| (model.clone(), id)).collect();
+        }
+
+        /// Fills in the cells for row `it`, as GtkIconView does before
+        /// measuring or drawing an item.
+        fn fill(&self, model: &gtk::TreeModel, area: &gtk::CellArea, it: &gtk::TreeIter) {
+            let filler = self.filler.borrow().clone();
+            match filler {
+                Some(fill) => fill(model, it),
+                None => area.apply_attributes(model, it, false, false),
+            }
+        }
+
+        /// GtkCellAreaBox resets all its contexts' measurements when a cell
+        /// is shown or hidden: the rows' contexts kept here are then let go
+        /// (else names were laid out with no room after a click on empty
+        /// space hid them for a moment, see Pane::ignore_items_once).
+        fn watch_cells(&self, area: &gtk::CellArea) {
+            if self.watched_cells.replace(true) {
+                return;
+            }
+            for cell in CellLayoutExt::cells(area) {
+                let iv = self.obj().downgrade();
+                cell.connect_visible_notify(move |_| {
+                    if let Some(iv) = iv.upgrade() {
+                        iv.imp().contexts.borrow_mut().clear();
+                    }
+                });
+            }
         }
 
         /// GtkIconView's bin window (where the items are), which it has no
@@ -356,6 +391,14 @@ mod imp {
             }
             let area = CellLayoutExt::area(&*iv);
             let Some(area) = area else { return false };
+            self.watch_cells(&area);
+            // The cells' visibility as it is now, before any row is measured
+            // (it's the same for every item: a click hides the cells for a
+            // moment, see Pane::ignore_items_once): a change resets the
+            // measurements (watch_cells), and mustn't come while painting.
+            if let Some(it) = model.iter_first() {
+                self.fill(&model, &area, &it);
+            }
             cr.save().ok();
             gtk::cairo_transform_to_window(cr, &*iv, &bin);
             cr.set_line_width(1.0);
@@ -469,11 +512,7 @@ mod imp {
             let in_sight = cr.clip_extents().is_ok_and(|(x1, y1, x2, y2)| x2 > x1 && y2 > y1);
             if in_sight {
                 if let Some(it) = model.iter_nth_child(None, index) {
-                    let filler = self.filler.borrow().clone();
-                    match filler {
-                        Some(fill) => fill(model, &it),
-                        None => area.apply_attributes(model, &it, false, false),
-                    }
+                    self.fill(model, area, &it);
                     if shows {
                         gtk::render_background(ctx, cr, px, py, pw, ph);
                         gtk::render_frame(ctx, cr, px, py, pw, ph);
