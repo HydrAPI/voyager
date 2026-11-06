@@ -64,11 +64,13 @@ ACTIONS = [
     ("prev-tab", None, 1, "plain"), ("reopen-tab", None, 1, "plain"), ("new-window", None, 1, "plain"),
     ("view-mode", "view", 6, "plain"), ("zoom-in", None, 3, "plain"), ("zoom-out", None, 3, "plain"),
     ("zoom-normal", None, 1, "plain"), ("show-hidden", "toggle", 2, "plain"), ("show-sidebar", "toggle", 1, "plain"),
-    ("show-statusbar", "toggle", 1, "plain"), ("split-view", "toggle", 2, "plain"), ("info-panel", "toggle", 2, "plain"),
+    ("show-statusbar", "toggle", 1, "plain"), ("lock-bar", "toggle", 1, "plain"), ("split-view", "toggle", 2, "plain"), ("info-panel", "toggle", 2, "plain"),
     ("sort-by", "sort", 3, "plain"), ("sort-desc", "toggle", 2, "plain"), ("folders-first", "toggle", 1, "plain"),
     ("filter", None, 1, "plain"), ("location", None, 1, "plain"), ("escape", None, 3, "plain"),
     ("select-all", None, 5, "plain"), ("invert-selection", None, 3, "plain"),
     ("copy", None, 4, "plain"), ("cut", None, 3, "plain"), ("paste", None, 4, "plain"), ("paste-into", None, 1, "plain"),
+    # Undoes the last copy, move or link, whatever happened to it since.
+    ("undo", None, 3, "plain"),
     ("duplicate", None, 2, "plain"), ("make-link", None, 1, "plain"), ("copy-to-pane", None, 1, "plain"),
     ("move-to-pane", None, 1, "plain"), ("new-folder", None, 2, "plain"), ("new-file", None, 2, "plain"),
     ("new-from-template", "template", 1, "plain"), ("restore", None, 1, "plain"),
@@ -157,6 +159,12 @@ def make_fixture(home, rnd):
         for i in range(3):
             subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", f"testsrc=duration=1:size=160x120:rate=5",
                             "-pix_fmt", "yuv420p", os.path.join(media, f"clip{i}.mp4")], check=False)
+    # Two small files the cycle rounds copy and undo.
+    os.makedirs(os.path.join(files, "undo"))
+    os.makedirs(os.path.join(files, "undo-dest"))
+    for name in ["one.txt", "two.txt"]:
+        with open(os.path.join(files, "undo", name), "w") as f:
+            f.write(name)
     # Links, including dangling and looping ones.
     links = os.path.join(files, "links")
     os.makedirs(links)
@@ -672,12 +680,17 @@ class Run:
         uri = lambda p: self.GLib.Variant("s", self.Gio.File.new_for_path(os.path.join(self.files, p)).get_uri())
         s = self.GLib.Variant("s", "")
         round_ = [
+            # A copy into another folder (so select-all never finds the
+            # copies), undone at the end of the round once it's done.
+            ("go-uri", uri("undo")), ("select-all", None), ("copy", None), ("go-uri", uri("undo-dest")), ("paste", None),
             ("go-uri", uri("many")), ("view-mode", self.GLib.Variant("s", "icon")), ("select-all", None), ("go-uri", uri("media")),
             ("view-mode", self.GLib.Variant("s", "list")), ("new-tab", None), ("go-uri", uri("tree")), ("view-mode", self.GLib.Variant("s", "columns")),
             ("close-tab", None), ("view-mode", self.GLib.Variant("s", "compact")), ("go-uri", uri("odd names")), ("zoom-in", None),
             ("zoom-out", None), ("split-view", None), ("go-uri", uri("tree/sub0")), ("split-view", None), ("info-panel", None),
             ("go-uri", uri("media")), ("info-panel", None), ("show-hidden", None), ("show-hidden", None), ("back", None), ("forward", None),
-            ("go-uri", uri("churn")), ("reload", None), ("escape", None),
+            ("go-uri", uri("churn")), ("reload", None), ("escape", None), ("lock-bar", None), ("lock-bar", None),
+            # The copy made at the start taken back (the copies go to the trash).
+            ("undo", None),
         ]
         del s
         if self.args.round:

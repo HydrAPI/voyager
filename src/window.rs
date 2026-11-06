@@ -70,9 +70,7 @@ fn set_bar_draggable(button: &gtk::Widget, locked: bool) {
 /// Locks or unlocks the bar in every window.
 fn lock_bars(locked: bool) {
     BAR_DRAGGERS.with(|d| {
-        let mut d = d.borrow_mut();
-        d.retain(|w| w.upgrade().is_some());
-        for b in d.iter().filter_map(|w| w.upgrade()) {
+        for b in d.borrow().iter().filter_map(|w| w.upgrade()) {
             set_bar_draggable(&b, locked);
         }
     });
@@ -82,10 +80,17 @@ fn lock_bars(locked: bool) {
 /// group to move the whole group in front of or behind it.
 fn enable_bar_drag(button: &gtk::Widget, id: &'static str, group: &gtk::Widget) {
     set_bar_draggable(button, config::with(|s| s.lock_bar));
-    BAR_DRAGGERS.with(|d| d.borrow_mut().push(button.downgrade()));
+    BAR_DRAGGERS.with(|d| {
+        let mut d = d.borrow_mut();
+        // Drop the buttons of closed windows.
+        d.retain(|w| w.upgrade().is_some());
+        d.push(button.downgrade());
+    });
     {
         let group = group.clone();
         button.connect_drag_begin(move |_, ctx| {
+            // For tools/lockbar-test.sh (G_MESSAGES_DEBUG=arkha).
+            glib::g_debug!("arkha", "bar drag started: {id}");
             // Drag a picture of the whole group.
             let (w, h) = (group.allocated_width(), group.allocated_height());
             if let Ok(surface) = gtk::cairo::ImageSurface::create(gtk::cairo::Format::ARgb32, w, h) {
