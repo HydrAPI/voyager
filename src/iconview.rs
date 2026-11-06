@@ -31,9 +31,38 @@ glib::wrapper! {
         @implements gtk::Buildable, gtk::CellLayout, gtk::Scrollable;
 }
 
+/// Fills in the cells for a row, as the cell data functions do.
+pub type Filler = std::rc::Rc<dyn Fn(&gtk::TreeModel, &gtk::TreeIter)>;
+
 impl IconView {
     pub fn with_model(model: &impl IsA<gtk::TreeModel>) -> gtk::IconView {
         glib::Object::builder::<IconView>().property("model", model.as_ref()).build().upcast()
+    }
+
+    /// What fills in the cells of an item drawn here: called directly,
+    /// rather than through gtk_cell_area_apply_attributes (a signal, two
+    /// property reads and notification freezes for each item), when the
+    /// cells have no attributes, only data functions doing just this.
+    /// The first and last items reaching into rows y1..y2 (in the
+    /// widget), found as the drawing finds them; None if that can't be done
+    /// here (then ask GtkIconView, which goes through every item).
+    pub fn items_between(iv: &gtk::IconView, y1: f64, y2: f64) -> Option<(i32, i32)> {
+        iv.downcast_ref::<IconView>()?.imp().items_between(y1, y2)
+    }
+
+    /// Whether item `index` is selected, from the selection kept for
+    /// drawing (gtk_icon_view_path_is_selected walks the items up to it).
+    pub fn is_selected(iv: &gtk::IconView, index: i32) -> bool {
+        match iv.downcast_ref::<IconView>() {
+            Some(v) => v.imp().selected_set().contains(&index),
+            None => iv.path_is_selected(&gtk::TreePath::from_indicesv(&[index])),
+        }
+    }
+
+    pub fn set_filler(iv: &gtk::IconView, filler: Filler) {
+        if let Some(iv) = iv.downcast_ref::<IconView>() {
+            iv.imp().filler.replace(Some(filler));
+        }
     }
 }
 
@@ -59,6 +88,10 @@ mod imp {
         /// width, row height) → context. Emptied when anything changes.
         contexts: RefCell<HashMap<RowKey, gtk::CellAreaContext>>,
         model_handlers: RefCell<Vec<(gtk::TreeModel, glib::SignalHandlerId)>>,
+        pub(super) filler: RefCell<Option<Filler>>,
+        /// Whether a cell's background and frame show anything, by state
+        /// flags (see plain_cell).
+        cell_painted: RefCell<HashMap<u32, bool>>,
     }
 
     /// (row, first item, items, item width, row height).
@@ -88,6 +121,7 @@ mod imp {
             self.parent_constructed();
             let obj = self.obj();
             obj.connect_selection_changed(|iv| iv.imp().selected.replace(None).map_or((), drop));
+            obj.connect_style_updated(|iv| iv.imp().cell_painted.borrow_mut().clear());
             // Anything set on the view (sizes, spacing, the model) may move
             // the items.
             obj.connect_notify_local(None, |iv, pspec| {
@@ -224,7 +258,38 @@ mod imp {
             Some((r.y(), r.height()))
         }
 
-        fn selected_set(&self) -> HashSet<i32> {
+        /// See IconView::items_between.
+        pub(super) fn items_between(&self, y1: f64, y2: f64) -> Option<(i32, i32)> {
+            let grid = self.grid()?;
+            if grid.n_items == 0 {
+                return None;
+            }
+            // In the bin window, as the rows are.
+            let (top, bottom) = (y1 - grid.offset.1 as f64, y2 - grid.offset.1 as f64);
+            let p = grid.padding;
+            let rows = (grid.n_items + grid.columns - 1) / grid.columns;
+            let (mut lo, mut hi) = (0, rows - 1);
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                let (y, h) = self.row_span(&grid, mid)?;
+                if ((y + h + p) as f64) < top {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
+                }
+            }
+            let mut last = lo;
+            while last + 1 < rows {
+                let (y, _) = self.row_span(&grid, last + 1)?;
+                if ((y - p) as f64) > bottom {
+                    break;
+                }
+                last += 1;
+            }
+            Some((lo * grid.columns, ((last + 1) * grid.columns).min(grid.n_items) - 1))
+        }
+
+        pub(super) fn selected_set(&self) -> HashSet<i32> {
             if let Some(s) = self.selected.borrow().as_ref() {
                 return s.clone();
             }
@@ -320,6 +385,9 @@ mod imp {
             let selected = self.selected_set();
             let prelight = self.prelight.get();
             let draw_focus = self.draw_focus.get();
+            // The items in sight, with their state as gtk_icon_view_paint_item
+            // works it out.
+            let mut items = vec![];
             let mut row = lo;
             while row < rows {
                 let Some((y, h)) = self.row_span(&grid, row) else { break };
@@ -330,31 +398,65 @@ mod imp {
                 let count = grid.columns.min(grid.n_items - first);
                 let Some(row_ctx) = self.row_context(&model, &area, &grid, row, h) else { break };
                 for i in first..first + count {
-                    let x = self.column_x(&grid, i - first);
-                    self.paint_item(cr, &model, &area, &row_ctx, i, gdk::Rectangle::new(x, y, grid.item_width, h), p, state, cursor, &selected, prelight, draw_focus);
+                    let cell = gdk::Rectangle::new(self.column_x(&grid, i - first), y, grid.item_width, h);
+                    let mut item_state = state - (gtk::StateFlags::SELECTED | gtk::StateFlags::PRELIGHT);
+                    let mut flags = gtk::CellRendererState::empty();
+                    if state.contains(gtk::StateFlags::FOCUSED) && cursor == Some(i) {
+                        flags |= gtk::CellRendererState::FOCUSED;
+                    }
+                    if selected.contains(&i) {
+                        item_state |= gtk::StateFlags::SELECTED;
+                        flags |= gtk::CellRendererState::SELECTED;
+                    }
+                    if prelight == Some(i) {
+                        item_state |= gtk::StateFlags::PRELIGHT;
+                        flags |= gtk::CellRendererState::PRELIT;
+                    }
+                    items.push((i, cell, row_ctx.clone(), item_state, flags));
                 }
                 row += 1;
+            }
+            // Painted state by state (GtkIconView sets each item's on the
+            // style context, one after the other: the same items, each
+            // clipped to its own place, but the style is set once for all
+            // the items in a state, usually all but the selected ones).
+            let mut states: Vec<gtk::StateFlags> = vec![];
+            for (_, _, _, s, _) in &items {
+                if !states.contains(s) {
+                    states.push(*s);
+                }
+            }
+            let ctx = iv.style_context();
+            for st in states {
+                let shows = self.cell_shows(st);
+                ctx.save();
+                ctx.add_class("cell");
+                ctx.set_state(st);
+                for (i, cell, row_ctx, _, flags) in items.iter().filter(|it| it.3 == st) {
+                    self.paint_item(cr, &ctx, &model, &area, row_ctx, *i, *cell, p, *flags, shows, draw_focus);
+                }
+                ctx.restore();
             }
             cr.restore().ok();
             true
         }
 
         /// gtk_icon_view_paint_item, clipped to the item as
-        /// gtk_icon_view_draw does.
+        /// gtk_icon_view_draw does, with the style context already in the
+        /// item's state.
         #[allow(clippy::too_many_arguments)]
         fn paint_item(
             &self,
             cr: &gtk::cairo::Context,
+            ctx: &gtk::StyleContext,
             model: &gtk::TreeModel,
             area: &gtk::CellArea,
             row_ctx: &gtk::CellAreaContext,
             index: i32,
             cell: gdk::Rectangle,
             p: i32,
-            widget_state: gtk::StateFlags,
-            cursor: Option<i32>,
-            selected: &HashSet<i32>,
-            prelight: Option<i32>,
+            flags: gtk::CellRendererState,
+            shows: bool,
             draw_focus: bool,
         ) {
             if cell.width() <= 0 || cell.height() <= 0 {
@@ -367,32 +469,53 @@ mod imp {
             let in_sight = cr.clip_extents().is_ok_and(|(x1, y1, x2, y2)| x2 > x1 && y2 > y1);
             if in_sight {
                 if let Some(it) = model.iter_nth_child(None, index) {
-                    let iv = self.obj();
-                    area.apply_attributes(model, &it, false, false);
-                    let ctx = iv.style_context();
-                    ctx.save();
-                    ctx.add_class("cell");
-                    let mut state = widget_state - (gtk::StateFlags::SELECTED | gtk::StateFlags::PRELIGHT);
-                    let mut flags = gtk::CellRendererState::empty();
-                    if widget_state.contains(gtk::StateFlags::FOCUSED) && cursor == Some(index) {
-                        flags |= gtk::CellRendererState::FOCUSED;
+                    let filler = self.filler.borrow().clone();
+                    match filler {
+                        Some(fill) => fill(model, &it),
+                        None => area.apply_attributes(model, &it, false, false),
                     }
-                    if selected.contains(&index) {
-                        state |= gtk::StateFlags::SELECTED;
-                        flags |= gtk::CellRendererState::SELECTED;
+                    if shows {
+                        gtk::render_background(ctx, cr, px, py, pw, ph);
+                        gtk::render_frame(ctx, cr, px, py, pw, ph);
                     }
-                    if prelight == Some(index) {
-                        state |= gtk::StateFlags::PRELIGHT;
-                        flags |= gtk::CellRendererState::PRELIT;
-                    }
-                    ctx.set_state(state);
-                    gtk::render_background(&ctx, cr, px, py, pw, ph);
-                    gtk::render_frame(&ctx, cr, px, py, pw, ph);
-                    area.render(row_ctx, &*iv, cr, &cell, &cell, flags, draw_focus);
-                    ctx.restore();
+                    area.render(row_ctx, &*self.obj(), cr, &cell, &cell, flags, draw_focus);
                 }
             }
             cr.restore().ok();
+        }
+
+        /// Whether an item's background and frame in `state` show anything
+        /// (as set in `ctx`): drawn once on a small surface to see, for each
+        /// state and after each style change. Most themes draw neither for
+        /// an item that isn't selected.
+        fn cell_shows(&self, state: gtk::StateFlags) -> bool {
+            if std::env::var_os("ARKHA_GTK_DRAW").is_some() {
+                return true;
+            }
+            if let Some(shows) = self.cell_painted.borrow().get(&state.bits()) {
+                return *shows;
+            }
+            use gtk::cairo::{Context, Format, ImageSurface};
+            let ctx = self.obj().style_context();
+            ctx.save();
+            ctx.add_class("cell");
+            ctx.set_state(state);
+            let ctx = &ctx;
+            let shows = (|| {
+                let mut out = ImageSurface::create(Format::ARgb32, 40, 40).ok()?;
+                {
+                    let cr = Context::new(&out).ok()?;
+                    gtk::render_background(ctx, &cr, 2.0, 2.0, 36.0, 36.0);
+                    gtk::render_frame(ctx, &cr, 2.0, 2.0, 36.0, 36.0);
+                }
+                out.flush();
+                let data = out.data().ok()?;
+                Some(data.iter().any(|&b| b != 0))
+            })()
+            .unwrap_or(true);
+            ctx.restore();
+            self.cell_painted.borrow_mut().insert(state.bits(), shows);
+            shows
         }
 
         /// The item at (x, y) in the bin window, as

@@ -84,6 +84,9 @@ impl Place {
 }
 
 /// Compares two rows' text in column `col` where it is, without copying it.
+/// What fills in a cell for a row (a cell data function).
+type CellFill = Rc<dyn Fn(&gtk::CellRenderer, &gtk::TreeModel, &gtk::TreeIter)>;
+
 fn cmp_text(m: &gtk::TreeModel, a: &gtk::TreeIter, b: &gtk::TreeIter, col: u32) -> Ordering {
     let (va, vb) = (m.value(a, col as i32), m.value(b, col as i32));
     value_str(&va).cmp(value_str(&vb))
@@ -637,16 +640,14 @@ impl Pane {
         // The item being renamed doesn't draw its name: the edit field over
         // it would show it through (see inline rename in setup_signals).
         let edit_hidden: Rc<RefCell<Option<String>>> = Rc::default();
+        let (text_fill, pix_fill): (CellFill, CellFill);
         {
             let hidden = edit_hidden.clone();
             let captions = captions.clone();
             let columns = icon_columns.clone();
             let iv = icon_view.clone();
             let (shown, hit_off, drop_path, label) = (labels_shown.clone(), hit_off.clone(), drop_path.clone(), label.clone());
-            CellLayoutExt::set_cell_data_func(
-                &icon_view,
-                &icon_text,
-                Some(Box::new(move |_, cell, m, it| {
+            let fill: CellFill = Rc::new(move |cell, m, it| {
                     cell.set_visible(shown.get() && !hit_off.get());
                     label.set_drop_target(drop_path.borrow().as_ref().is_some_and(|d| m.path(it).as_ref() == Some(d)));
                     if hidden.borrow().as_deref().is_some_and(|u| m.gv::<String>(it, COL_URI as i32) == u) {
@@ -658,8 +659,9 @@ impl Pane {
                         return;
                     }
                     label.set_label_text(&icon_cell_text(m, it, captions.get(), columns.get()));
-                })),
-            );
+            });
+            text_fill = fill.clone();
+            CellLayoutExt::set_cell_data_func(&icon_view, &icon_text, Some(Box::new(move |_, cell, m, it| fill(cell, m, it))));
         }
         {
             let sz = icon_size.clone();
@@ -667,10 +669,7 @@ impl Pane {
             let tsz = thumb_size.clone();
             let iv = icon_view.clone();
             let (hit_off, drop_path, image) = (hit_off.clone(), drop_path.clone(), image.clone());
-            CellLayoutExt::set_cell_data_func(
-                &icon_view,
-                &icon_pix,
-                Some(Box::new(move |_, cell, m, it| {
+            let fill: CellFill = Rc::new(move |cell, m, it| {
                     cell.set_visible(!hit_off.get());
                     image.set_drop_target(drop_path.borrow().as_ref().is_some_and(|d| m.path(it).as_ref() == Some(d)));
                     // GtkIconView measures every item, not just the ones in
@@ -681,11 +680,23 @@ impl Pane {
                         image.set_picture(if drawn { row_pixbuf(m, it, lsz.get().min(48)) } else { None });
                         return;
                     }
-                    let (w, h) = icon_view_dims(m, it, sz.get(), tsz.get());
+                    // The thumbnail looked up once, for the room and the picture.
+                    let thumb = icon_view_thumb(m, it);
+                    let (w, h) = icon_view_dims(thumb.as_ref(), sz.get(), tsz.get());
                     cell.set_fixed_size(w, h);
-                    image.set_picture(if drawn { icon_view_pixbuf(m, it, sz.get(), tsz.get()) } else { None });
-                })),
-            );
+                    image.set_picture(if drawn { icon_view_pixbuf(m, it, thumb, sz.get(), tsz.get()) } else { None });
+            });
+            pix_fill = fill.clone();
+            CellLayoutExt::set_cell_data_func(&icon_view, &icon_pix, Some(Box::new(move |_, cell, m, it| fill(cell, m, it))));
+        }
+        // Items drawn by the icon view itself get both cells filled in
+        // directly, the picture first as GtkCellArea does (see iconview.rs).
+        {
+            let (p, t) = (icon_pix.clone().upcast::<gtk::CellRenderer>(), icon_text.clone().upcast::<gtk::CellRenderer>());
+            crate::iconview::IconView::set_filler(&icon_view, Rc::new(move |m, it| {
+                pix_fill(&p, m, it);
+                text_fill(&t, m, it);
+            }));
         }
 
         mark_drawing(icon_view.upcast_ref());
@@ -3449,7 +3460,7 @@ impl Pane {
         let (Some(model), true) = (iv.model(), iv.item_orientation() == gtk::Orientation::Vertical) else { return boxes };
         let Some(it) = model.iter(path) else { return boxes };
         if let Some(r) = cell_rect(iv, path, &self.icon_pix) {
-            let (w, h) = icon_view_dims(&model, &it, self.icon_size.get(), self.thumb_size.get());
+            let (w, h) = icon_view_dims(icon_view_thumb(&model, &it).as_ref(), self.icon_size.get(), self.thumb_size.get());
             let left = r.x() + self.image.x_shift() + (r.width() - w) / 2;
             boxes.push((left as f64, (r.y() + r.height() - h) as f64, w as f64, h as f64));
         }
@@ -3642,12 +3653,20 @@ impl Pane {
         if iv.item_orientation() != gtk::Orientation::Vertical || !self.labels_shown.get() {
             return;
         }
-        let (Some(model), Some((mut path, last))) = (iv.model(), iv.visible_range()) else { return };
+        let Some(model) = iv.model() else { return };
+        // The items in sight (where this draws), found without going
+        // through all of them (as gtk_icon_view_get_visible_range does).
+        let (y1, y2) = cr.clip_extents().map_or((0.0, 0.0), |(_, y1, _, y2)| (y1, y2));
+        let range = crate::iconview::IconView::items_between(iv, y1, y2)
+            .map(|(a, b)| (gtk::TreePath::from_indicesv(&[a]), gtk::TreePath::from_indicesv(&[b])))
+            .or_else(|| iv.visible_range());
+        let Some((mut path, last)) = range else { return };
         let editing = self.edit_hidden.borrow().clone();
         let cursor = iv.cursor().filter(|_| self.keyboard_focus.get() && iv.has_focus()).map(|(p, _)| p);
         let drop = self.drop_path.borrow().clone();
         loop {
-            let selected = iv.path_is_selected(&path) || drop.as_ref() == Some(&path);
+            let index = path.indices().first().copied().unwrap_or(-1);
+            let selected = crate::iconview::IconView::is_selected(iv, index) || drop.as_ref() == Some(&path);
             let focused = !selected && cursor.as_ref() == Some(&path);
             if selected || focused {
                 if let Some(it) = model.iter(&path) {
@@ -4229,13 +4248,14 @@ fn request_row_thumbnail(m: &gtk::TreeModel, it: &gtk::TreeIter) {
     if m.gv::<bool>(it, COL_IS_DIR as i32) || !config::with(|s| s.thumbnails) {
         return;
     }
-    let ctype: String = m.gv(it, COL_CTYPE as i32);
-    if !icons::can_thumbnail(&ctype) {
+    let ctype = m.value(it, COL_CTYPE as i32);
+    let ctype = value_str(&ctype);
+    if !icons::can_thumbnail(ctype) {
         return;
     }
     let uri: String = m.gv(it, COL_URI as i32);
     if let Some(path) = gio::File::for_uri(&uri).path() {
-        icons::request_thumbnail(&uri, &path, m.gv(it, COL_MTIME as i32), m.gv(it, COL_SIZE as i32), &ctype);
+        icons::request_thumbnail(&uri, &path, m.gv(it, COL_MTIME as i32), m.gv(it, COL_SIZE as i32), ctype);
     }
 }
 
@@ -4324,22 +4344,22 @@ fn icon_view_thumb(m: &gtk::TreeModel, it: &gtk::TreeIter) -> Option<(String, (i
 /// The room an item's picture takes in the icon view, as in Caja: its
 /// thumbnail with a shadow (longest side `thumb_size`) if it has one, else
 /// its icon (`size`).
-fn icon_view_dims(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32, thumb_size: i32) -> (i32, i32) {
-    match icon_view_thumb(m, it) {
+fn icon_view_dims(thumb: Option<&(String, (i32, i32), bool)>, size: i32, thumb_size: i32) -> (i32, i32) {
+    match thumb {
         Some((_, (w, h), shadow)) => {
-            let (w, h) = icons::fit(w, h, thumb_size);
-            if shadow { (w + 2 * icons::SHADOW, h + icons::SHADOW) } else { (w, h) }
+            let (w, h) = icons::fit(*w, *h, thumb_size);
+            if *shadow { (w + 2 * icons::SHADOW, h + icons::SHADOW) } else { (w, h) }
         }
         None => (size, size),
     }
 }
 
 /// An item's picture in the icon view (see icon_view_dims).
-fn icon_view_pixbuf(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32, thumb_size: i32) -> Option<Pixbuf> {
-    let pb = match icon_view_thumb(m, it) {
+fn icon_view_pixbuf(m: &gtk::TreeModel, it: &gtk::TreeIter, thumb: Option<(String, (i32, i32), bool)>, size: i32, thumb_size: i32) -> Option<Pixbuf> {
+    let pb = match thumb {
         Some((thumb, _, true)) => icons::framed_thumb(&thumb, thumb_size).map(|p| dim_if_cut(m, it, p)),
         Some((thumb, _, false)) => icons::thumb_pixbuf(&thumb, thumb_size).map(|p| dim_if_cut(m, it, p)),
-        None => row_pixbuf(m, it, size),
+        None => icon_or_thumb(m, it, "", size),
     };
     // Hidden items' pictures at 55 %, as in Caja.
     if m.gv::<bool>(it, COL_HIDDEN as i32) { pb.map(|p| faded(&p, 0.55)) } else { pb }
@@ -4367,11 +4387,17 @@ fn dim_if_cut(m: &gtk::TreeModel, it: &gtk::TreeIter, pb: Pixbuf) -> Pixbuf {
 }
 
 fn row_pixbuf(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32) -> Option<Pixbuf> {
-    let thumb: String = m.gv(it, COL_THUMB as i32);
+    let v = m.value(it, COL_THUMB as i32);
+    icon_or_thumb(m, it, value_str(&v), size)
+}
+
+/// An item's thumbnail (`thumb`, its file if it has one) at `size`, else
+/// its icon, the thumbnail asked for if it may get one.
+fn icon_or_thumb(m: &gtk::TreeModel, it: &gtk::TreeIter, thumb: &str, size: i32) -> Option<Pixbuf> {
     let pb = if size < 32 {
         None
     } else if !thumb.is_empty() {
-        icons::thumb_pixbuf(&thumb, size)
+        icons::thumb_pixbuf(thumb, size)
     } else {
         if icons::drawing() {
             request_row_thumbnail(m, it);
