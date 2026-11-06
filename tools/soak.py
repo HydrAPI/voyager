@@ -231,7 +231,7 @@ def outer(args):
         unlock(run)
         shutil.rmtree(run)
     os.makedirs(run)
-    keep = {"PATH", "LANG", "LANGUAGE", "TERM", "TZ"} | {k for k in os.environ if k.startswith("LC_")}
+    keep = {"PATH", "LANG", "LANGUAGE", "TERM", "TZ"} | {k for k in os.environ if k.startswith(("LC_", "ARKHA_"))}
     env = {k: v for k, v in os.environ.items() if k in keep}
     env.update({
         "HOME": HOME,
@@ -587,6 +587,28 @@ class Run:
             time.sleep(0.3)
         return not self.dialogs()
 
+    def cancel_operations(self):
+        """Presses the Cancel buttons of the File Operations window: file
+        operations still running when Arkha is told to quit go on (with
+        that window) until they're done, as a person would cancel them.
+        How many were pressed."""
+        pressed = 0
+        try:
+            desk = self.Atspi.get_desktop(0)
+            for i in range(desk.get_child_count()):
+                app = desk.get_child_at_index(i)
+                if not app or app.get_name() != "arkha":
+                    continue
+                for j in range(app.get_child_count()):
+                    w = app.get_child_at_index(j)
+                    if w and w.get_name() == "File Operations":
+                        for _, _, a in self.buttons(w):
+                            a.get_action_iface().do_action(0)
+                            pressed += 1
+        except Exception as e:
+            self.note(f"couldn't cancel operations: {e}")
+        return pressed
+
     def close_dialogs(self):
         """X11: Escape (or, for a question, sometimes Enter) in every dialog."""
         env = dict(os.environ)
@@ -827,6 +849,10 @@ class Run:
                     break
                 time.sleep(1)
                 self.answer_dialogs()
+                if not self.args.no_a11y:
+                    n = self.cancel_operations()
+                    if n:
+                        self.note(f"after quit: cancelled {n} file operation(s) still running")
                 if self.args.backend == "x11":
                     names = subprocess.run(["sh", "-c", f"for w in $(xdotool search --onlyvisible --pid {self.pid} ''); do xdotool getwindowname $w; done"],
                                            capture_output=True, text=True).stdout.split("\n")

@@ -608,6 +608,11 @@ mod imp {
     pub struct IconImage {
         /// The picture set (see set_picture).
         pub picture: RefCell<Option<gdk_pixbuf::Pixbuf>>,
+        /// Whether pictures can be painted here rather than by
+        /// GtkCellRendererPixbuf, by the widget's state flags (see direct_ok).
+        direct: RefCell<HashMap<u32, bool>>,
+        /// Widgets whose style changes make `direct` out of date.
+        watched: RefCell<Vec<glib::WeakRef<gtk::Widget>>>,
         pub tint: Cell<bool>,
         pub x_shift: Cell<i32>,
         pub drop_target: Cell<bool>,
@@ -624,6 +629,84 @@ mod imp {
     impl CellRendererPixbufImpl for IconImage {}
 
     impl IconImage {
+        /// Where GtkCellRendererPixbuf puts a picture of `w`×`h` in `cell`
+        /// (gtk_cell_renderer_pixbuf_get_size and _render, GTK 3.24).
+        fn place(&self, widget: &gtk::Widget, cell: &gdk::Rectangle, w: i32, h: i32) -> (i32, i32) {
+            let obj = self.obj();
+            let (xpad, ypad) = obj.padding();
+            let (mut xalign, yalign) = obj.alignment();
+            if widget.direction() == gtk::TextDirection::Rtl {
+                xalign = 1.0 - xalign;
+            }
+            let x = ((xalign * (cell.width() - (2 * xpad + w)) as f32) as i32).max(0);
+            let y = ((yalign * (cell.height() - (2 * ypad + h)) as f32) as i32).max(0);
+            (cell.x() + x + xpad, cell.y() + y + ypad)
+        }
+
+        /// Whether painting pictures here looks just as GtkCellRendererPixbuf
+        /// does in `widget`'s style and state (no icon effects, shadows or
+        /// transforms from the theme): tried once, on a small test picture
+        /// drawn both ways, for each state and after each style change.
+        fn direct_ok(&self, widget: &gtk::Widget) -> bool {
+            // (As GtkIconView would, to compare: see iconview.rs.)
+            if std::env::var_os("ARKHA_GTK_DRAW").is_some() {
+                return false;
+            }
+            let key = widget.state_flags().bits();
+            if let Some(ok) = self.direct.borrow().get(&key) {
+                return *ok;
+            }
+            if !self.watched.borrow().iter().any(|w| w.upgrade().as_ref() == Some(widget)) {
+                let me = self.obj().downgrade();
+                widget.connect_style_updated(move |_| {
+                    if let Some(i) = me.upgrade() {
+                        i.imp().direct.borrow_mut().clear();
+                    }
+                });
+                self.watched.borrow_mut().push(widget.downgrade());
+            }
+            let ok = self.same_both_ways(widget).unwrap_or(false);
+            self.direct.borrow_mut().insert(key, ok);
+            ok
+        }
+
+        fn same_both_ways(&self, widget: &gtk::Widget) -> Option<bool> {
+            use gtk::cairo::{Context, Format, ImageSurface};
+            let (w, h) = (5, 4);
+            let test = ImageSurface::create(Format::ARgb32, w, h).ok()?;
+            {
+                let cr = Context::new(&test).ok()?;
+                for i in 0..w * h {
+                    let v = i as f64 / (w * h) as f64;
+                    cr.set_source_rgba(v, 1.0 - v, (i % 3) as f64 / 2.0, 0.3 + 0.7 * v);
+                    cr.rectangle((i % w) as f64, (i / w) as f64, 1.0, 1.0);
+                    cr.fill().ok()?;
+                }
+            }
+            let cell = gdk::Rectangle::new(1, 2, w + 6, h + 5);
+            let obj = self.obj();
+            let draw = |direct: bool| -> Option<Vec<u8>> {
+                let mut out = ImageSurface::create(Format::ARgb32, 16, 16).ok()?;
+                {
+                    let cr = Context::new(&out).ok()?;
+                    if direct {
+                        let (x, y) = self.place(widget, &cell, w, h);
+                        cr.set_source_surface(&test, x as f64, y as f64).ok()?;
+                        cr.paint().ok()?;
+                    } else {
+                        obj.set_property("surface", &test);
+                        self.parent_render(&cr, widget, &cell, &cell, gtk::CellRendererState::empty());
+                    }
+                }
+                out.flush();
+                let data = out.data().ok()?.to_vec();
+                Some(data)
+            };
+            let gtk_way = draw(false);
+            obj.show(self.picture.borrow().as_ref());
+            Some(gtk_way? == draw(true)?)
+        }
+
         /// The fixed size, if set: what GtkCellRenderer makes the size in
         /// the end anyway, without GtkCellRendererPixbuf first working one
         /// out through its style context (for every item at every layout).
@@ -684,6 +767,25 @@ mod imp {
                     colorized(self.picture.borrow().as_ref()?, &color)
                 })
                 .flatten();
+            // Plain items (most of them): painted from the picture's kept
+            // surface, which is what GtkCellRendererPixbuf ends up doing
+            // after making an icon helper and going through the style for
+            // each one, when the style gives pictures no effects.
+            if tinted.is_none() && !flags.intersects(gtk::CellRendererState::SELECTED | gtk::CellRendererState::PRELIT) && obj.is_sensitive() {
+                let picture = self.picture.borrow().clone();
+                if let Some((p, s)) = picture.and_then(|p| super::surface_of(&p).map(|s| (p, s))) {
+                    if self.direct_ok(widget.upcast_ref()) {
+                        let (x, y) = self.place(widget.upcast_ref(), cell_area, p.width(), p.height());
+                        if cr.save().is_ok() {
+                            if cr.set_source_surface(&s, x as f64, y as f64).is_ok() {
+                                let _ = cr.paint();
+                            }
+                            let _ = cr.restore();
+                        }
+                        return;
+                    }
+                }
+            }
             match tinted {
                 Some(t) => {
                     obj.set_property("pixbuf", &t);

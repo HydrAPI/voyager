@@ -34,12 +34,62 @@ pub fn init() {
         }
         glib::ffi::GTRUE
     }
+    // Before a container is unrealized (its handler may destroy windows
+    // first, a GtkStack's before its children are): see
+    // let_go_of_indicators.
+    unsafe extern "C" fn on_unrealize(
+        _hint: *mut glib::gobject_ffi::GSignalInvocationHint,
+        n: u32,
+        params: *const glib::gobject_ffi::GValue,
+        _data: glib::ffi::gpointer,
+    ) -> glib::ffi::gboolean {
+        if n > 0 {
+            let v = &*(params as *const glib::Value);
+            if let Ok(Some(w)) = v.get::<Option<gtk::Widget>>() {
+                // Any container: a GtkStack destroys windows of its own
+                // first without saying it has one.
+                if w.is::<gtk::Container>() {
+                    let_go_of_indicators(&w);
+                }
+            }
+        }
+        glib::ffi::GTRUE
+    }
     unsafe {
-        let id = glib::gobject_ffi::g_signal_lookup(
-            c"realize".as_ptr(),
-            gtk::Widget::static_type().into_glib(),
-        );
+        let ty = gtk::Widget::static_type().into_glib();
+        let id = glib::gobject_ffi::g_signal_lookup(c"realize".as_ptr(), ty);
         glib::gobject_ffi::g_signal_add_emission_hook(id, 0, Some(on_realize), std::ptr::null_mut(), None);
+        let id = glib::gobject_ffi::g_signal_lookup(c"unrealize".as_ptr(), ty);
+        glib::gobject_ffi::g_signal_add_emission_hook(id, 0, Some(on_unrealize), std::ptr::null_mut(), None);
+    }
+}
+
+/// Marks a scrolled window whose overlay scrolling was switched off for
+/// being unrealized, to switch it on again once it's realized.
+const WAS_OVERLAY: &str = "arkha-was-overlay";
+
+/// GTK 3 bug: a scrolled window unrealized while it has overlay scrollbars
+/// (a tab taken out of its window, a view whose window goes, a page of a
+/// stack) leaves their handlers on its adjustments, for scrollbars it has
+/// forgotten: any scrolling or resizing of it until it's realized again
+/// warns (gtk_widget_get_mapped, gtk_widget_set_opacity,
+/// gdk_window_is_visible). With overlay scrolling switched off first, it
+/// lets go of them properly. That has to happen while the windows are still
+/// there, so for `w` and every scrolled window inside it, before `w` is
+/// unrealized (see init); switched back on in `install`.
+fn let_go_of_indicators(w: &gtk::Widget) {
+    if !w.is_realized() || w.window().is_none_or(|win| win.is_destroyed()) {
+        return;
+    }
+    if let Some(sw) = w.downcast_ref::<gtk::ScrolledWindow>() {
+        if sw.is_overlay_scrolling() {
+            // SAFETY: only ever set (and read, in install) as a bool.
+            unsafe { sw.set_data(WAS_OVERLAY, true) };
+            sw.set_overlay_scrolling(false);
+        }
+    }
+    if let Some(c) = w.downcast_ref::<gtk::Container>() {
+        c.forall(let_go_of_indicators);
     }
 }
 
@@ -50,27 +100,10 @@ fn install(sw: &gtk::ScrolledWindow) {
         }
         sw.set_data("arkha-scroll", true);
     }
-    // GTK 3 bug: a scrolled window unrealized while it has overlay
-    // scrollbars (a tab taken out of its window, a view whose window goes)
-    // leaves their handlers on its adjustments, for scrollbars it has
-    // forgotten: any scrolling of it until it's realized again warns
-    // (gtk_widget_get_mapped, gtk_widget_set_opacity, gdk_window_is_visible).
-    // With overlay scrolling switched off first, it lets go of them
-    // properly; switched back on once it's realized again.
-    let was_overlay = Rc::new(Cell::new(false));
-    {
-        let was = was_overlay.clone();
-        sw.connect_unrealize(move |sw| {
-            // Not when its window is gone already (it goes with it): the
-            // switch makes new windows for the scrollbars.
-            if sw.is_overlay_scrolling() && sw.window().is_some_and(|w| !w.is_destroyed()) {
-                was.set(true);
-                sw.set_overlay_scrolling(false);
-            }
-        });
-    }
-    sw.connect_realize(move |sw| {
-        if was_overlay.replace(false) {
+    // Overlay scrolling back on (see let_go_of_indicators).
+    sw.connect_realize(|sw| {
+        // SAFETY: only ever set as a bool.
+        if unsafe { sw.steal_data::<bool>(WAS_OVERLAY) }.is_some() {
             sw.set_overlay_scrolling(true);
         }
     });

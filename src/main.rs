@@ -27,6 +27,8 @@ use gio::prelude::*;
 use gtk::prelude::*;
 
 fn main() -> glib::ExitCode {
+    // Before any window: they load icons (see there).
+    util::tell_metadata_store_in_background();
     let app = gtk::Application::new(
         Some("io.github.arkha.FileManager"),
         gio::ApplicationFlags::HANDLES_OPEN,

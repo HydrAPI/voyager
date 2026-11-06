@@ -7,6 +7,119 @@ use gtk::prelude::*;
 /// A process-wide flag, as file operations format sizes on their own thread.
 static IEC_UNITS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// GVfs tells its metadata store about every local file removed or moved
+/// (GDaemonVfs's local_file_removed / local_file_moved, called by
+/// g_file_delete and the like) and waits for the answer. Even decoding an
+/// image does it: gdk-pixbuf's glycin loader removes a temporary file. So
+/// when the store was busy, GTK loading an icon froze the window until it
+/// answered (up to 25 s, D-Bus's limit). From the main thread, the store is
+/// now told from a thread of its own, in the same order; other threads (file
+/// operations) wait for it as before.
+pub fn tell_metadata_store_in_background() {
+    use std::ffi::{c_char, CStr, CString};
+    use std::sync::{mpsc, OnceLock};
+    type Removed = unsafe extern "C" fn(*mut gio::ffi::GVfs, *const c_char);
+    type Moved = unsafe extern "C" fn(*mut gio::ffi::GVfs, *const c_char, *const c_char);
+    enum Job {
+        Removed(usize, CString),
+        Moved(usize, CString, CString),
+    }
+    static ORIGINAL: OnceLock<(Option<Removed>, Option<Moved>)> = OnceLock::new();
+    static QUEUE: OnceLock<mpsc::Sender<Job>> = OnceLock::new();
+
+    fn on_main_thread() -> bool {
+        glib::MainContext::default().is_owner()
+    }
+    unsafe extern "C" fn removed(vfs: *mut gio::ffi::GVfs, name: *const c_char) {
+        let Some(original) = ORIGINAL.get().and_then(|o| o.0) else { return };
+        if on_main_thread() && !name.is_null() {
+            if let Some(q) = QUEUE.get() {
+                if q.send(Job::Removed(vfs as usize, CStr::from_ptr(name).to_owned())).is_ok() {
+                    return;
+                }
+            }
+        }
+        original(vfs, name);
+    }
+    unsafe extern "C" fn moved(vfs: *mut gio::ffi::GVfs, from: *const c_char, to: *const c_char) {
+        let Some(original) = ORIGINAL.get().and_then(|o| o.1) else { return };
+        if on_main_thread() && !from.is_null() && !to.is_null() {
+            if let Some(q) = QUEUE.get() {
+                if q.send(Job::Moved(vfs as usize, CStr::from_ptr(from).to_owned(), CStr::from_ptr(to).to_owned())).is_ok() {
+                    return;
+                }
+            }
+        }
+        original(vfs, from, to);
+    }
+
+    if ORIGINAL.get().is_some() {
+        return;
+    }
+    let vfs = gio::Vfs::default();
+    // SAFETY: the default GVfs lives as long as the program; its class
+    // structure is GVfsClass (or a subclass of it), and only the two
+    // functions are swapped, before anything else runs on other threads.
+    unsafe {
+        use glib::translate::ToGlibPtr;
+        let instance: *mut gio::ffi::GVfs = vfs.to_glib_none().0;
+        let class = (*(instance as *mut glib::gobject_ffi::GTypeInstance)).g_class as *mut gio::ffi::GVfsClass;
+        let original = ((*class).local_file_removed, (*class).local_file_moved);
+        if original == (None, None) || ORIGINAL.set(original).is_err() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel::<Job>();
+        let started = std::thread::Builder::new().name("metadata".into()).spawn(move || {
+            let (removed, moved) = original;
+            for job in rx {
+                match job {
+                    Job::Removed(vfs, name) => {
+                        if let Some(f) = removed {
+                            f(vfs as *mut gio::ffi::GVfs, name.as_ptr());
+                        }
+                    }
+                    Job::Moved(vfs, from, to) => {
+                        if let Some(f) = moved {
+                            f(vfs as *mut gio::ffi::GVfs, from.as_ptr(), to.as_ptr());
+                        }
+                    }
+                }
+            }
+        });
+        if started.is_err() || QUEUE.set(tx).is_err() {
+            return;
+        }
+        if original.0.is_some() {
+            (*class).local_file_removed = Some(removed);
+        }
+        if original.1.is_some() {
+            (*class).local_file_moved = Some(moved);
+        }
+    }
+}
+
+/// GtkTreeView::scroll_to_cell, once the view is realized. Asked before
+/// that, GTK keeps the scroll for its next size allocation, which can come
+/// while the view still isn't (a column of a tab not shown yet), and then
+/// warns (gtk_tree_view_get_cell_area): it's asked again when the view
+/// shows.
+pub fn scroll_tree_to(view: &gtk::TreeView, path: &gtk::TreePath, use_align: bool, row_align: f32, col_align: f32) {
+    if view.is_realized() {
+        view.scroll_to_cell(Some(path), None::<&gtk::TreeViewColumn>, use_align, row_align, col_align);
+        return;
+    }
+    let path = path.clone();
+    let handler: std::rc::Rc<std::cell::RefCell<Option<glib::SignalHandlerId>>> = Default::default();
+    let h = handler.clone();
+    let id = view.connect_map(move |v| {
+        if let Some(id) = h.borrow_mut().take() {
+            v.disconnect(id);
+        }
+        v.scroll_to_cell(Some(&path), None::<&gtk::TreeViewColumn>, use_align, row_align, col_align);
+    });
+    *handler.borrow_mut() = Some(id);
+}
+
 /// Hands memory freed in bulk (a closed tab, a big folder left) back to
 /// the system, a moment later and once for several. Folders are many small
 /// pieces (a row, its texts), and the allocator keeps the pages they leave

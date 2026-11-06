@@ -2103,7 +2103,7 @@ impl Pane {
             // Only the view in use has the model (see attach_model).
             match self.mode.get() {
                 ViewMode::List | ViewMode::Columns => {
-                    self.tree_view.scroll_to_cell(Some(&path), None::<&gtk::TreeViewColumn>, false, 0.0, 0.0);
+                    util::scroll_tree_to(&self.tree_view, &path, false, 0.0, 0.0);
                     self.tree_view.set_cursor(&path, None::<&gtk::TreeViewColumn>, false);
                     self.tree_view.selection().unselect_all();
                 }
@@ -2418,7 +2418,7 @@ impl Pane {
             self.scroll_icon_view(&p, true, 0.0, false);
         }
         if let Some(p) = path_of(&list_top) {
-            self.tree_view.scroll_to_cell(Some(&p), None::<&gtk::TreeViewColumn>, true, 0.0, 0.0);
+            util::scroll_tree_to(&self.tree_view, &p, true, 0.0, 0.0);
         }
     }
 
@@ -2704,8 +2704,7 @@ impl Pane {
                 ViewMode::List | ViewMode::Columns => {
                     if i == 0 {
                         self.tree_view.set_cursor(p, None::<&gtk::TreeViewColumn>, false);
-                        self.tree_view
-                            .scroll_to_cell(Some(p), None::<&gtk::TreeViewColumn>, center, 0.4, 0.0);
+                        util::scroll_tree_to(&self.tree_view, p, center, 0.4, 0.0);
                         sel.unselect_all();
                     }
                     sel.select_path(p);

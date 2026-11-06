@@ -298,7 +298,7 @@ impl Column {
         let found = self.store.rows().into_iter().find(|it| self.store.gv::<String>(it, C_URI as i32) == want);
         if let Some(p) = found.and_then(|it| self.store.path(&it)) {
             sel.select_path(&p);
-            self.view.scroll_to_cell(Some(&p), None::<&gtk::TreeViewColumn>, false, 0.0, 0.0);
+            crate::util::scroll_tree_to(&self.view, &p, false, 0.0, 0.0);
         }
     }
 

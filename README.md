@@ -32,7 +32,7 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
 - **Info panel:** beside the files (View → Info Panel, F11, or its toolbar button), turned on per folder. It shows the selected item with a few details: a folder's cover picture (`folder.jpg`, `cover.jpg`, … — the names are a setting, matched ignoring case), an image itself, or a file's thumbnail (videos and the like); for several items their number and total size. Folder sizes are left out on network shares (SMB, NFS, SSHFS…), where adding them up would ask the server about every file. Custom icons set in Caja are shown too.
 - Bookmarks are shared with Caja and the GTK file chooser (`~/.config/gtk-3.0/bookmarks`). Includes a bookmark editor (Ctrl+B).
 - Preferences: single-click mode, default view and sorting, per-folder views, zoom levels, hidden files, file sizes in IEC units (KiB, MiB), thumbnails, confirmation before trashing, where new tabs go, text on the toolbar buttons, an always-text location bar, the number of hidden items in the status bar (off by default), and which side pane entries to show and their row height.
-- **Light on resources:** opens folders with less CPU than Caja and Nemo (big ones too: 20,000 files in about 1.8 s of CPU against Caja's 2.2 s), uses the least memory of the three, and gives memory back when big tabs are closed.
+- **Light on resources:** opens folders with less CPU than Caja and Nemo (big ones too: 20,000 files in about 1.8 s of CPU against Caja's 2.2 s), scrolls as cheaply as Caja (cheaper in big folders), uses the least memory of the three, and gives memory back when big tabs are closed. The window doesn't freeze when GVfs's metadata service is slow to answer (every image GTK decodes asks it, through the glycin loader's temporary file).
 
 Settings live in `~/.config/arkha/arkha.conf`; per-folder views in `~/.config/arkha/folders.conf`; custom context menu actions in `~/.config/arkha/actions.conf`; custom thumbnailers in `~/.config/arkha/thumbnailers.conf`.
 
@@ -102,7 +102,7 @@ tools/soak.py --backend x11 --minutes 10 --heaptrack   # memory recorded by heap
 | `src/bulkrename.rs` | Rename All…: renaming several items at once |
 | `src/keys.rs` | Keyboard shortcuts and their editor |
 | `src/iconlabel.rs` | The icon view's cells drawn like Caja's: wrapped names cut to three lines, captions, tinted selected icons, boxed selected names |
-| `src/iconview.rs` | The icon view, sized in big folders without measuring every item again for each size request |
+| `src/iconview.rs` | The icon view: sized in big folders without measuring every item for each size request, and drawing only the rows in sight |
 | `src/ops.rs` | Copy / move / link / trash / delete engine on a worker thread, progress + conflict dialogs |
 | `src/clipboard.rs` | Caja/Nautilus-compatible file clipboard |
 | `src/props.rs` | Properties dialog |
