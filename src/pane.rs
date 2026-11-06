@@ -8,7 +8,7 @@ use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::config;
 use crate::folders;
@@ -435,10 +435,15 @@ pub struct Pane {
     fwd: RefCell<Vec<Place>>,
     monitor: RefCell<Option<gio::FileMonitor>>,
     gen: Cell<u64>,
-    /// Rows of deleted files waiting for remove_uri's idle batch.
+    /// Rows of deleted files waiting for remove_uri's batch.
     pending_removals: RefCell<Vec<String>>,
-    /// Files changed in the open folder, to read again (see refresh_file).
+    /// Files changed in the open folder, to read again (see refresh_file),
+    /// and their URIs (to take each once).
     pending_refresh: RefCell<Vec<gio::File>>,
+    pending_refresh_uris: RefCell<std::collections::HashSet<String>>,
+    /// When the last batch of removals and of changes was done (see batch_delay).
+    last_removals: Cell<Option<Instant>>,
+    last_refresh: Cell<Option<Instant>>,
     index: RefCell<HashMap<String, gtk::TreeIter>>,
     mode: Cell<ViewMode>,
     icon_size: Rc<Cell<i32>>,
@@ -927,6 +932,9 @@ impl Pane {
             gen: Cell::new(0),
             pending_removals: RefCell::new(vec![]),
             pending_refresh: RefCell::new(vec![]),
+            pending_refresh_uris: RefCell::new(Default::default()),
+            last_removals: Cell::new(None),
+            last_refresh: Cell::new(None),
             index: RefCell::new(HashMap::new()),
             mode: Cell::new(ViewMode::from_str(&s.default_view)),
             icon_size,
@@ -2250,7 +2258,7 @@ impl Pane {
         let first = {
             let mut q = self.pending_refresh.borrow_mut();
             let first = q.is_empty();
-            if !q.iter().any(|x| x.equal(f)) {
+            if self.pending_refresh_uris.borrow_mut().insert(f.uri().to_string()) {
                 q.push(f.clone());
             }
             first
@@ -2260,8 +2268,11 @@ impl Pane {
         }
         let w = Rc::downgrade(self);
         let gen = self.gen.get();
-        glib::timeout_add_local_once(Duration::from_millis(100), move || {
+        let delay = self.batch_delay(&self.last_refresh, Duration::from_millis(100));
+        glib::timeout_add_local_once(delay, move || {
             let Some(p) = w.upgrade() else { return };
+            p.last_refresh.set(Some(Instant::now()));
+            p.pending_refresh_uris.borrow_mut().clear();
             let files = std::mem::take(&mut *p.pending_refresh.borrow_mut());
             if p.gen.get() != gen {
                 return;
@@ -2302,6 +2313,32 @@ impl Pane {
         }
     }
 
+    /// add_file_now for many files (a paste's results), in one batch, and
+    /// only those not shown yet: the folder's monitor has added most by
+    /// the time an operation ends, and adding thousands again costs time.
+    pub fn add_files_now(self: &Rc<Self>, files: &[gio::File]) {
+        let infos = files
+            .iter()
+            .filter(|f| !self.index.borrow().contains_key(f.uri().as_str()))
+            .filter_map(|f| f.query_info(ATTRS, gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE).ok())
+            .collect();
+        self.add_infos(&self.current(), infos, true);
+    }
+
+    /// How long to wait before the next batch of removals or changes: at
+    /// least `base` (for the events that come together to arrive), and in
+    /// a big folder until a while after the last batch. Each batch costs
+    /// time in proportion to all the rows there are, so a stream of
+    /// changes (thousands of files copied in or deleted) comes in fewer,
+    /// bigger batches the more rows there are: up to one a second. The
+    /// first change after a quiet while is still shown at once.
+    fn batch_delay(&self, last: &Cell<Option<Instant>>, base: Duration) -> Duration {
+        let rows = self.store.iter_n_children(None).max(0) as u64;
+        let window = if rows < 2000 { Duration::ZERO } else { Duration::from_millis((rows / 10).min(1000)) };
+        let since = last.get().map_or(Duration::MAX, |t| t.elapsed());
+        base.max(window.saturating_sub(since))
+    }
+
     /// Removes a deleted file's row. Removals arriving together (a folder
     /// emptied, a phone unmounted: one event per file) are done as one
     /// batch with the views detached, as in refilter(): removing many rows
@@ -2315,15 +2352,24 @@ impl Pane {
         };
         if first {
             let w = Rc::downgrade(self);
-            glib::idle_add_local_once(move || {
+            let flush = move || {
                 if let Some(p) = w.upgrade() {
                     p.flush_removals();
                 }
-            });
+            };
+            match self.batch_delay(&self.last_removals, Duration::ZERO) {
+                Duration::ZERO => {
+                    glib::idle_add_local_once(flush);
+                }
+                delay => {
+                    glib::timeout_add_local_once(delay, flush);
+                }
+            }
         }
     }
 
     fn flush_removals(&self) {
+        self.last_removals.set(Some(Instant::now()));
         let uris = std::mem::take(&mut *self.pending_removals.borrow_mut());
         // Rows of a folder left meanwhile are already gone from the index.
         let rows: Vec<gtk::TreeIter> = {
@@ -2337,26 +2383,59 @@ impl Pane {
             1 => {
                 self.store.remove(&rows[0]);
             }
-            _ => self.detached(|| {
-                for it in &rows {
-                    self.store.remove(it);
-                }
-            }),
+            _ => self.detached(|| self.remove_rows(&rows)),
         }
         self.emit(Event::Selection);
+    }
+
+    /// Removes these rows from the store. The filter model moves every row
+    /// after a removed one (time for all rows, for each row removed), so
+    /// many are first moved to the end, keeping the order of the others,
+    /// and removed from there, last first: then none has rows after it.
+    fn remove_rows(&self, rows: &[gtk::TreeIter]) {
+        let store = &self.store;
+        if rows.len() < 50 {
+            for it in rows {
+                store.remove(it);
+            }
+            return;
+        }
+        let n = store.iter_n_children(None).max(0) as u32;
+        let mut gone: Vec<(u32, &gtk::TreeIter)> = rows
+            .iter()
+            .filter_map(|it| Some((store.path(it)?.indices().first().copied()? as u32, it)))
+            .collect();
+        gone.sort_by_key(|(i, _)| *i);
+        let doomed: std::collections::HashSet<u32> = gone.iter().map(|(i, _)| *i).collect();
+        // new_order[new place] = old place. (The iters stay valid.)
+        let order: Vec<u32> = (0..n).filter(|i| !doomed.contains(i)).chain(gone.iter().map(|(i, _)| *i)).collect();
+        let sort = store.sort_column_id();
+        store.set_unsorted();
+        store.reorder(&order);
+        for (_, it) in gone.iter().rev() {
+            store.remove(it);
+        }
+        // The rest kept their order: sorting again changes nothing.
+        if let Some((col, dir)) = sort {
+            store.set_sort_column_id(col, dir);
+        }
     }
 
     /// Adds or updates rows for these items of `parent` (and counts the
     /// items in the folders among them, with `counts`). Many at once are
     /// added with the views detached (see there), except into an empty
-    /// view, which shows them at once.
+    /// view, which shows them at once, and a few compared with the rows
+    /// there are: detaching costs time for all rows (sorting them again,
+    /// selecting the selected again), each row added attached only its own
+    /// share.
     fn add_infos(self: &Rc<Self>, parent: &gio::File, infos: Vec<gio::FileInfo>, counts: bool) {
         self.add_rows(infos.into_iter().map(|i| (parent.clone(), i)).collect(), counts);
     }
 
     /// add_infos for items of any folders: (folder, item) pairs.
     fn add_rows(self: &Rc<Self>, rows: Vec<(gio::File, gio::FileInfo)>, counts: bool) {
-        if rows.len() <= 20 || self.store.iter_n_children(None) == 0 {
+        let there = self.store.iter_n_children(None).max(0) as usize;
+        if rows.len() <= 20 || there == 0 || rows.len() * 4 <= there {
             for (parent, info) in &rows {
                 self.add_info(parent, info, false);
             }
@@ -2496,6 +2575,26 @@ impl Pane {
                 } else {
                     (size_val, size_text.clone())
                 };
+                // GtkIconView measures all its items again on any row
+                // changing: leave rows read again unchanged be (a file
+                // copied in is reported when created and when done).
+                let st_ = &self.store;
+                let same = st_.gv::<String>(&it, COL_NAME as i32) == display
+                    && st_.gv::<u64>(&it, COL_SIZE as i32) == sv
+                    && st_.gv::<i64>(&it, COL_MTIME as i32) == mtime
+                    && st_.gv::<String>(&it, COL_TYPE as i32) == tdesc
+                    && st_.gv::<bool>(&it, COL_IS_DIR as i32) == is_dir
+                    && st_.gv::<bool>(&it, COL_HIDDEN as i32) == hidden
+                    && st_.gv::<String>(&it, COL_THUMB as i32) == thumb
+                    && st_.gv::<String>(&it, COL_CTYPE as i32) == ctype
+                    && st_.gv::<String>(&it, COL_ORIG as i32) == orig
+                    && match (st_.gv::<Option<gio::Icon>>(&it, COL_ICON as i32), &icon) {
+                        (Some(a), Some(b)) => a.equal(Some(b)),
+                        (a, b) => a.is_none() && b.is_none(),
+                    };
+                if same {
+                    return;
+                }
                 self.store.set(
                     &it,
                     &[

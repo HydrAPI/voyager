@@ -2858,9 +2858,8 @@ impl AppWindow {
             if let Some(s) = w.upgrade() {
                 if let Some(p) = s.current_pane() {
                     if p.current().equal(&dest2) && !created.is_empty() {
-                        for c in &created {
-                            p.add_file_now(&gio::File::for_uri(c));
-                        }
+                        let files: Vec<gio::File> = created.iter().map(|c| gio::File::for_uri(c)).collect();
+                        p.add_files_now(&files);
                         p.select_uris(&created);
                     }
                 }
