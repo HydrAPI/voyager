@@ -417,6 +417,9 @@ class Run:
 
     def activate(self, win, name, param):
         v = [] if param is None else [param]
+        if self.args.log_actions:
+            with open(os.path.join(self.dir, "actions.txt"), "a") as f:
+                f.write(f"{time.monotonic() - self.started:9.2f} win {win}: {name} {param.unpack() if param is not None else ''}\n")
         return self.call(f"{APP_PATH}/window/{win}", "org.gtk.Actions", "Activate", self.GLib.Variant("(sava{sv})", (name, v, {})))
 
     def backtrace(self, why):
@@ -566,6 +569,9 @@ class Run:
                     if answers:
                         n, a = self.rnd.choice(answers)
                         self.counts["answer:" + n.replace("_", "")] = self.counts.get("answer:" + n.replace("_", ""), 0) + 1
+                        if self.args.log_actions:
+                            with open(os.path.join(self.dir, "actions.txt"), "a") as f:
+                                f.write(f"{time.monotonic() - self.started:9.2f} answer {w.get_role_name()} {w.get_name()!r}: {n}\n")
                         press(a)
                 except Exception as e:
                     self.note(f"couldn't answer a dialog: {e}")
@@ -901,6 +907,7 @@ def main():
     ap.add_argument("--pause", type=float, default=0.15, help="longest pause between actions, in seconds")
     ap.add_argument("--binary", help="the arkha to run (default: one built with debug info in target/soak-build)")
     ap.add_argument("--heaptrack", action="store_true", help="run under heaptrack, to find memory that's never freed")
+    ap.add_argument("--log-actions", action="store_true", help="write every action and dialog answer to actions.txt")
     ap.add_argument("--no-a11y", action="store_true", help="run Arkha without its accessibility bridge (no dialogs get answered)")
     ap.add_argument("--round", help='with --cycle: the round\'s actions, e.g. "new-tab,go-uri:tree,close-tab"')
     ap.add_argument("--cycle", action="store_true", help="repeat one round of actions instead of random ones, to see whether memory keeps growing")
