@@ -23,6 +23,9 @@ pub struct Settings {
     pub sidebar_width: i32,
     pub show_sidebar: bool,
     pub show_statusbar: bool,
+    /// The bar beside the path can't be rearranged: no accidental drags
+    /// (on a touchpad, say).
+    pub lock_bar: bool,
     /// The status bar says how many items are hidden.
     pub status_hidden: bool,
     /// Show the tab bar even with one tab (so that tab can be dragged).
@@ -192,6 +195,7 @@ impl Default for Settings {
             sidebar_width: 190,
             show_sidebar: true,
             show_statusbar: true,
+            lock_bar: false,
             status_hidden: false,
             always_show_tabs: false,
             toolbar_text: false,
@@ -326,6 +330,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     i!(sidebar_width);
     b!(show_sidebar);
     b!(show_statusbar);
+    b!(lock_bar);
     b!(status_hidden);
     b!(always_show_tabs);
     b!(toolbar_text);
@@ -489,6 +494,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_integer(g, "sidebar_width", s.sidebar_width);
     kf.set_boolean(g, "show_sidebar", s.show_sidebar);
     kf.set_boolean(g, "show_statusbar", s.show_statusbar);
+    kf.set_boolean(g, "lock_bar", s.lock_bar);
     kf.set_boolean(g, "status_hidden", s.status_hidden);
     kf.set_boolean(g, "always_show_tabs", s.always_show_tabs);
     kf.set_boolean(g, "toolbar_text", s.toolbar_text);

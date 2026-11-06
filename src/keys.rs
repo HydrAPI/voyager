@@ -85,6 +85,7 @@ pub const BINDINGS: &[Binding] = &[
     b("View", "win.focus-follows-mouse", "Focus the pane under the mouse pointer", &["<Shift>F3"]),
     b("View", "win.info-panel", "Info panel (for this folder)", &["F11"]),
     b("View", "win.show-statusbar", "Statusbar", &[]),
+    b("View", "win.lock-bar", "Lock the toolbar (no dragging its buttons around)", &[]),
     b("View", "win.zoom-in", "Zoom in", &["<Ctrl>plus", "<Ctrl>equal", "<Ctrl>KP_Add"]),
     b("View", "win.zoom-out", "Zoom out", &["<Ctrl>minus", "<Ctrl>KP_Subtract"]),
     b("View", "win.zoom-normal", "Normal size", &["<Ctrl>0", "<Ctrl>KP_0"]),

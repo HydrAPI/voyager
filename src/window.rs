@@ -51,11 +51,38 @@ fn reapply_view_settings() {
 /// The window that holds `pane` now (tabs can move between windows).
 const BAR_TARGET: &str = "ARKHA_BAR_GROUP";
 
+thread_local! {
+    /// The buttons that drag their bar group (see enable_bar_drag).
+    static BAR_DRAGGERS: RefCell<Vec<glib::WeakRef<gtk::Widget>>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Lets `button` start a drag of a bar group, unless the bar is locked
+/// (View → Lock Toolbar).
+fn set_bar_draggable(button: &gtk::Widget, locked: bool) {
+    if locked {
+        button.drag_source_unset();
+    } else {
+        let targets = [gtk::TargetEntry::new(BAR_TARGET, gtk::TargetFlags::SAME_APP, 0)];
+        button.drag_source_set(gdk::ModifierType::BUTTON1_MASK, &targets, gdk::DragAction::MOVE);
+    }
+}
+
+/// Locks or unlocks the bar in every window.
+fn lock_bars(locked: bool) {
+    BAR_DRAGGERS.with(|d| {
+        let mut d = d.borrow_mut();
+        d.retain(|w| w.upgrade().is_some());
+        for b in d.iter().filter_map(|w| w.upgrade()) {
+            set_bar_draggable(&b, locked);
+        }
+    });
+}
+
 /// Lets `button`, part of location bar group `id`, be dragged onto another
 /// group to move the whole group in front of or behind it.
 fn enable_bar_drag(button: &gtk::Widget, id: &'static str, group: &gtk::Widget) {
-    let targets = [gtk::TargetEntry::new(BAR_TARGET, gtk::TargetFlags::SAME_APP, 0)];
-    button.drag_source_set(gdk::ModifierType::BUTTON1_MASK, &targets, gdk::DragAction::MOVE);
+    set_bar_draggable(button, config::with(|s| s.lock_bar));
+    BAR_DRAGGERS.with(|d| d.borrow_mut().push(button.downgrade()));
     {
         let group = group.clone();
         button.connect_drag_begin(move |_, ctx| {
@@ -606,6 +633,7 @@ impl AppWindow {
         sort.append_section(None, &section(&[("_Reversed Order", "win.sort-desc"), ("_Folders Before Files", "win.folders-first")]));
         view.append_submenu(Some("Arrange _Items"), &sort);
         view.append_section(None, &section(&[("Zoom _In", "win.zoom-in"), ("Zoom _Out", "win.zoom-out"), ("Normal Si_ze", "win.zoom-normal")]));
+        view.append_section(None, &section(&[("Loc_k Toolbar", "win.lock-bar")]));
         bar.append_submenu(Some("_View"), &view);
 
         let go = gio::Menu::new();
@@ -1173,6 +1201,16 @@ impl AppWindow {
             // One setting: every window's switch shows it.
             for w in all_windows() {
                 if let Some(a) = w.window.lookup_action("focus-follows-mouse").and_downcast::<gio::SimpleAction>() {
+                    a.set_state(&v.to_variant());
+                }
+            }
+        });
+        self.add_toggle("lock-bar", s.lock_bar, |_, v| {
+            config::update(|s| s.lock_bar = v);
+            lock_bars(v);
+            // One setting: every window's menu shows it.
+            for w in all_windows() {
+                if let Some(a) = w.window.lookup_action("lock-bar").and_downcast::<gio::SimpleAction>() {
                     a.set_state(&v.to_variant());
                 }
             }

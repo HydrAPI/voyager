@@ -5,7 +5,7 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
 ## Features
 
 - **Caja layout:** menubar, toolbar (Back / Forward / Up / Reload / Home / File System / Search), breadcrumb path bar that switches to a text location bar (Ctrl+L) with path completion, side pane with Computer, Devices and Bookmarks sections (reorder them by dragging their headings), tabs, status bar with selection info and free space.
-- **The bar beside the path:** file operations, split view, view, zoom and info panel buttons; drag them to rearrange the bar, and hide the ones you don't use (Preferences → Display).
+- **The bar beside the path:** file operations, split view, view, zoom and info panel buttons; drag them to rearrange the bar (View → Lock Toolbar stops that, so a touchpad can't move them by accident), and hide the ones you don't use (Preferences → Display).
 - **Split view (F3):** a second pane side by side, each with its own tabs; the toolbar and menus act on the pane you last clicked (or, optionally, the one under the mouse pointer), and Edit → Copy/Move to Other Pane transfers the selection across.
 - **Tabs like a browser:** reopen closed tabs (Ctrl+Shift+T), drag tabs between windows or out into a new window, optionally always show the tab bar.
 - **Customizable keyboard shortcuts** for every action (Preferences → Keyboard).
