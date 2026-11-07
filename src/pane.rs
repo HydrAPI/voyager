@@ -2806,12 +2806,12 @@ impl Pane {
     /// `center`, else only as far as needed to see it (not at all when it's
     /// in view: typing to select and its wheel steps leave the view be).
     fn select_filter_paths_scrolling(&self, paths: &[gtk::TreePath], center: bool) {
-        self.icon_view.unselect_all();
         let sel = self.tree_view.selection();
         sel.unselect_all();
-        for (i, p) in paths.iter().enumerate() {
-            match self.mode.get() {
-                ViewMode::List | ViewMode::Columns => {
+        match self.mode.get() {
+            ViewMode::List | ViewMode::Columns => {
+                self.icon_view.unselect_all();
+                for (i, p) in paths.iter().enumerate() {
                     if i == 0 {
                         self.tree_view.set_cursor(p, None::<&gtk::TreeViewColumn>, false);
                         util::scroll_tree_to(&self.tree_view, p, center, 0.4, 0.0);
@@ -2819,12 +2819,20 @@ impl Pane {
                     }
                     sel.select_path(p);
                 }
-                _ => {
-                    if i == 0 {
-                        self.scroll_icon_view(p, center, 0.4, true);
-                        self.icon_view.unselect_all();
+            }
+            _ => {
+                if let Some(first) = paths.first() {
+                    self.scroll_icon_view(first, center, 0.4, true);
+                }
+                // All at once (see iconview::set_selection), else item by item.
+                let mut indices: Vec<i32> = paths.iter().filter_map(|p| p.indices().first().copied()).collect();
+                indices.sort_unstable();
+                indices.dedup();
+                if !crate::iconview::IconView::set_selection(&self.icon_view, &indices) {
+                    self.icon_view.unselect_all();
+                    for p in paths {
+                        self.icon_view.select_path(p);
                     }
-                    self.icon_view.select_path(p);
                 }
             }
         }

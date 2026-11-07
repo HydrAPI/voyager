@@ -59,11 +59,56 @@ impl IconView {
         }
     }
 
+    /// Makes exactly the items at `indices` (ascending) the selected ones,
+    /// in one pass over GtkIconView's items, with one redraw and one
+    /// "selection-changed". gtk_icon_view_select_path walks the item list
+    /// from its start for each item (seconds for thousands of items in a
+    /// folder of thousands). False, changing nothing, where that can't be
+    /// done here: then select them the usual way.
+    pub fn set_selection(iv: &gtk::IconView, indices: &[i32]) -> bool {
+        match iv.downcast_ref::<IconView>() {
+            Some(v) => v.imp().set_selection(indices),
+            None => false,
+        }
+    }
+
     pub fn set_filler(iv: &gtk::IconView, filler: Filler) {
         if let Some(iv) = iv.downcast_ref::<IconView>() {
             iv.imp().filler.replace(Some(filler));
         }
     }
+}
+
+/// The leading fields of GtkIconView's private data, up to its list of
+/// items, and an item (GTK 3.24's gtkiconviewprivate.h, unchanged through
+/// the 3.24 releases). Only read after the fields that can be checked
+/// against GtkIconView's public functions agree (see IconView::items).
+#[repr(C)]
+struct PrivHead {
+    cell_area: glib::ffi::gpointer,
+    cell_area_context: glib::ffi::gpointer,
+    add_editable_id: std::ffi::c_ulong,
+    remove_editable_id: std::ffi::c_ulong,
+    context_changed_id: std::ffi::c_ulong,
+    row_contexts: glib::ffi::gpointer,
+    width: i32,
+    height: i32,
+    selection_mode: i32,
+    bin_window: glib::ffi::gpointer,
+    children: *mut glib::ffi::GList,
+    model: glib::ffi::gpointer,
+    items: *mut glib::ffi::GList,
+}
+
+#[repr(C)]
+struct PrivItem {
+    cell_area: [i32; 4],
+    index: i32,
+    row: i32,
+    col: i32,
+    /// `selected : 1` then `selected_before_rubberbanding : 1`: with GCC on
+    /// a little-endian machine, the lowest bits.
+    flags: u32,
 }
 
 /// Up to this many items, measuring them all costs little: GtkIconView's
@@ -220,6 +265,69 @@ mod imp {
 
         /// GtkIconView's bin window (where the items are), which it has no
         /// getter for: the child window of its own that it registered.
+        /// GtkIconView's items, in order, once its private data checks out:
+        /// its model, cell area, bin window and selection mode are those
+        /// its public functions give, and its item list has an item for
+        /// every row, each with its own index. None otherwise.
+        fn items(&self) -> Option<Vec<*mut PrivItem>> {
+            if cfg!(target_endian = "big") {
+                return None;
+            }
+            let iv = self.obj();
+            let model = iv.model()?;
+            let area = iv.area()?;
+            let bin = self.bin_window()?;
+            unsafe {
+                let raw: *mut gtk::ffi::GtkIconView = iv.upcast_ref::<gtk::IconView>().to_glib_none().0;
+                let head = (*raw).priv_ as *const PrivHead;
+                if head.is_null()
+                    || (*head).model != model.as_ptr() as glib::ffi::gpointer
+                    || (*head).cell_area != area.as_ptr() as glib::ffi::gpointer
+                    || (*head).bin_window != bin.as_ptr() as glib::ffi::gpointer
+                    || (*head).selection_mode != iv.selection_mode().into_glib()
+                {
+                    return None;
+                }
+                let n = model.iter_n_children(None).max(0) as usize;
+                let mut items = Vec::with_capacity(n);
+                let mut l = (*head).items;
+                while !l.is_null() {
+                    let item = (*l).data as *mut PrivItem;
+                    if item.is_null() || items.len() >= n || (*item).index != items.len() as i32 {
+                        return None;
+                    }
+                    items.push(item);
+                    l = (*l).next;
+                }
+                (items.len() == n).then_some(items)
+            }
+        }
+
+        pub(super) fn set_selection(&self, indices: &[i32]) -> bool {
+            let iv = self.obj();
+            if iv.selection_mode() != gtk::SelectionMode::Multiple {
+                return false;
+            }
+            let Some(items) = self.items() else { return false };
+            let mut want = indices.iter().copied().peekable();
+            let mut changed = false;
+            for (i, &item) in items.iter().enumerate() {
+                while want.next_if(|&w| w < i as i32).is_some() {}
+                let on = want.next_if_eq(&(i as i32)).is_some();
+                unsafe {
+                    if ((*item).flags & 1 != 0) != on {
+                        (*item).flags ^= 1;
+                        changed = true;
+                    }
+                }
+            }
+            if changed {
+                iv.queue_draw();
+                iv.emit_by_name::<()>("selection-changed", &[]);
+            }
+            true
+        }
+
         fn bin_window(&self) -> Option<gdk::Window> {
             let iv = self.obj();
             let me = iv.as_ptr() as glib::ffi::gpointer;
