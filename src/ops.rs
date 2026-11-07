@@ -71,7 +71,9 @@ pub struct ConflictReq {
 
 enum Msg {
     Progress { detail: String, fraction: f64 },
-    Conflict(ConflictReq, mpsc::Sender<(Resolution, bool)>),
+    /// Answered with the resolution, whether it applies to all conflicts,
+    /// and for Keep Both a name typed for the new item.
+    Conflict(ConflictReq, mpsc::Sender<(Resolution, bool, Option<String>)>),
     Error {
         title: String,
         detail: String,
@@ -98,6 +100,8 @@ struct Worker {
     dir_all: Option<Resolution>,
     skip_errors: bool,
     skipped: u64,
+    /// The name typed in the conflict dialog for Keep Both (see keep_both).
+    new_name: Option<String>,
     last: Instant,
     verb: &'static str,
     /// Set from the progress window's pause button.
@@ -301,7 +305,8 @@ impl Worker {
             dest_desc: describe(dst),
         };
         let _ = self.tx.send_blocking(Msg::Conflict(req, rtx));
-        let (r, all) = self.clock.idle(|| rrx.recv().unwrap_or((Resolution::Cancel, false)));
+        let (r, all, name) = self.clock.idle(|| rrx.recv().unwrap_or((Resolution::Cancel, false, None)));
+        self.new_name = name.filter(|_| r == Resolution::KeepBoth);
         if all {
             if both_dirs {
                 self.dir_all = Some(r);
@@ -313,6 +318,16 @@ impl Worker {
             self.cancel.cancel();
         }
         r
+    }
+
+    /// Where Keep Both puts the item that would have gone to `dst`: under
+    /// the name typed in the conflict dialog, else a free one ("name (2)").
+    fn keep_both(&mut self, dst: &gio::File, is_dir: bool) -> gio::File {
+        let parent = dst.parent().unwrap();
+        match self.new_name.take() {
+            Some(name) => parent.child(name),
+            None => parent.child(util::unique_name(&parent, &base_name(dst), is_dir)),
+        }
     }
 
     /// Entries of folder `f`. Read errors go through the error dialog: Retry reads
@@ -482,10 +497,7 @@ impl Worker {
                                 }
                                 replaced = true;
                             }
-                            Resolution::KeepBoth => {
-                                let parent = dst.parent().unwrap();
-                                dst = parent.child(util::unique_name(&parent, &base_name(&dst), true));
-                            }
+                            Resolution::KeepBoth => dst = self.keep_both(&dst, true),
                             Resolution::Cancel => return Err(Cancelled),
                         }
                     }
@@ -622,10 +634,7 @@ impl Worker {
                                 flags |= gio::FileCopyFlags::OVERWRITE;
                             }
                         }
-                        Resolution::KeepBoth => {
-                            let parent = dst.parent().unwrap();
-                            dst = parent.child(util::unique_name(&parent, &base_name(&dst), false));
-                        }
+                        Resolution::KeepBoth => dst = self.keep_both(&dst, false),
                         Resolution::Cancel => return Err(Cancelled),
                     }
                 }
@@ -702,10 +711,7 @@ impl Worker {
                                 flags |= gio::FileCopyFlags::OVERWRITE;
                             }
                         }
-                        Resolution::KeepBoth => {
-                            let parent = dst.parent().unwrap();
-                            dst = parent.child(util::unique_name(&parent, &base_name(&dst), src_dir));
-                        }
+                        Resolution::KeepBoth => dst = self.keep_both(&dst, src_dir),
                         Resolution::Cancel => return Err(Cancelled),
                     }
                 }
@@ -1335,6 +1341,7 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
                 dir_all: None,
                 skip_errors: false,
                 skipped: 0,
+                new_name: None,
                 last: Instant::now() - Duration::from_secs(1),
                 verb: "",
                 paused,
@@ -1532,7 +1539,7 @@ fn dialog_parent(parent: &Option<gtk::Window>) -> Option<gtk::Window> {
     parent.clone().filter(|p| p.is_visible())
 }
 
-async fn conflict_dialog(parent: Option<&gtk::Window>, req: &ConflictReq) -> (Resolution, bool) {
+async fn conflict_dialog(parent: Option<&gtk::Window>, req: &ConflictReq) -> (Resolution, bool, Option<String>) {
     let merge = req.src_is_dir && req.dest_is_dir;
     let primary = if merge {
         format!("Merge folder “{}”?", req.name)
@@ -1571,21 +1578,77 @@ async fn conflict_dialog(parent: Option<&gtk::Window>, req: &ConflictReq) -> (Re
         .unwrap()
         .pack_start(&all, false, false, 6);
     all.show();
+    // A name of your own for the new item, as in Caja: Replace (or Merge)
+    // becomes Rename once one is typed.
+    let rename = gtk::Expander::with_mnemonic("Select a _new name for the destination");
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let entry = gtk::Entry::new();
+    entry.set_text(&req.name);
+    entry.set_activates_default(true);
+    entry.set_hexpand(true);
+    let reset = gtk::Button::with_mnemonic("R_eset");
+    row.pack_start(&entry, true, true, 0);
+    row.pack_start(&reset, false, false, 0);
+    row.set_margin_top(6);
+    rename.add(&row);
+    d.message_area()
+        .downcast::<gtk::Box>()
+        .unwrap()
+        .pack_start(&rename, false, false, 0);
+    rename.show_all();
     d.add_button("_Cancel", gtk::ResponseType::Cancel);
     d.add_button("_Skip", gtk::ResponseType::Other(1));
     d.add_button("_Keep Both", gtk::ResponseType::Other(2));
-    d.add_button(if merge { "_Merge" } else { "_Replace" }, gtk::ResponseType::Other(3));
+    let replace_label = if merge { "_Merge" } else { "_Replace" };
+    let replace = d.add_button(replace_label, gtk::ResponseType::Other(3));
     d.set_default_response(gtk::ResponseType::Other(3));
+    // The typed name, if it's a usable one other than the item's own.
+    let original = req.name.clone();
+    let typed = move |e: &gtk::Entry| -> Option<String> {
+        let t = e.text().trim().to_string();
+        (!t.is_empty() && t != original && t != "." && t != ".." && !t.contains('/')).then_some(t)
+    };
+    {
+        let (typed, all, replace) = (typed.clone(), all.clone(), replace.clone());
+        entry.connect_changed(move |e| {
+            let renaming = typed(e).is_some();
+            if let Some(b) = replace.downcast_ref::<gtk::Button>() {
+                b.set_label(if renaming { "_Rename" } else { replace_label });
+            }
+            // A name is for this item only.
+            all.set_sensitive(!renaming);
+            if renaming {
+                all.set_active(false);
+            }
+        });
+    }
+    {
+        let (entry, name) = (entry.clone(), req.name.clone());
+        reset.connect_clicked(move |_| entry.set_text(&name));
+    }
+    {
+        // When opened: the name selected without its extension.
+        let (entry, name, is_dir) = (entry.clone(), req.name.clone(), req.src_is_dir);
+        rename.connect_expanded_notify(move |x| {
+            if x.is_expanded() {
+                entry.grab_focus();
+                let stem = if is_dir { name.as_str() } else { util::split_ext(&name).0 };
+                entry.select_region(0, stem.chars().count() as i32);
+            }
+        });
+    }
     let resp = d.run_future().await;
     let apply_all = all.is_active();
+    let name = typed(&entry);
     d.close();
-    let r = match resp {
-        gtk::ResponseType::Other(1) => Resolution::Skip,
-        gtk::ResponseType::Other(2) => Resolution::KeepBoth,
-        gtk::ResponseType::Other(3) => Resolution::Replace,
-        _ => Resolution::Cancel,
-    };
-    (r, apply_all)
+    match resp {
+        gtk::ResponseType::Other(1) => (Resolution::Skip, apply_all, None),
+        gtk::ResponseType::Other(2) => (Resolution::KeepBoth, apply_all, None),
+        // Rename: Keep Both, under the typed name.
+        gtk::ResponseType::Other(3) if name.is_some() => (Resolution::KeepBoth, false, name),
+        gtk::ResponseType::Other(3) => (Resolution::Replace, apply_all, None),
+        _ => (Resolution::Cancel, false, None),
+    }
 }
 
 async fn error_dialog(parent: Option<&gtk::Window>, title: &str, detail: &str, offer_delete: bool) -> ErrChoice {
@@ -1806,6 +1869,12 @@ mod tests {
     }
 
     fn run_job_full(job: Job, answers: &[Resolution], paused: Arc<AtomicBool>, cancel: gio::Cancellable) -> (Vec<String>, Vec<String>, Vec<Moved>) {
+        let answers: Vec<(Resolution, Option<String>)> = answers.iter().map(|r| (*r, None)).collect();
+        run_job_answered(job, answers, paused, cancel)
+    }
+
+    /// run_job with answers that can carry a name typed for Keep Both.
+    fn run_job_answered(job: Job, answers: Vec<(Resolution, Option<String>)>, paused: Arc<AtomicBool>, cancel: gio::Cancellable) -> (Vec<String>, Vec<String>, Vec<Moved>) {
         let (tx, rx) = async_channel::unbounded::<Msg>();
         let mut w = Worker {
             tx,
@@ -1820,12 +1889,12 @@ mod tests {
             dir_all: None,
             skip_errors: false,
             skipped: 0,
+            new_name: None,
             last: Instant::now(),
             verb: "",
             paused,
             clock: Clock::new(),
         };
-        let answers = answers.to_vec();
         let ui = std::thread::spawn(move || {
             let mut asked = vec![];
             let mut answers = answers.into_iter();
@@ -1833,7 +1902,8 @@ mod tests {
                 match m {
                     Msg::Conflict(req, reply) => {
                         asked.push(format!("conflict:{}", req.name));
-                        let _ = reply.send((answers.next().expect("unexpected conflict"), false));
+                        let (r, name) = answers.next().expect("unexpected conflict");
+                        let _ = reply.send((r, false, name));
                     }
                     Msg::Error { title, reply, .. } => {
                         asked.push(format!("error:{title}"));
@@ -1946,6 +2016,31 @@ mod tests {
         let s = home_scratch("undoxmerge");
         let t = scratch("/dev/shm", "undoxmerge");
         undo_merge(&t.0, &s.0);
+    }
+
+    /// Keep Both under a name typed in the conflict dialog.
+    fn keep_both_named(kind: Kind) {
+        let s = home_scratch(if kind == Kind::Copy { "namedcopy" } else { "namedmove" });
+        write(&s.0.join("src/a.txt"), "new");
+        write(&s.0.join("dst/a.txt"), "old");
+        let job = transfer(kind, &s.0.join("src/a.txt"), &s.0.join("dst"));
+        let (created, asked, undo) = run_job_answered(job, vec![(Resolution::KeepBoth, Some("b.txt".into()))], Arc::new(AtomicBool::new(false)), gio::Cancellable::new());
+        assert_eq!(asked, ["conflict:a.txt"]);
+        assert_eq!(read(&s.0.join("dst/a.txt")), "old");
+        assert_eq!(read(&s.0.join("dst/b.txt")), "new");
+        assert_eq!(created, [uri(&s.0.join("dst/b.txt"))]);
+        assert_eq!(noted(&undo, &s.0), [("dst/b.txt".to_string(), false)]);
+        assert_eq!(s.0.join("src/a.txt").exists(), kind == Kind::Copy);
+    }
+
+    #[test]
+    fn keep_both_named_copy() {
+        keep_both_named(Kind::Copy);
+    }
+
+    #[test]
+    fn keep_both_named_move() {
+        keep_both_named(Kind::Move);
     }
 
     #[test]

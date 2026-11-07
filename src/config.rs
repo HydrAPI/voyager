@@ -23,6 +23,17 @@ pub struct Settings {
     pub sidebar_width: i32,
     pub show_sidebar: bool,
     pub show_statusbar: bool,
+    pub show_toolbar: bool,
+    /// The mouse's extra buttons go back and forward (as in Caja: which
+    /// buttons, and whether at all).
+    pub mouse_extra_buttons: bool,
+    pub mouse_back_button: i32,
+    pub mouse_forward_button: i32,
+    /// Icons beside the names in the list view.
+    pub list_icons: bool,
+    /// The location bar (the path, the bar beside it). Hidden, it still
+    /// shows while the location field or the search is open.
+    pub show_locbar: bool,
     /// The bar beside the path can't be rearranged: no accidental drags
     /// (on a touchpad, say).
     pub lock_bar: bool,
@@ -89,6 +100,8 @@ pub struct Settings {
     /// File sizes in IEC units (KiB, MiB) instead of SI (kB, MB); see
     /// util::format_size.
     pub iec_units: bool,
+    /// How dates are shown: "informal" (Today 14:00), "locale" or "iso".
+    pub date_format: String,
     /// Folder covers (see info.rs): the file names looked for, ';'-separated
     /// and in order of preference, matched ignoring case.
     pub cover_names: String,
@@ -195,6 +208,12 @@ impl Default for Settings {
             sidebar_width: 190,
             show_sidebar: true,
             show_statusbar: true,
+            show_toolbar: true,
+            mouse_extra_buttons: true,
+            mouse_back_button: 8,
+            mouse_forward_button: 9,
+            list_icons: true,
+            show_locbar: true,
             lock_bar: false,
             status_hidden: false,
             always_show_tabs: false,
@@ -228,6 +247,7 @@ impl Default for Settings {
             striped_rows: false,
             rename_striped_rows: true,
             iec_units: false,
+            date_format: "informal".into(),
             cover_names: "folder.jpg; folder.png; cover.jpg; cover.png; front.jpg".into(),
             info_several: "summary".into(),
             info_no_cover: "icon".into(),
@@ -330,6 +350,12 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     i!(sidebar_width);
     b!(show_sidebar);
     b!(show_statusbar);
+    b!(show_toolbar);
+    b!(mouse_extra_buttons);
+    i!(mouse_back_button);
+    i!(mouse_forward_button);
+    b!(list_icons);
+    b!(show_locbar);
     b!(lock_bar);
     b!(status_hidden);
     b!(always_show_tabs);
@@ -390,6 +416,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     b!(striped_rows);
     b!(rename_striped_rows);
     b!(iec_units);
+    st!(date_format);
     st!(cover_names);
     st!(info_several);
     st!(info_no_cover);
@@ -494,6 +521,12 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_integer(g, "sidebar_width", s.sidebar_width);
     kf.set_boolean(g, "show_sidebar", s.show_sidebar);
     kf.set_boolean(g, "show_statusbar", s.show_statusbar);
+    kf.set_boolean(g, "show_toolbar", s.show_toolbar);
+    kf.set_boolean(g, "mouse_extra_buttons", s.mouse_extra_buttons);
+    kf.set_integer(g, "mouse_back_button", s.mouse_back_button);
+    kf.set_integer(g, "mouse_forward_button", s.mouse_forward_button);
+    kf.set_boolean(g, "list_icons", s.list_icons);
+    kf.set_boolean(g, "show_locbar", s.show_locbar);
     kf.set_boolean(g, "lock_bar", s.lock_bar);
     kf.set_boolean(g, "status_hidden", s.status_hidden);
     kf.set_boolean(g, "always_show_tabs", s.always_show_tabs);
@@ -520,6 +553,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_boolean(g, "striped_rows", s.striped_rows);
     kf.set_boolean(g, "rename_striped_rows", s.rename_striped_rows);
     kf.set_boolean(g, "iec_units", s.iec_units);
+    kf.set_string(g, "date_format", &s.date_format);
     kf.set_string(g, "cover_names", &s.cover_names);
     kf.set_string(g, "info_several", &s.info_several);
     kf.set_string(g, "info_no_cover", &s.info_no_cover);

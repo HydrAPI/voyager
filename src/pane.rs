@@ -434,6 +434,8 @@ pub struct Pane {
     /// whether they show an icon too (for fitting them to their contents).
     fit_cols: Vec<(gtk::TreeViewColumn, u32, bool)>,
     info_bar: gtk::InfoBar,
+    /// Empty Trash and Restore above the trash folder, as in Caja.
+    trash_bar: gtk::InfoBar,
     info_label: gtk::Label,
 
     current: RefCell<gio::File>,
@@ -885,6 +887,30 @@ impl Pane {
         let query_editor = crate::search::QueryEditor::new();
         root.pack_start(&query_editor.widget, false, false, 0);
         root.pack_start(&info_bar, false, false, 0);
+        // The window's actions do the work (and say when they can).
+        // No mnemonics: Alt+E is the Edit menu.
+        let trash_bar = gtk::InfoBar::new();
+        trash_bar.set_message_type(gtk::MessageType::Other);
+        {
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            let title = gtk::Label::new(Some("Trash"));
+            title.set_xalign(0.0);
+            title.set_hexpand(true);
+            title.style_context().add_class("dim-label");
+            let restore = gtk::Button::with_label("Restore Selected Items");
+            restore.set_action_name(Some("win.restore"));
+            restore.set_tooltip_text(Some("Move the selected items back to where they were deleted from"));
+            let empty = gtk::Button::with_label("Empty Trash");
+            empty.set_action_name(Some("win.empty-trash"));
+            empty.set_tooltip_text(Some("Delete all items in the Trash"));
+            row.pack_start(&title, true, true, 0);
+            row.pack_start(&restore, false, false, 0);
+            row.pack_start(&empty, false, false, 0);
+            trash_bar.content_area().add(&row);
+        }
+        trash_bar.set_no_show_all(true);
+        trash_bar.content_area().show_all();
+        root.pack_start(&trash_bar, false, false, 0);
         root.pack_start(&info_paned, true, true, 0);
         root.show_all();
         info_bar.hide();
@@ -930,6 +956,7 @@ impl Pane {
             sort_cols,
             fit_cols,
             info_bar,
+            trash_bar,
             info_label,
             current: RefCell::new(start.clone()),
             back: RefCell::new(vec![]),
@@ -1795,6 +1822,30 @@ impl Pane {
         self.current().uri().starts_with("trash:")
     }
 
+    /// Clear History: forgets where this tab has been.
+    pub fn clear_history(&self) {
+        self.back.borrow_mut().clear();
+        self.fwd.borrow_mut().clear();
+    }
+
+    /// Stop, as in Caja: what's loaded so far stays (and is kept up to
+    /// date), the rest isn't read; a search ends with what it found.
+    pub fn stop(self: &Rc<Self>) {
+        if !self.loading.get() {
+            return;
+        }
+        self.search_gen.store(0, std::sync::atomic::Ordering::SeqCst);
+        // The loading sees a newer generation and gives up.
+        let gen = self.gen.get() + 1;
+        self.gen.set(gen);
+        if self.is_searching() {
+            self.loading.set(false);
+            self.emit(Event::Loading(false));
+        } else {
+            self.finish_load(gen);
+        }
+    }
+
     pub fn can_back(&self) -> bool {
         !self.back.borrow().is_empty()
     }
@@ -2009,6 +2060,7 @@ impl Pane {
             m.cancel();
         }
         self.info_bar.hide();
+        self.trash_bar.set_visible(self.current().uri().starts_with("trash:"));
         self.end_typeahead();
         self.close_rename_editor(false);
         let query = self.search.borrow().clone();
@@ -3581,8 +3633,9 @@ impl Pane {
         }
         // Only if it changed: the list measures all its rows again.
         let ls = self.list_size.get();
-        if self.list_pix.fixed_size() != (ls, ls) {
+        if self.list_pix.fixed_size() != (ls, ls) || self.list_pix.is_visible() != s.list_icons {
             self.list_pix.set_fixed_size(ls, ls);
+            self.list_pix.set_visible(s.list_icons);
             for c in self.tree_view.columns() {
                 c.queue_resize();
             }
@@ -3889,6 +3942,24 @@ impl Pane {
         let (by, desc) = fv.sort.unwrap_or((s.sort_by, s.sort_desc));
         if (by.clone(), desc) != self.sort_state() {
             self.apply_sort(&by, desc);
+        }
+    }
+
+    /// Reset View to Defaults, as in Caja: forgets this folder's view,
+    /// sorting and info panel and shows it as Preferences say new folders
+    /// are shown.
+    pub fn reset_view(&self) {
+        folders::forget(&self.current().uri());
+        let s = config::get();
+        let mode = ViewMode::from_str(&s.default_view);
+        if mode != self.mode.get() {
+            self.set_mode(mode);
+        }
+        self.apply_sort(&s.sort_by, s.sort_desc);
+        if s.per_folder {
+            self.info_on.set(false);
+            self.info.reset();
+            self.update_info();
         }
     }
 

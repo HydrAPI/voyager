@@ -97,6 +97,15 @@ pub fn set_info_panel(uri: &str, on: bool) {
     set(uri, |kf| kf.set_boolean(uri, "info_panel", on));
 }
 
+/// Forgets `uri`'s remembered view, sorting and info panel.
+pub fn forget(uri: &str) {
+    with_store(|kf| {
+        if kf.remove_group(uri).is_ok() {
+            save(kf);
+        }
+    })
+}
+
 /// Number of folders with remembered settings.
 pub fn count() -> usize {
     with_store(|kf| kf.groups().len())

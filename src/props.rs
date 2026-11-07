@@ -98,7 +98,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     nb.set_border_width(6);
     dialog.content_area().pack_start(&nb, true, true, 0);
 
-    let attrs = "standard::*,time::*,unix::*,owner::*,access::*,id::filesystem,filesystem::*";
+    let attrs = "standard::*,time::*,unix::*,owner::*,access::*,id::filesystem,filesystem::*,selinux::context";
     // Keep files and infos paired up, dropping files that vanished.
     let (files, infos): (Vec<gio::File>, Vec<gio::FileInfo>) = files
         .into_iter()
@@ -205,6 +205,15 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                 r += 1;
             }
         }
+        // A drive's top folder: how full it is, as in Caja.
+        if is_dir && is_mount_root(&f) {
+            if let Some(usage) = disk_usage(&f) {
+                grid.attach(&gtk::Separator::new(gtk::Orientation::Horizontal), 0, r, 2, 1);
+                r += 1;
+                row(&grid, r, "Disk usage:", usage.upcast_ref());
+                r += 1;
+            }
+        }
         grid.attach(&gtk::Separator::new(gtk::Orientation::Horizontal), 0, r, 2, 1);
         r += 1;
         for (key, attr) in [("Accessed:", "time::access"), ("Modified:", "time::modified"), ("Created:", "time::created")] {
@@ -273,22 +282,19 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             })
         };
         update_octal();
-        for (i, who) in ["Owner", "Group", "Others"].iter().enumerate() {
-            let l = gtk::Label::new(Some(who));
-            l.set_xalign(1.0);
-            pg.attach(&l, 0, r, 1, 1);
-            for (j, _) in ["r", "w", "x"].iter().enumerate() {
-                let bit = 1u32 << (8 - (i * 3 + j));
-                let cb = gtk::CheckButton::new();
-                cb.set_halign(gtk::Align::Center);
+        // A check box for one permission bit, flipping it in every file.
+        let bit_box = {
+            let (modes, files, update_octal, d) = (modes.clone(), files_rc.clone(), update_octal.clone(), dialog.clone());
+            move |bit: u32, label: Option<&str>| -> gtk::CheckButton {
+                let cb = match label {
+                    Some(l) => gtk::CheckButton::with_label(l),
+                    None => gtk::CheckButton::new(),
+                };
                 let on = modes.iter().filter(|m| m.get() & bit != 0).count();
                 cb.set_active(on == modes.len());
                 cb.set_inconsistent(on != 0 && on != modes.len());
                 cb.set_sensitive(can_change);
-                let modes = modes.clone();
-                let files = files_rc.clone();
-                let update_octal = update_octal.clone();
-                let d = dialog.clone();
+                let (modes, files, update_octal, d) = (modes.clone(), files.clone(), update_octal.clone(), d.clone());
                 cb.connect_toggled(move |cb| {
                     cb.set_inconsistent(false);
                     let set = cb.is_active();
@@ -302,11 +308,99 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                     }
                     update_octal();
                 });
+                cb
+            }
+        };
+        for (i, who) in ["Owner", "Group", "Others"].iter().enumerate() {
+            let l = gtk::Label::new(Some(who));
+            l.set_xalign(1.0);
+            pg.attach(&l, 0, r, 1, 1);
+            for j in 0..3 {
+                let cb = bit_box(1u32 << (8 - (i * 3 + j)), None);
+                cb.set_halign(gtk::Align::Center);
                 pg.attach(&cb, j as i32 + 1, r, 1, 1);
             }
             r += 1;
         }
+        // setuid, setgid, sticky: the latter for folders like /tmp, where
+        // only an item's owner may delete or rename it.
+        {
+            let l = gtk::Label::new(Some("Special"));
+            l.set_xalign(1.0);
+            l.set_yalign(0.0);
+            pg.attach(&l, 0, r, 1, 1);
+            let specials = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            for (bit, label, tip) in [
+                (0o4000, "Set user ID", "Run as the file's owner, whoever starts it"),
+                (0o2000, "Set group ID", "Run with the file's group; in a folder, new items get the folder's group"),
+                (0o1000, "Sticky", "In a folder: only an item's owner can delete or rename it"),
+            ] {
+                let cb = bit_box(bit, Some(label));
+                cb.set_tooltip_text(Some(tip));
+                specials.add(&cb);
+            }
+            pg.attach(&specials, 1, r, 3, 1);
+            r += 1;
+        }
         pg.attach(&octal, 0, r, 4, 1);
+        // Apply to what's inside, as Caja does: folders get this mode,
+        // files its read and write bits (their own execute bits stay).
+        if can_change && any_dir {
+            r += 1;
+            let apply = gtk::Button::with_label("Apply to Enclosed Items…");
+            apply.set_halign(gtk::Align::Start);
+            apply.set_tooltip_text(Some("Give the folders inside these permissions, and the files inside the same read and write permissions"));
+            let done = value_label("");
+            done.style_context().add_class("dim-label");
+            let grid = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+            grid.pack_start(&apply, false, false, 0);
+            grid.pack_start(&done, true, true, 0);
+            pg.attach(&grid, 0, r, 4, 1);
+            let (modes, files, d) = (modes.clone(), files_rc.clone(), dialog.clone());
+            apply.connect_clicked(move |b| {
+                let dirs: Vec<(std::path::PathBuf, u32)> = files
+                    .iter()
+                    .zip(modes.iter())
+                    .filter_map(|(f, m)| Some((f.path()?, m.get() & 0o7777)))
+                    .filter(|(p, _)| p.is_dir())
+                    .collect();
+                if dirs.is_empty() {
+                    return;
+                }
+                let ask = gtk::MessageDialog::new(
+                    Some(&d),
+                    gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
+                    gtk::MessageType::Question,
+                    gtk::ButtonsType::None,
+                    "Apply these permissions to everything inside?",
+                );
+                ask.set_secondary_text(Some("Every folder inside gets the same permissions, every file the same read and write permissions. This can't be undone."));
+                ask.add_button("_Cancel", gtk::ResponseType::Cancel);
+                ask.add_button("_Apply", gtk::ResponseType::Accept);
+                let ok = ask.run() == gtk::ResponseType::Accept;
+                ask.close();
+                if !ok {
+                    return;
+                }
+                b.set_sensitive(false);
+                done.set_text("Applying…");
+                let (b, done) = (b.clone(), done.clone());
+                glib::MainContext::default().spawn_local(async move {
+                    let (changed, failed) = gio::spawn_blocking(move || apply_enclosed(&dirs)).await.unwrap_or((0, 0));
+                    b.set_sensitive(true);
+                    let items = |n: usize| if n == 1 { "1 item".to_string() } else { format!("{n} items") };
+                    done.set_text(&match failed {
+                        0 => format!("Changed {}.", items(changed)),
+                        f => format!("Changed {}; {} couldn't be changed (not yours?).", items(changed), items(f)),
+                    });
+                });
+            });
+        }
+        // The SELinux security context, where the system has one.
+        if let Some(ctx) = infos[0].attribute_string("selinux::context").filter(|c| !c.is_empty() && files.len() == 1) {
+            r += 1;
+            row(&pg, r, "Security context:", value_label(&ctx).upcast_ref());
+        }
         if !can_change {
             r += 1;
             let l = value_label("You are not the owner, so you can't change these permissions.");
@@ -460,6 +554,141 @@ fn parse_media_info(text: &str) -> Vec<(String, Vec<(String, String)>)> {
     sections
 }
 
+/// Whether `f` is the top folder of a file system: `/`, a folder on another
+/// device than its parent, or the root of a mount (a phone, a share).
+fn is_mount_root(f: &gio::File) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    if let Some(p) = f.path() {
+        let Some(parent) = p.parent() else { return true };
+        if let (Ok(a), Ok(b)) = (std::fs::metadata(&p), std::fs::metadata(parent)) {
+            if a.dev() != b.dev() {
+                return true;
+            }
+        }
+    }
+    f.find_enclosing_mount(gio::Cancellable::NONE).is_ok_and(|m| m.root().equal(f))
+}
+
+/// A pie of the used and free space on `f`'s file system, with the
+/// numbers beside it.
+fn disk_usage(f: &gio::File) -> Option<gtk::Widget> {
+    let fs = f.query_filesystem_info("filesystem::size,filesystem::free,filesystem::used,filesystem::type", gio::Cancellable::NONE).ok()?;
+    let total = fs.attribute_uint64("filesystem::size");
+    if total == 0 {
+        return None;
+    }
+    let free = fs.attribute_uint64("filesystem::free").min(total);
+    let used = if fs.has_attribute("filesystem::used") { fs.attribute_uint64("filesystem::used") } else { total - free };
+    let fraction = used as f64 / (used + free).max(1) as f64;
+    let hb = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    let pie = gtk::DrawingArea::new();
+    pie.set_size_request(72, 72);
+    pie.set_valign(gtk::Align::Start);
+    // The theme's selection color for what's used, a pale one for the rest.
+    let colors = |w: &gtk::DrawingArea| {
+        let sc = w.style_context();
+        let used = sc.lookup_color("theme_selected_bg_color").unwrap_or(gdk::RGBA::new(0.21, 0.52, 0.89, 1.0));
+        let fg = sc.lookup_color("theme_fg_color").unwrap_or(gdk::RGBA::new(0.5, 0.5, 0.5, 1.0));
+        (used, gdk::RGBA::new(fg.red(), fg.green(), fg.blue(), 0.15))
+    };
+    pie.connect_draw(move |w, cr| {
+        let (used, free) = colors(w);
+        let (wd, ht) = (w.allocated_width() as f64, w.allocated_height() as f64);
+        let (cx, cy, rad) = (wd / 2.0, ht / 2.0, wd.min(ht) / 2.0 - 1.0);
+        let start = -std::f64::consts::FRAC_PI_2;
+        let end = start + fraction * 2.0 * std::f64::consts::PI;
+        cr.set_source_rgba(free.red(), free.green(), free.blue(), free.alpha());
+        cr.arc(cx, cy, rad, 0.0, 2.0 * std::f64::consts::PI);
+        let _ = cr.fill();
+        if fraction > 0.0 {
+            cr.set_source_rgba(used.red(), used.green(), used.blue(), used.alpha());
+            cr.move_to(cx, cy);
+            cr.arc(cx, cy, rad, start, end);
+            cr.close_path();
+            let _ = cr.fill();
+        }
+        glib::Propagation::Stop
+    });
+    hb.pack_start(&pie, false, false, 0);
+    let legend = gtk::Grid::new();
+    legend.set_row_spacing(4);
+    legend.set_column_spacing(8);
+    let swatch = |used_color: bool| {
+        let sw = gtk::DrawingArea::new();
+        sw.set_size_request(12, 12);
+        sw.set_valign(gtk::Align::Center);
+        sw.connect_draw(move |w, cr| {
+            let (used, free) = colors(w);
+            let c = if used_color { used } else { free };
+            cr.set_source_rgba(c.red(), c.green(), c.blue(), c.alpha());
+            cr.rectangle(0.0, 0.0, w.allocated_width() as f64, w.allocated_height() as f64);
+            let _ = cr.fill();
+            glib::Propagation::Stop
+        });
+        sw
+    };
+    let line = |r: i32, sw: Option<gtk::DrawingArea>, key: &str, val: String| {
+        if let Some(sw) = sw {
+            legend.attach(&sw, 0, r, 1, 1);
+        }
+        let k = gtk::Label::new(Some(key));
+        k.set_xalign(0.0);
+        k.style_context().add_class("dim-label");
+        legend.attach(&k, 1, r, 1, 1);
+        let v = gtk::Label::new(Some(&val));
+        v.set_xalign(0.0);
+        v.set_selectable(true);
+        legend.attach(&v, 2, r, 1, 1);
+    };
+    line(0, Some(swatch(true)), "Used:", format!("{} ({:.0} %)", util::format_size(used), fraction * 100.0));
+    line(1, Some(swatch(false)), "Free:", util::format_size(free));
+    line(2, None, "Total:", util::format_size(total));
+    if let Some(t) = fs.attribute_string("filesystem::type").filter(|t| !t.is_empty()) {
+        line(3, None, "File system:", t.to_string());
+    }
+    hb.pack_start(&legend, false, false, 0);
+    Some(hb.upcast())
+}
+
+/// Applies each folder's mode to everything inside it: subfolders get it
+/// whole, files its read and write bits beside their own execute bits.
+/// Links are left alone. (changed, failed).
+fn apply_enclosed(dirs: &[(std::path::PathBuf, u32)]) -> (usize, usize) {
+    use std::os::unix::fs::PermissionsExt;
+    let (mut changed, mut failed) = (0, 0);
+    for (dir, mode) in dirs {
+        let mut stack = vec![dir.clone()];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                failed += 1;
+                continue;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                let Ok(md) = std::fs::symlink_metadata(&p) else { continue };
+                if md.file_type().is_symlink() {
+                    continue;
+                }
+                let old = md.permissions().mode() & 0o7777;
+                let new = if md.is_dir() {
+                    stack.push(p.clone());
+                    *mode
+                } else {
+                    (old & 0o7111) | (*mode & 0o666)
+                };
+                if new == old {
+                    continue;
+                }
+                match std::fs::set_permissions(&p, std::fs::Permissions::from_mode(new)) {
+                    Ok(()) => changed += 1,
+                    Err(_) => failed += 1,
+                }
+            }
+        }
+    }
+    (changed, failed)
+}
+
 fn group_digits(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::new();
@@ -497,5 +726,31 @@ mod tests {
                 assert!(!section.is_empty() && !rows.is_empty());
             }
         });
+    }
+
+    #[test]
+    fn apply_enclosed_modes() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = crate::testutil::TestDir::new("props-enclosed");
+        let f = t.file("top/a.txt", "a");
+        let x = t.file("top/run.sh", "x");
+        let sub = t.0.join("top/sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        let g = t.file("top/sub/b.txt", "b");
+        let set = |p: &std::path::Path, m: u32| std::fs::set_permissions(p, std::fs::Permissions::from_mode(m)).unwrap();
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o7777;
+        set(&f, 0o600);
+        set(&x, 0o700);
+        set(&g, 0o644);
+        set(&sub, 0o700);
+        std::os::unix::fs::symlink(&f, t.0.join("top/link")).unwrap();
+        let (changed, failed) = super::apply_enclosed(&[(t.0.join("top"), 0o750)]);
+        assert_eq!(failed, 0);
+        assert_eq!(mode(&sub), 0o750);
+        assert_eq!(mode(&f), 0o640);
+        // Execute bits stay the file's own.
+        assert_eq!(mode(&x), 0o740);
+        assert_eq!(mode(&g), 0o640);
+        assert_eq!(changed, 4);
     }
 }

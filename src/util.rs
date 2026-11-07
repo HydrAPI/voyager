@@ -139,6 +139,20 @@ pub fn release_memory_soon() {
     });
 }
 
+/// How format_time shows dates: 0 informal, 1 the locale's way, 2 ISO.
+static DATE_FORMAT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// "informal" (Today 14:00, else 7 Nov 2026 14:00), "locale" (as the
+/// language has it) or "iso" (2026-11-07 14:00:00), as in Caja.
+pub fn set_date_format(name: &str) {
+    let v = match name {
+        "locale" => 1,
+        "iso" => 2,
+        _ => 0,
+    };
+    DATE_FORMAT.store(v, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub fn set_iec_units(on: bool) {
     IEC_UNITS.store(on, std::sync::atomic::Ordering::Relaxed);
 }
@@ -221,6 +235,11 @@ pub fn format_time(t: i64) -> String {
     let Ok(dt) = glib::DateTime::from_unix_local(t) else {
         return String::new();
     };
+    match DATE_FORMAT.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => return dt.format("%c").map(|s| s.trim().to_string()).unwrap_or_default(),
+        2 => return dt.format("%Y-%m-%d %H:%M:%S").map(|s| s.to_string()).unwrap_or_default(),
+        _ => {}
+    }
     let Some((today, yesterday)) = recent_days() else {
         return String::new();
     };
@@ -733,6 +752,16 @@ mod tests {
         assert!(format_time(now.add_days(-1).unwrap().to_unix()).starts_with("Yesterday "));
         // 9 September 2001, 01:46:40 UTC: the 8th or 9th wherever we are.
         assert!(format_time(1_000_000_000).contains("Sep 2001"));
+        // The other formats (in this test, as the setting is shared).
+        let t = glib::DateTime::from_local(2001, 9, 9, 3, 46, 40.0).unwrap().to_unix();
+        set_date_format("iso");
+        let iso = format_time(t);
+        set_date_format("locale");
+        let locale = format_time(t);
+        set_date_format("informal");
+        assert_eq!(iso, "2001-09-09 03:46:40");
+        assert!(locale.contains("2001") && !locale.contains("Today"), "{locale}");
+        assert!(format_time(now.to_unix()).starts_with("Today "));
         assert!(format_time_long(1_000_000_000).contains("September 2001"));
     }
 

@@ -53,6 +53,7 @@ fn main() -> glib::ExitCode {
         gtk::Window::set_default_icon_name("system-file-manager");
         scroll::init();
         util::set_iec_units(config::with(|s| s.iec_units));
+        util::set_date_format(&config::with(|s| s.date_format.clone()));
         sidebar::init_automount();
     });
     app.connect_activate(|app| {

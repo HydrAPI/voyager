@@ -205,6 +205,8 @@ pub struct AppWindow {
     loc_toggle: gtk::ToggleButton,
     status: gtk::Label,
     statusbar: gtk::Box,
+    toolbar: gtk::Box,
+    locbar: gtk::Box,
     spinner: gtk::Spinner,
     panes: RefCell<Vec<Rc<Pane>>>,
     /// Recently closed tabs, most recent last, for Reopen Closed Tab.
@@ -541,6 +543,8 @@ impl AppWindow {
             loc_toggle,
             status,
             statusbar: statusbar.clone(),
+            toolbar: toolbar.clone(),
+            locbar: locbar.clone(),
             spinner,
             panes: RefCell::new(vec![]),
             closed_tabs: RefCell::new(vec![]),
@@ -594,7 +598,9 @@ impl AppWindow {
         window.show_all();
         this.sidebar.widget.set_visible(s.show_sidebar);
         this.statusbar.set_visible(s.show_statusbar);
+        this.toolbar.set_visible(s.show_toolbar);
         this.apply_path_mode();
+        this.update_locbar_visibility();
         this.update_tabs_visibility();
         WINDOWS.with(|w| w.borrow_mut().push(this.clone()));
         if let Some(p) = this.current_pane() {
@@ -625,7 +631,8 @@ impl AppWindow {
         file.append_section(None, &create);
         file.append_section(None, &section(&[("Open in _Terminal", "win.terminal"), ("_Properties", "win.properties")]));
         file.append_section(None, &section(&[("_Empty Trash", "win.empty-trash")]));
-        file.append_section(None, &section(&[("_Close Tab", "win.close-tab"), ("_Reopen Closed Tab", "win.reopen-tab"), ("Close _Window", "win.close-window"), ("_Quit", "app.quit")]));
+        file.append_section(None, &section(&[("Move Tab _Left", "win.tab-left"), ("Move Tab Ri_ght", "win.tab-right")]));
+        file.append_section(None, &section(&[("_Close Tab", "win.close-tab"), ("_Reopen Closed Tab", "win.reopen-tab"), ("Close _Window", "win.close-window"), ("Close _All Windows", "win.close-all-windows"), ("_Quit", "app.quit")]));
         bar.append_submenu(Some("_File"), &file);
 
         let edit = gio::Menu::new();
@@ -640,13 +647,16 @@ impl AppWindow {
         bar.append_submenu(Some("_Edit"), &edit);
 
         let view = gio::Menu::new();
-        view.append_section(None, &section(&[("_Reload", "win.reload")]));
+        view.append_section(None, &section(&[("_Reload", "win.reload"), ("Sto_p", "win.stop")]));
         view.append_section(None, &section(&[("_Icons", "win.view-mode::icon"), ("_List", "win.view-mode::list"), ("_Compact", "win.view-mode::compact"), ("C_olumns", "win.view-mode::columns")]));
         view.append_section(None, &section(&[("Show _Hidden Files", "win.show-hidden"), ("_Side Pane", "win.show-sidebar"), ("E_xtra Pane", "win.split-view"), ("St_atusbar", "win.show-statusbar"), ("_Info Panel", "win.info-panel")]));
+        view.append_section(None, &section(&[("S_witch to Other Pane", "win.switch-pane"), ("Same Location as O_ther Pane", "win.same-location")]));
+        view.append_section(None, &section(&[("_Main Toolbar", "win.show-toolbar"), ("Location _Bar", "win.show-locbar")]));
         let sort = gio::Menu::new();
         sort.append_section(None, &section(&[("By _Name", "win.sort-by::name"), ("By _Size", "win.sort-by::size"), ("By _Type", "win.sort-by::type"), ("By Modification _Date", "win.sort-by::mtime")]));
         sort.append_section(None, &section(&[("_Reversed Order", "win.sort-desc"), ("_Folders Before Files", "win.folders-first")]));
         view.append_submenu(Some("Arrange _Items"), &sort);
+        view.append_section(None, &section(&[("Reset View to _Defaults", "win.reset-view")]));
         view.append_section(None, &section(&[("Zoom _In", "win.zoom-in"), ("Zoom _Out", "win.zoom-out"), ("Normal Si_ze", "win.zoom-normal")]));
         view.append_section(None, &section(&[("Loc_k Toolbar", "win.lock-bar")]));
         bar.append_submenu(Some("_View"), &view);
@@ -655,6 +665,7 @@ impl AppWindow {
         go.append_section(None, &section(&[("_Back", "win.back"), ("_Forward", "win.forward"), ("_Open Parent", "win.up")]));
         go.append_section(None, &section(&[("_Home Folder", "win.home"), ("_Desktop", "win.go-desktop"), ("File _System", "win.go-root"), ("_Trash", "win.go-trash")]));
         go.append_section(None, &section(&[("_Location…", "win.location"), ("_Filter…", "win.filter")]));
+        go.append_section(None, &section(&[("Clea_r History", "win.clear-history")]));
         bar.append_submenu(Some("_Go"), &go);
 
         let bm = gio::Menu::new();
@@ -1186,6 +1197,52 @@ impl AppWindow {
         });
         self.add("edit-bookmarks", |w| w.edit_bookmarks());
         // Around from the last tab to the first and back, as in browsers.
+        // Move Tab Left / Right, as in Caja (Ctrl+Shift+Page Up / Down).
+        for (name, step) in [("tab-left", -1i32), ("tab-right", 1)] {
+            self.add(name, move |w| {
+                let nb = w.active();
+                let (Some(cur), n) = (nb.current_page(), nb.n_pages() as i32) else { return };
+                let to = cur as i32 + step;
+                if (0..n).contains(&to) {
+                    if let Some(page) = nb.nth_page(Some(cur)) {
+                        nb.reorder_child(&page, Some(to as u32));
+                        w.update_action_states();
+                    }
+                }
+            });
+        }
+        self.add("close-all-windows", |_| {
+            for w in all_windows() {
+                w.window.close();
+            }
+        });
+        self.add("clear-history", |w| {
+            for_all_panes(|p| p.clear_history());
+            if let Some(p) = w.current_pane() {
+                w.update_for_pane(&p);
+            }
+        });
+        self.add("stop", |w| {
+            if let Some(p) = w.current_pane() {
+                p.stop();
+            }
+        });
+        self.add("switch-pane", |w| {
+            if w.split_on() {
+                let nb = if w.active() == w.notebook { w.notebook2.clone() } else { w.notebook.clone() };
+                w.set_active(&nb);
+                if let Some(p) = w.current_pane() {
+                    p.grab_focus();
+                }
+            }
+        });
+        self.add("same-location", |w| {
+            if let (Some(p), Some(o)) = (w.current_pane(), w.other_pane()) {
+                if !o.current().equal(&p.current()) {
+                    p.navigate(&o.current());
+                }
+            }
+        });
         self.add("next-tab", |w| {
             let nb = w.active();
             let n = nb.n_pages();
@@ -1251,6 +1308,20 @@ impl AppWindow {
             config::update(|s| s.show_statusbar = v);
             w.statusbar.set_visible(v);
         });
+        self.add_toggle("show-toolbar", s.show_toolbar, |w, v| {
+            config::update(|s| s.show_toolbar = v);
+            w.toolbar.set_visible(v);
+        });
+        self.add_toggle("show-locbar", s.show_locbar, |w, v| {
+            config::update(|s| s.show_locbar = v);
+            w.update_locbar_visibility();
+        });
+        self.add("reset-view", |w| {
+            if let Some(p) = w.current_pane() {
+                p.reset_view();
+                w.update_for_pane(&p);
+            }
+        });
         self.add_toggle("sort-desc", s.sort_desc, |w, v| {
             if let Some(p) = w.current_pane() {
                 let (by, _) = p.sort_state();
@@ -1287,6 +1358,21 @@ impl AppWindow {
     }
 
     fn setup_signals(self: &Rc<Self>) {
+        // A hidden location bar shows while its field or the search is open.
+        {
+            let w = Rc::downgrade(self);
+            self.loc_toggle.connect_toggled(move |_| {
+                if let Some(s) = w.upgrade() {
+                    s.update_locbar_visibility();
+                }
+            });
+            let w = Rc::downgrade(self);
+            self.loc_stack.connect_visible_child_name_notify(move |_| {
+                if let Some(s) = w.upgrade() {
+                    s.update_locbar_visibility();
+                }
+            });
+        }
         let w = Rc::downgrade(self);
         // Let text entries handle their own keys (Ctrl+C, Delete, ...) before accelerators.
         self.window.connect_key_press_event(|win, ev| {
@@ -1327,10 +1413,18 @@ impl AppWindow {
             let w = w.clone();
             self.window.connect_button_press_event(move |_, ev| {
                 if let Some(s) = w.upgrade() {
-                    match ev.button() {
-                        8 => s.window.activate_action("back", None),
-                        9 => s.window.activate_action("forward", None),
-                        _ => return glib::Propagation::Proceed,
+                    let (on, back, fwd) = config::with(|c| (c.mouse_extra_buttons, c.mouse_back_button, c.mouse_forward_button));
+                    // Never the main three: they click, paste, open menus.
+                    let b = ev.button() as i32;
+                    if !on || b <= 3 {
+                        return glib::Propagation::Proceed;
+                    }
+                    if b == back {
+                        s.window.activate_action("back", None);
+                    } else if b == fwd {
+                        s.window.activate_action("forward", None);
+                    } else {
+                        return glib::Propagation::Proceed;
                     }
                     return glib::Propagation::Stop;
                 }
@@ -2140,6 +2234,7 @@ impl AppWindow {
             }
             Event::Loading(on) => {
                 if self.is_current(pane) {
+                    self.set_enabled("stop", on);
                     if on {
                         self.spinner.start();
                     } else {
@@ -2252,6 +2347,13 @@ impl AppWindow {
         self.set_enabled("new-from-template", writable && !searching);
         self.set_enabled("restore", has && in_trash && sel.iter().all(|r| !r.orig.is_empty()));
         self.set_enabled("terminal", p.current().path().is_some());
+        self.set_enabled("stop", p.is_loading());
+        self.set_enabled("switch-pane", self.split_on());
+        self.set_enabled("same-location", self.other_pane().is_some_and(|o| !o.current().equal(&p.current())));
+        let nb = self.active();
+        let (cur, n) = (nb.current_page().unwrap_or(0), nb.n_pages());
+        self.set_enabled("tab-left", cur > 0);
+        self.set_enabled("tab-right", cur + 1 < n);
     }
 
     fn flash_status(self: &Rc<Self>, text: &str) {
@@ -2513,6 +2615,14 @@ impl AppWindow {
 
     /// Breadcrumbs with an edit toggle, or (path_as_text) always the text
     /// field, without the toggle.
+    /// The location bar shows if Preferences say so, or else while the
+    /// location field (Ctrl+L) or the search (Ctrl+F) is open, as in Caja.
+    fn update_locbar_visibility(&self) {
+        let wanted = config::with(|s| s.show_locbar);
+        let in_use = self.loc_toggle.is_active() || self.search_open();
+        self.locbar.set_visible(wanted || in_use);
+    }
+
     fn apply_path_mode(&self) {
         let text = config::with(|s| s.path_as_text);
         self.loc_toggle.set_visible(!text);
@@ -3469,6 +3579,9 @@ impl AppWindow {
             s.compact_size = size;
         });
         v.add(&zoom_grid);
+        head(&v, "List View");
+        let list_icons = setting_check("Show _icons", Some("Icons beside the names in the list view"), s.list_icons, |s, v| s.list_icons = v, |_| for_all_panes(|p| p.apply_zoom()));
+        indent(&v, list_icons.upcast_ref());
         add_page("views", "Views", "view-grid-symbolic", &v);
 
         // Behavior
@@ -3537,6 +3650,30 @@ impl AppWindow {
             |_| {},
         );
         indent(&b, auto.upcast_ref());
+        head(&b, "Mouse Buttons");
+        let extra = setting_check(
+            "Use the mouse's _back and forward buttons",
+            Some("The extra buttons on the side of many mice go back and forward, as in a web browser"),
+            s.mouse_extra_buttons,
+            |s, v| s.mouse_extra_buttons = v,
+            |_| {},
+        );
+        indent(&b, extra.upcast_ref());
+        let button_spin = |value: i32, set: fn(&mut config::Settings, i32)| {
+            let sp = gtk::SpinButton::with_range(4.0, 20.0, 1.0);
+            sp.set_value(value as f64);
+            sp.set_tooltip_text(Some("Most mice use button 8 for back and 9 for forward; xev shows what yours sends"));
+            sp.connect_value_changed(move |sp| {
+                let v = sp.value_as_int();
+                config::update(|s| set(s, v));
+            });
+            extra.bind_property("active", &sp, "sensitive").sync_create().build();
+            sp
+        };
+        let back_b = button_spin(s.mouse_back_button, |s, v| s.mouse_back_button = v);
+        let fwd_b = button_spin(s.mouse_forward_button, |s, v| s.mouse_forward_button = v);
+        let row = inline(&b, "Back:", &[back_b.upcast_ref(), gtk::Label::new(Some("Forward:")).upcast_ref(), fwd_b.upcast_ref()]);
+        row.set_margin_start(row.margin_start() + 24);
         add_page("behavior", "Behavior", "view-more-symbolic", &b);
 
         // Display
@@ -3566,10 +3703,35 @@ impl AppWindow {
             },
         );
         indent(&dp, iec.upcast_ref());
+        // Each choice shows how a date looks with it, as in Caja.
+        let dates = gtk::ComboBoxText::new();
+        let now = glib::DateTime::now_local().map(|d| d.to_unix()).unwrap_or(0);
+        for (id, name) in [("informal", "Informal"), ("locale", "Your language's"), ("iso", "ISO")] {
+            util::set_date_format(id);
+            dates.append(Some(id), &format!("{name}: {}", util::format_time(now)));
+        }
+        util::set_date_format(&s.date_format);
+        dates.set_active_id(Some(&s.date_format));
+        dates.connect_changed(|c| {
+            if let Some(id) = c.active_id() {
+                config::update(|s| s.date_format = id.to_string());
+                util::set_date_format(&id);
+                // Dates are formatted when rows are made.
+                for_all_panes(|p| p.reload());
+            }
+        });
+        option(&dp, "Dates:", dates.upcast_ref());
         head(&dp, "Window");
         let side = check("Show the side _pane");
         side.set_action_name(Some("win.show-sidebar"));
         indent(&dp, side.upcast_ref());
+        let tb = check("Show the _main toolbar");
+        tb.set_action_name(Some("win.show-toolbar"));
+        indent(&dp, tb.upcast_ref());
+        let lb = check("Show the l_ocation bar");
+        lb.set_tooltip_text(Some("Hidden, it still shows while you type a location (Ctrl+L) or search (Ctrl+F)"));
+        lb.set_action_name(Some("win.show-locbar"));
+        indent(&dp, lb.upcast_ref());
         let status = check("Show the status_bar");
         status.set_action_name(Some("win.show-statusbar"));
         indent(&dp, status.upcast_ref());

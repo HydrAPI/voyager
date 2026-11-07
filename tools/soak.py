@@ -55,7 +55,8 @@ ANSWERS = {"Cancel", "Skip", "Skip All", "Keep Both", "Merge", "Replace", "Delet
 # "x11" (a window without buttons, closed with Escape: X11 only).
 # Left out: anything that starts other programs (open, open-with,
 # open-with-other, open-new-tab and -window with files selected, terminal,
-# compress, extract, custom-action); windows are closed now and then below.
+# compress, extract, custom-action); windows are closed now and then below
+# (not close-all-windows: Arkha quits, which would look like a crash).
 ACTIONS = [
     ("back", None, 4, "plain"), ("forward", None, 3, "plain"), ("up", None, 4, "plain"),
     ("home", None, 2, "plain"), ("go-desktop", None, 1, "plain"),
@@ -64,7 +65,10 @@ ACTIONS = [
     ("prev-tab", None, 1, "plain"), ("reopen-tab", None, 1, "plain"), ("new-window", None, 1, "plain"),
     ("view-mode", "view", 6, "plain"), ("zoom-in", None, 3, "plain"), ("zoom-out", None, 3, "plain"),
     ("zoom-normal", None, 1, "plain"), ("show-hidden", "toggle", 2, "plain"), ("show-sidebar", "toggle", 1, "plain"),
-    ("show-statusbar", "toggle", 1, "plain"), ("lock-bar", "toggle", 1, "plain"), ("split-view", "toggle", 2, "plain"), ("info-panel", "toggle", 2, "plain"),
+    ("show-statusbar", "toggle", 1, "plain"), ("lock-bar", "toggle", 1, "plain"),
+    ("show-toolbar", "toggle", 1, "plain"), ("show-locbar", "toggle", 1, "plain"), ("reset-view", None, 1, "plain"),
+    ("stop", None, 1, "plain"), ("clear-history", None, 1, "plain"), ("tab-left", None, 1, "plain"), ("tab-right", None, 1, "plain"),
+    ("switch-pane", None, 1, "plain"), ("same-location", None, 1, "plain"), ("split-view", "toggle", 2, "plain"), ("info-panel", "toggle", 2, "plain"),
     ("sort-by", "sort", 3, "plain"), ("sort-desc", "toggle", 2, "plain"), ("folders-first", "toggle", 1, "plain"),
     ("filter", None, 1, "plain"), ("location", None, 1, "plain"), ("escape", None, 3, "plain"),
     ("select-all", None, 5, "plain"), ("invert-selection", None, 3, "plain"),
