@@ -1,5 +1,5 @@
-//! Files dragged out of an archive manager (Engrampa, File Roller,
-//! Xarchiver). They aren't files yet, so the archive manager offers the X
+//! Files dragged out of an archive manager (Engrampa, Xarchiver, File
+//! Roller before GTK 4; File Roller 43 and later can't drag files out). They aren't files yet, so the archive manager offers the X
 //! Direct Save protocol (XDS) instead of a list of files: the drop target
 //! writes where they should go into a property of the source's window and
 //! asks for the data, and the source then extracts them there itself and
