@@ -3650,30 +3650,6 @@ impl AppWindow {
             |_| {},
         );
         indent(&b, auto.upcast_ref());
-        head(&b, "Mouse Buttons");
-        let extra = setting_check(
-            "Use the mouse's _back and forward buttons",
-            Some("The extra buttons on the side of many mice go back and forward, as in a web browser"),
-            s.mouse_extra_buttons,
-            |s, v| s.mouse_extra_buttons = v,
-            |_| {},
-        );
-        indent(&b, extra.upcast_ref());
-        let button_spin = |value: i32, set: fn(&mut config::Settings, i32)| {
-            let sp = gtk::SpinButton::with_range(4.0, 20.0, 1.0);
-            sp.set_value(value as f64);
-            sp.set_tooltip_text(Some("Most mice use button 8 for back and 9 for forward; xev shows what yours sends"));
-            sp.connect_value_changed(move |sp| {
-                let v = sp.value_as_int();
-                config::update(|s| set(s, v));
-            });
-            extra.bind_property("active", &sp, "sensitive").sync_create().build();
-            sp
-        };
-        let back_b = button_spin(s.mouse_back_button, |s, v| s.mouse_back_button = v);
-        let fwd_b = button_spin(s.mouse_forward_button, |s, v| s.mouse_forward_button = v);
-        let row = inline(&b, "Back:", &[back_b.upcast_ref(), gtk::Label::new(Some("Forward:")).upcast_ref(), fwd_b.upcast_ref()]);
-        row.set_margin_start(row.margin_start() + 24);
         add_page("behavior", "Behavior", "view-more-symbolic", &b);
 
         // Display

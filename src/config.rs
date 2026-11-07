@@ -24,8 +24,8 @@ pub struct Settings {
     pub show_sidebar: bool,
     pub show_statusbar: bool,
     pub show_toolbar: bool,
-    /// The mouse's extra buttons go back and forward (as in Caja: which
-    /// buttons, and whether at all).
+    /// The mouse's extra buttons go back and forward. As in Caja (whose
+    /// dconf keys these are), only in the settings file, not in Preferences.
     pub mouse_extra_buttons: bool,
     pub mouse_back_button: i32,
     pub mouse_forward_button: i32,
