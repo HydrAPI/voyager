@@ -22,6 +22,7 @@ mod testutil;
 mod util;
 mod thumbnailers;
 mod window;
+mod xds;
 
 use gio::prelude::*;
 use gtk::prelude::*;

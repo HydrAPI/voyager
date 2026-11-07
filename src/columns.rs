@@ -239,18 +239,30 @@ impl Column {
         });
         // …and things dropped on a folder row go into it, anywhere else in
         // the column into the column's folder.
-        v.drag_dest_set(gtk::DestDefaults::empty(), &crate::pane::targets(), crate::pane::dnd_actions());
+        v.drag_dest_set(gtk::DestDefaults::empty(), &crate::pane::drop_targets(), crate::pane::dnd_actions());
         let w = Rc::downgrade(self);
         v.connect_drag_motion(move |v, ctx, x, y, time| {
             let Some(c) = w.upgrade() else { return false };
+            if v.drag_dest_find_target(ctx, None).is_none() {
+                ctx.drag_status(gdk::DragAction::empty(), time);
+                return true;
+            }
             let (dest, row) = c.drop_target(x, y);
             v.set_drag_dest_row(row.as_ref(), gtk::TreeViewDropPosition::IntoOrBefore);
             ctx.drag_status(crate::pane::choose_action(v.upcast_ref(), ctx, &dest), time);
             true
         });
         v.connect_drag_leave(|v, _, _| v.set_drag_dest_row(None, gtk::TreeViewDropPosition::IntoOrBefore));
-        v.connect_drag_drop(|v, ctx, _, _, time| {
+        let w = Rc::downgrade(self);
+        v.connect_drag_drop(move |v, ctx, x, y, time| {
             match v.drag_dest_find_target(ctx, None) {
+                // Out of an archive: the archive manager saves the files.
+                Some(t) if crate::xds::is(&t) => {
+                    let dest = w.upgrade().map(|c| c.drop_target(x, y).0);
+                    if !dest.is_some_and(|d| crate::xds::start(v, ctx, &d, time)) {
+                        ctx.drag_finish(false, false, time);
+                    }
+                }
                 Some(t) => v.drag_get_data(ctx, &t, time),
                 None => ctx.drag_finish(false, false, time),
             }
@@ -259,6 +271,10 @@ impl Column {
         let w = Rc::downgrade(self);
         v.connect_drag_data_received(move |v, ctx, x, y, sel, _, time| {
             v.set_drag_dest_row(None, gtk::TreeViewDropPosition::IntoOrBefore);
+            if crate::xds::is(&sel.target()) {
+                crate::xds::finish(ctx, sel, time);
+                return;
+            }
             let Some(c) = w.upgrade() else { return };
             let uris: Vec<String> = sel.uris().iter().map(|s| s.to_string()).collect();
             let (dest, _) = c.drop_target(x, y);

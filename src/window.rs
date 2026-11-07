@@ -2355,7 +2355,7 @@ impl AppWindow {
             // of letting the widgets around the crumb take them.
             b.drag_dest_set(
                 gtk::DestDefaults::empty(),
-                &crate::pane::targets(),
+                &crate::pane::drop_targets(),
                 gdk::DragAction::COPY | gdk::DragAction::MOVE | gdk::DragAction::LINK,
             );
             {
@@ -2372,8 +2372,16 @@ impl AppWindow {
                 });
             }
             b.connect_drag_leave(|b, _, _| b.drag_unhighlight());
-            b.connect_drag_drop(|b, ctx, _, _, time| {
+            let target = c.clone();
+            b.connect_drag_drop(move |b, ctx, _, _, time| {
                 match b.drag_dest_find_target(ctx, None) {
+                    // Out of an archive: the archive manager saves the files.
+                    Some(t) if crate::xds::is(&t) => {
+                        if !crate::xds::start(b, ctx, &target, time) {
+                            ctx.drag_finish(false, false, time);
+                        }
+                        true
+                    }
                     Some(t) => {
                         b.drag_get_data(ctx, &t, time);
                         true
@@ -2387,6 +2395,10 @@ impl AppWindow {
                 let w = Rc::downgrade(self);
                 let target = c.clone();
                 b.connect_drag_data_received(move |_, ctx, _, _, sel, _, time| {
+                    if crate::xds::is(&sel.target()) {
+                        crate::xds::finish(ctx, sel, time);
+                        return;
+                    }
                     let uris: Vec<String> = sel.uris().iter().map(|u| u.to_string()).collect();
                     let action = ctx.selected_action();
                     ctx.drag_finish(!uris.is_empty(), false, time);

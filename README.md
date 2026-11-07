@@ -18,6 +18,7 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
 - **File operations:** these run on a background thread with a progress window and cancel button.
   - Copy, cut and paste, using the same clipboard format as Caja and Nautilus (you can copy in one and paste in the other)
   - Drag and drop: Shift moves, Ctrl copies, Alt asks; a plain drag moves on the same filesystem and copies across filesystems
+  - Files dragged out of an archive manager (Engrampa, File Roller, Xarchiver) into a folder, onto a folder or onto the path bar are extracted there (X11 only: the archive managers' XDS protocol needs X)
   - Duplicate, Make Link, Copy To…, Move To…
   - Move to Trash, Delete permanently, Restore from Trash, Empty Trash
   - Undo (Edit → Undo, Ctrl+Z) for the last 20 copies, moves and links: copies and links go to the trash, moved items go back where they were. After a merge only what was added is taken back, and a copy that replaced a file is left alone.

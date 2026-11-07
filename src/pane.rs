@@ -269,6 +269,12 @@ pub fn targets() -> Vec<gtk::TargetEntry> {
     vec![gtk::TargetEntry::new("text/uri-list", gtk::TargetFlags::empty(), 0)]
 }
 
+/// What can be dropped on folders: files, and files dragged out of an
+/// archive manager (see xds), in that order of preference.
+pub fn drop_targets() -> Vec<gtk::TargetEntry> {
+    targets().into_iter().chain(crate::xds::target_entry()).collect()
+}
+
 pub fn dnd_actions() -> gdk::DragAction {
     gdk::DragAction::COPY | gdk::DragAction::MOVE | gdk::DragAction::LINK | gdk::DragAction::ASK
 }
@@ -1518,7 +1524,7 @@ impl Pane {
         enable_drag_source_tv(&self.tree_view);
         let views: [gtk::Widget; 2] = [self.icon_view.clone().upcast(), self.tree_view.clone().upcast()];
         for view in views {
-            view.drag_dest_set(gtk::DestDefaults::empty(), &targets(), dnd_actions());
+            view.drag_dest_set(gtk::DestDefaults::empty(), &drop_targets(), dnd_actions());
             // Files are moved by ops, which the monitor picks up. Never let GTK
             // remove the dragged row from the store behind our index's back.
             view.connect_drag_data_delete(|v, _| v.stop_signal_emission_by_name("drag-data-delete"));
@@ -1561,6 +1567,12 @@ impl Pane {
                 let w = w.clone();
                 view.connect_drag_motion(move |view, ctx, x, y, time| {
                     let Some(p) = w.upgrade() else { return false };
+                    // Nothing it can take (text, or out of an archive on Wayland): say so.
+                    if view.drag_dest_find_target(ctx, None).is_none() {
+                        p.highlight_drop(None);
+                        ctx.drag_status(gdk::DragAction::empty(), time);
+                        return true;
+                    }
                     let target = p.drop_target(x, y);
                     let from_self = ctx
                         .drag_get_source_widget()
@@ -1591,18 +1603,38 @@ impl Pane {
                     }
                 });
             }
-            view.connect_drag_drop(|view, ctx, _, _, time| {
-                match view.drag_dest_find_target(ctx, None) {
-                    Some(t) => view.drag_get_data(ctx, &t, time),
-                    None => ctx.drag_finish(false, false, time),
-                }
-                true
-            });
+            {
+                let w = w.clone();
+                view.connect_drag_drop(move |view, ctx, x, y, time| {
+                    match view.drag_dest_find_target(ctx, None) {
+                        // Out of an archive: the archive manager saves the files.
+                        Some(t) if crate::xds::is(&t) => {
+                            let dest = w.upgrade().and_then(|p| match p.drop_target(x, y) {
+                                Some((_, uri)) => Some(gio::File::for_uri(&uri)),
+                                None => (!p.is_searching()).then(|| p.current()),
+                            });
+                            if !dest.is_some_and(|d| crate::xds::start(view, ctx, &d, time)) {
+                                ctx.drag_finish(false, false, time);
+                            }
+                        }
+                        Some(t) => view.drag_get_data(ctx, &t, time),
+                        None => ctx.drag_finish(false, false, time),
+                    }
+                    true
+                });
+            }
             {
                 let w = w.clone();
                 view.connect_drag_data_received(move |view, ctx, x, y, sel, _, time| {
                     // The views' own handlers would insert rows into the model.
                     view.stop_signal_emission_by_name("drag-data-received");
+                    if crate::xds::is(&sel.target()) {
+                        crate::xds::finish(ctx, sel, time);
+                        if let Some(p) = w.upgrade() {
+                            p.highlight_drop(None);
+                        }
+                        return;
+                    }
                     let Some(p) = w.upgrade() else { return };
                     let mut uris: Vec<String> = sel.uris().iter().map(|s| s.to_string()).collect();
                     let target = p.drop_target(x, y);
