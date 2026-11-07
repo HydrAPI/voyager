@@ -73,6 +73,14 @@ pub struct Settings {
     pub unmount_only: bool,
     /// Separate automounters (udiskie, …) already told about, once each.
     pub automounters_noticed: Vec<String>,
+    /// What happens with media Arkha mounts when inserted (see autorun.rs),
+    /// as the desktop's media-handling keys say, which are these otherwise
+    /// (without one of GNOME, Cinnamon or MATE).
+    pub autorun_never: bool,
+    pub automount_open: bool,
+    pub autorun_start_app: Vec<String>,
+    pub autorun_ignore: Vec<String>,
+    pub autorun_open_folder: Vec<String>,
     /// Always show the location as editable text instead of breadcrumbs.
     pub path_as_text: bool,
     pub confirm_trash: bool,
@@ -233,6 +241,11 @@ impl Default for Settings {
             automount: true,
             unmount_only: false,
             automounters_noticed: vec![],
+            autorun_never: false,
+            automount_open: true,
+            autorun_start_app: vec![],
+            autorun_ignore: vec![],
+            autorun_open_folder: vec![],
             path_as_text: false,
             confirm_trash: true,
             single_click: false,
@@ -441,6 +454,13 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     if let Ok(v) = kf.string_list(g, "automounters_noticed") {
         s.automounters_noticed = v.iter().map(|x| x.to_string()).collect();
     }
+    b!(autorun_never);
+    b!(automount_open);
+    for (key, list) in [("autorun_start_app", &mut s.autorun_start_app), ("autorun_ignore", &mut s.autorun_ignore), ("autorun_open_folder", &mut s.autorun_open_folder)] {
+        if let Ok(v) = kf.string_list(g, key) {
+            *list = v.iter().map(|x| x.to_string()).collect();
+        }
+    }
     if let Ok(v) = kf.string_list(g, "hidden_places") {
         s.hidden_places = v.iter().map(|x| x.to_string()).collect();
     }
@@ -572,6 +592,11 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     set_string_list(&kf, g, "hidden_places", &s.hidden_places);
     set_string_list(&kf, g, "places_order", &s.places_order);
     set_string_list(&kf, g, "automounters_noticed", &s.automounters_noticed);
+    kf.set_boolean(g, "autorun_never", s.autorun_never);
+    kf.set_boolean(g, "automount_open", s.automount_open);
+    set_string_list(&kf, g, "autorun_start_app", &s.autorun_start_app);
+    set_string_list(&kf, g, "autorun_ignore", &s.autorun_ignore);
+    set_string_list(&kf, g, "autorun_open_folder", &s.autorun_open_folder);
     set_string_list(&kf, g, "sidebar_collapsed", &s.sidebar_collapsed);
     set_string_list(&kf, g, "hidden_menu_items", &s.hidden_menu_items);
     set_string_list(&kf, g, "menu_order", &s.menu_order);

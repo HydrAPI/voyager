@@ -3641,6 +3641,20 @@ impl AppWindow {
             |_| crate::sidebar::refresh_all(),
         );
         indent(&b, unmount_only.upcast_ref());
+        head(&b, "Other Programs");
+        let fm1 = check("Open folders when other programs _ask, also when Arkha isn't running");
+        fm1.set_tooltip_text(Some("“Show in folder” in web browsers, download lists and the like opens Arkha, with the file selected. While Arkha runs it does this anyway, unless another file manager that does it (Caja, say) was there first; this lets programs start Arkha for it too."));
+        fm1.set_active(crate::fm1::activation_on());
+        {
+            let d = d.clone();
+            fm1.connect_toggled(move |c| {
+                if let Err(e) = crate::fm1::set_activation(c.is_active()) {
+                    util::error_dialog(Some(d.upcast_ref()), "Could not change it", &e.to_string());
+                    c.set_active(crate::fm1::activation_on());
+                }
+            });
+        }
+        indent(&b, fm1.upcast_ref());
         head(&b, "Scrolling");
         let auto = setting_check(
             "_Middle-click on empty space (or an item in the list view) to autoscroll",
@@ -3898,6 +3912,7 @@ impl AppWindow {
         hb.add(&gtk::Label::new(Some("pixels")));
         indent(&sp, hb.upcast_ref());
         add_page("sidepane", "Side Pane", "view-list-symbolic", &sp);
+        add_page("media", "Media", "media-removable-symbolic", &crate::autorun::preferences_page());
 
         // Context Menu: order and visibility of the entries, per menu
         let cm = page();

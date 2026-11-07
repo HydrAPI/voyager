@@ -1,6 +1,7 @@
 //! Arkha — a Caja-style file manager in Rust + GTK 3.
 
 mod actions;
+mod autorun;
 mod bulkrename;
 mod clipboard;
 mod columns;
@@ -8,6 +9,7 @@ mod config;
 mod iconlabel;
 mod iconview;
 mod info;
+mod fm1;
 mod folders;
 mod icons;
 mod keys;
@@ -55,6 +57,18 @@ fn main() -> glib::ExitCode {
         util::set_iec_units(config::with(|s| s.iec_units));
         util::set_date_format(&config::with(|s| s.date_format.clone()));
         sidebar::init_automount();
+        // "Show in folder" for other programs.
+        fm1::init();
+        // Started by D-Bus for that (--gapplication-service): staying a
+        // moment for the call. (Otherwise Arkha quits with its last window.)
+        if app.flags().contains(gio::ApplicationFlags::IS_SERVICE) {
+            app.set_inactivity_timeout(10_000);
+        }
+        // For tests: what inserting a medium does, with a folder for it.
+        if let Some(dir) = std::env::var_os("ARKHA_AUTORUN_TRY") {
+            let f = gio::File::for_path(dir);
+            glib::timeout_add_local_once(std::time::Duration::from_secs(1), move || autorun::try_folder(&f));
+        }
     });
     app.connect_activate(|app| {
         window::AppWindow::new(app, &[]);

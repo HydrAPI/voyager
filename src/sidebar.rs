@@ -1432,6 +1432,15 @@ pub fn set_automount(on: bool) {
     config::update(|s| s.automount = on);
 }
 
+/// The desktop's media-handling settings (GNOME, Cinnamon, MATE), which
+/// also say what to do with inserted media (see autorun.rs).
+pub fn media_settings() -> Option<gio::Settings> {
+    match DesktopMount::get()? {
+        DesktopMount::Gsettings(schema, _) => Some(gio::Settings::new(schema)),
+        _ => None,
+    }
+}
+
 /// The desktop whose setting that is, if any.
 pub fn automount_desktop() -> Option<&'static str> {
     DesktopMount::get().map(DesktopMount::name)
@@ -1616,8 +1625,14 @@ pub fn init_automount() {
                 }
                 let op = gtk::MountOperation::new(None::<&gtk::Window>);
                 // Errors are left alone: another program may have mounted
-                // it meanwhile.
-                v.mount(gio::MountMountFlags::NONE, Some(&op), gio::Cancellable::NONE, |_| {});
+                // it meanwhile. Mounted, what's on it may start a program or
+                // open a window (see autorun.rs).
+                let vol = v.clone();
+                v.mount(gio::MountMountFlags::NONE, Some(&op), gio::Cancellable::NONE, move |r| {
+                    if let (Ok(()), Some(m)) = (r, vol.get_mount()) {
+                        crate::autorun::on_mounted(&m);
+                    }
+                });
             };
             // A desktop mounts media itself (and may open a window for them,
             // per its settings), so it gets the first go; Arkha mounts what
