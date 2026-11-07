@@ -6,7 +6,9 @@
 #   tools/lockbar-test.sh [x11|wayland|both]     (default: both)
 #
 # Everything runs on a private display (Xvfb :71; for Wayland, Weston's
-# kiosk shell nested in it), in its own D-Bus session and with its own settings, so the real
+# kiosk shell nested in it), in its own D-Bus session and runtime folder
+# (services started in the session, such as the accessibility bus, would
+# otherwise put their sockets over the desktop's in /run/user) and with its own settings, so the real
 # desktop, settings and a running Arkha are never touched. X11 runs under
 # xmonad (as on the author's system), if it's installed.
 #
@@ -33,6 +35,10 @@ MENU=${MENU:-"110 15 150 423"}
 if [ -z "${LOCKBAR_INNER:-}" ]; then
     [ -x "$BIN" ] || { echo "Build first: cargo build --release"; exit 2; }
     mkdir -p "$OUT"
+    # A short path: Wayland sockets allow 107 bytes.
+    XDG_RUNTIME_DIR=$(mktemp -d /tmp/arkha-rt.XXXXXX)
+    export XDG_RUNTIME_DIR
+    trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
     fails=0
     for b in ${1:-both}; do
         case $b in
@@ -54,7 +60,7 @@ backend=$1
 fails=0
 CFG=$OUT/$backend-config
 LOG=$OUT/$backend.log
-export DISPLAY=:71 GSETTINGS_BACKEND=memory GVFS_DISABLE_FUSE=1 NO_AT_BRIDGE=1 XDG_CONFIG_HOME=$CFG G_MESSAGES_DEBUG=arkha
+export DISPLAY=:71 GSETTINGS_BACKEND=memory GVFS_DISABLE_FUSE=1 NO_AT_BRIDGE=1 GTK_A11Y=none XDG_CONFIG_HOME=$CFG G_MESSAGES_DEBUG=arkha
 Xvfb :71 -screen 0 1200x800x24 -nolisten tcp >/dev/null 2>&1 &
 XP=$!
 sleep 1
