@@ -428,7 +428,8 @@ pub fn preferences_page() -> gtk::Box {
         l.set_margin_start(40);
         l
     };
-    b.add(&head("Media Handling", true));
+    // Under the Removable Media section Preferences puts above.
+    b.add(&head("Media Handling", false));
     let where_ = match crate::sidebar::automount_desktop().filter(|_| crate::sidebar::media_settings().is_some()) {
         Some(desktop) => format!("What happens when you insert media or connect devices that Arkha mounts. These are {desktop}'s own settings."),
         None => "What happens when you insert media or connect devices that Arkha mounts.".to_string(),

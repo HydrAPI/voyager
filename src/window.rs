@@ -3616,31 +3616,6 @@ impl AppWindow {
         head(&b, "Trash");
         let confirm = setting_check("Ask before moving files to the T_rash", None, s.confirm_trash, |s, v| s.confirm_trash = v, |_| {});
         indent(&b, confirm.upcast_ref());
-        head(&b, "Removable Media");
-        let automount = check("Mount drives and media when they're _inserted");
-        automount.set_tooltip_text(Some(&match crate::sidebar::automount_desktop() {
-            Some(desktop) => format!("Flash drives, memory cards, discs… are mounted right away. This is {desktop}'s own setting: changing it here changes it there too. Turned off, they're mounted when you click them in the side pane."),
-            None => "Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they're mounted when you click them in the side pane.".to_string(),
-        }));
-        automount.set_active(crate::sidebar::automount_on());
-        automount.connect_toggled(|c| crate::sidebar::set_automount(c.is_active()));
-        // It may have been changed in the desktop's settings meanwhile.
-        d.connect_focus_in_event(glib::clone!(@weak automount => @default-return glib::Propagation::Proceed, move |_, _| {
-            let on = crate::sidebar::automount_on();
-            if automount.is_active() != on {
-                automount.set_active(on);
-            }
-            glib::Propagation::Proceed
-        }));
-        indent(&b, automount.upcast_ref());
-        let unmount_only = setting_check(
-            "The eject button only _unmounts",
-            Some("Clicking the button next to a drive in the side pane unmounts it, but doesn't eject it or power it off (the drive stays in the list, ready to be mounted again)"),
-            s.unmount_only,
-            |s, v| s.unmount_only = v,
-            |_| crate::sidebar::refresh_all(),
-        );
-        indent(&b, unmount_only.upcast_ref());
         head(&b, "Other Programs");
         let fm1 = check("Open folders when other programs _ask, also when Arkha isn't running");
         fm1.set_tooltip_text(Some("“Show in folder” in web browsers, download lists and the like opens Arkha, with the file selected. While Arkha runs it does this anyway, unless another file manager that does it (Caja, say) was there first; this lets programs start Arkha for it too."));
@@ -3912,7 +3887,40 @@ impl AppWindow {
         hb.add(&gtk::Label::new(Some("pixels")));
         indent(&sp, hb.upcast_ref());
         add_page("sidepane", "Side Pane", "view-list-symbolic", &sp);
-        add_page("media", "Media", "media-removable-symbolic", &crate::autorun::preferences_page());
+        // Media: mounting first, then what happens with what's mounted.
+        let media = crate::autorun::preferences_page();
+        let removable = page();
+        head(&removable, "Removable Media");
+        let automount = check("Mount drives and media when they're _inserted");
+        automount.set_tooltip_text(Some(&match crate::sidebar::automount_desktop() {
+            Some(desktop) => format!("Flash drives, memory cards, discs… are mounted right away. This is {desktop}'s own setting: changing it here changes it there too. Turned off, they're mounted when you click them in the side pane."),
+            None => "Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they're mounted when you click them in the side pane.".to_string(),
+        }));
+        automount.set_active(crate::sidebar::automount_on());
+        automount.connect_toggled(|c| crate::sidebar::set_automount(c.is_active()));
+        // It may have been changed in the desktop's settings meanwhile.
+        d.connect_focus_in_event(glib::clone!(@weak automount => @default-return glib::Propagation::Proceed, move |_, _| {
+            let on = crate::sidebar::automount_on();
+            if automount.is_active() != on {
+                automount.set_active(on);
+            }
+            glib::Propagation::Proceed
+        }));
+        indent(&removable, automount.upcast_ref());
+        let unmount_only = setting_check(
+            "The eject button only _unmounts",
+            Some("Clicking the button next to a drive in the side pane unmounts it, but doesn't eject it or power it off (the drive stays in the list, ready to be mounted again)"),
+            s.unmount_only,
+            |s, v| s.unmount_only = v,
+            |_| crate::sidebar::refresh_all(),
+        );
+        indent(&removable, unmount_only.upcast_ref());
+        for (i, w) in removable.children().iter().enumerate() {
+            removable.remove(w);
+            media.add(w);
+            media.reorder_child(w, i as i32);
+        }
+        add_page("media", "Media", "media-removable-symbolic", &media);
 
         // Context Menu: order and visibility of the entries, per menu
         let cm = page();
