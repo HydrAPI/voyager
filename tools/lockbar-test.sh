@@ -11,10 +11,10 @@
 # xmonad (as on the author's system), if it's installed.
 #
 # A drag counts as started when Arkha logs "bar drag started" (a GLib debug
-# message, shown with G_MESSAGES_DEBUG=arkha). On X11 the drop is checked
-# too: the bar order in the settings must change. (Under nested Weston
-# xdotool's drops don't land, with or without the lock, so there only the
-# start is checked.)
+# message, shown with G_MESSAGES_DEBUG=arkha), and as dropped when the bar
+# order in the settings changes: the view buttons, dropped on the right half
+# of the zoom group, go behind it. Every run starts with the order written
+# out, so saving the settings for another reason doesn't look like a drop.
 #
 # Both fill the screen with the window (xmonad and the kiosk shell), so
 # the same coordinates fit both: the default theme (Adwaita) on a 1200×800
@@ -27,7 +27,7 @@ set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN=$ROOT/target/release/arkha
 OUT=$ROOT/target/lockbar-test
-DRAG=${DRAG:-"908 87 1095 87"}
+DRAG=${DRAG:-"908 87 1128 87"}
 MENU=${MENU:-"110 15 150 423"}
 
 if [ -z "${LOCKBAR_INNER:-}" ]; then
@@ -74,7 +74,10 @@ else
     export GDK_BACKEND=x11
 fi
 
+ORDER='bar_order=path;ops;split;view;zoom;info;'
 order() { grep -h '^bar_order' "$CFG/arkha/arkha.conf" 2>/dev/null; }
+# Fresh settings: the default order, and the lock as given.
+settings() { rm -rf "$CFG"; mkdir -p "$CFG/arkha"; printf '[General]\n%s\nlock_bar=%s\n' "$ORDER" "$1" > "$CFG/arkha/arkha.conf"; }
 drags() { grep -c 'bar drag started' "$LOG"; }
 
 drag() {
@@ -108,9 +111,7 @@ check() {  # check NAME WANT_DRAG(yes|no) BEFORE_DRAGS BEFORE_ORDER
     [ "$(drags)" -gt "$3" ] && got=yes
     [ "$(order)" != "$4" ] && moved=yes
     local ok=yes
-    [ $got = "$2" ] || ok=no
-    # X11: a started drag must also drop; Wayland: drops aren't checked.
-    if [ "$backend" = x11 ] && [ $moved != "$2" ]; then ok=no; fi
+    [ $got = "$2" ] && [ $moved = "$2" ] || ok=no
     if [ $ok = yes ]; then
         echo "  PASS  $backend: $1 (drag started: $got, bar changed: $moved)"
     else
@@ -121,8 +122,7 @@ check() {  # check NAME WANT_DRAG(yes|no) BEFORE_DRAGS BEFORE_ORDER
 }
 
 one_drag() {  # one_drag NAME LOCK WANT
-    rm -rf "$CFG"; mkdir -p "$CFG/arkha"
-    printf '[General]\nlock_bar=%s\n' "$2" > "$CFG/arkha/arkha.conf"
+    settings "$2"
     start
     local d o
     d=$(drags); o=$(order)
@@ -136,7 +136,7 @@ one_drag "unlocked" false yes
 one_drag "locked" true no
 
 # Locking and unlocking from the menu while running.
-rm -rf "$CFG"; mkdir -p "$CFG/arkha"; : > "$CFG/arkha/arkha.conf"
+settings false
 start
 toggle_from_menu
 if grep -q '^lock_bar=true' "$CFG/arkha/arkha.conf"; then
