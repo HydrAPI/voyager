@@ -2348,6 +2348,29 @@ impl AppWindow {
                     s.go(&target);
                 }
             });
+            // A middle-click opens the folder in a new tab, in the background,
+            // as in Caja and as a middle-clicked place in the side pane. The
+            // press is kept from the path bar, whose middle-click autoscrolls.
+            b.connect_button_press_event(|_, ev| match ev.button() {
+                2 => glib::Propagation::Stop,
+                _ => glib::Propagation::Proceed,
+            });
+            {
+                let w = Rc::downgrade(self);
+                let target = c.clone();
+                b.connect_button_release_event(move |b, ev| {
+                    if ev.button() != 2 {
+                        return glib::Propagation::Proceed;
+                    }
+                    // Only if let go over the crumb, as with a click.
+                    let (x, y) = ev.position();
+                    let inside = x >= 0.0 && y >= 0.0 && x < b.allocated_width() as f64 && y < b.allocated_height() as f64;
+                    if let (true, Some(s)) = (inside, w.upgrade()) {
+                        s.add_tab(&target, false);
+                    }
+                    glib::Propagation::Stop
+                });
+            }
             // Drop onto crumbs.
             // No DestDefaults::DROP: it finishes with delete=true on a move,
             // which would make the source view drop its row.
