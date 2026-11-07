@@ -3795,8 +3795,13 @@ impl Pane {
         let Some(model) = iv.model() else { return };
         // The items in sight (where this draws), found without going
         // through all of them (as gtk_icon_view_get_visible_range does).
+        // Also the rows above: a whole name hangs down over the rows below
+        // its own, and when only those are drawn again (an item under the
+        // pointer, a new thumbnail), the part over them must be too. A name
+        // longer than the view is high doesn't happen.
         let (y1, y2) = cr.clip_extents().map_or((0.0, 0.0), |(_, y1, _, y2)| (y1, y2));
-        let range = crate::iconview::IconView::items_between(iv, y1, y2)
+        let reach = iv.allocated_height() as f64;
+        let range = crate::iconview::IconView::items_between(iv, y1 - reach, y2)
             .map(|(a, b)| (gtk::TreePath::from_indicesv(&[a]), gtk::TreePath::from_indicesv(&[b])))
             .or_else(|| iv.visible_range());
         let Some((mut path, last)) = range else { return };
