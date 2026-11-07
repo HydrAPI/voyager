@@ -104,8 +104,33 @@ pub fn tell_metadata_store_in_background() {
 /// warns (gtk_tree_view_get_cell_area): it's asked again when the view
 /// shows.
 pub fn scroll_tree_to(view: &gtk::TreeView, path: &gtk::TreePath, use_align: bool, row_align: f32, col_align: f32) {
+    when_shown(view, path, move |v, p| v.scroll_to_cell(Some(p), None::<&gtk::TreeViewColumn>, use_align, row_align, col_align));
+}
+
+/// Moves a list view's cursor to `path`, as scroll_tree_to scrolls (the
+/// cursor scrolls to its row: GTK would do that at the wrong moment too).
+/// The selection stays as it is (GTK selects the cursor's row).
+pub fn set_tree_cursor(view: &gtk::TreeView, path: &gtk::TreePath) {
+    when_shown(view, path, |v, p| {
+        let sel = v.selection();
+        let (rows, _) = sel.selected_rows();
+        v.set_cursor(p, None::<&gtk::TreeViewColumn>, false);
+        sel.unselect_all();
+        for r in &rows {
+            sel.select_path(r);
+        }
+    });
+}
+
+/// Runs `f` on `view` and `path` now if the view is realized, else once it
+/// shows; either way only if it then has a model with that row (by then
+/// its tab may have gone to icons, with the model on the icon view).
+fn when_shown(view: &gtk::TreeView, path: &gtk::TreePath, f: impl Fn(&gtk::TreeView, &gtk::TreePath) + 'static) {
+    let has_row = |v: &gtk::TreeView, p: &gtk::TreePath| v.model().is_some_and(|m| m.iter(p).is_some());
     if view.is_realized() {
-        view.scroll_to_cell(Some(path), None::<&gtk::TreeViewColumn>, use_align, row_align, col_align);
+        if has_row(view, path) {
+            f(view, path);
+        }
         return;
     }
     let path = path.clone();
@@ -115,7 +140,9 @@ pub fn scroll_tree_to(view: &gtk::TreeView, path: &gtk::TreePath, use_align: boo
         if let Some(id) = h.borrow_mut().take() {
             v.disconnect(id);
         }
-        v.scroll_to_cell(Some(&path), None::<&gtk::TreeViewColumn>, use_align, row_align, col_align);
+        if has_row(v, &path) {
+            f(v, &path);
+        }
     });
     *handler.borrow_mut() = Some(id);
 }

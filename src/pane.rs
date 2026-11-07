@@ -2207,7 +2207,7 @@ impl Pane {
             match self.mode.get() {
                 ViewMode::List | ViewMode::Columns => {
                     util::scroll_tree_to(&self.tree_view, &path, false, 0.0, 0.0);
-                    self.tree_view.set_cursor(&path, None::<&gtk::TreeViewColumn>, false);
+                    util::set_tree_cursor(&self.tree_view, &path);
                     self.tree_view.selection().unselect_all();
                 }
                 _ => {
@@ -2897,7 +2897,7 @@ impl Pane {
                 self.icon_view.unselect_all();
                 for (i, p) in paths.iter().enumerate() {
                     if i == 0 {
-                        self.tree_view.set_cursor(p, None::<&gtk::TreeViewColumn>, false);
+                        util::set_tree_cursor(&self.tree_view, p);
                         util::scroll_tree_to(&self.tree_view, p, center, 0.4, 0.0);
                         sel.unselect_all();
                     }
