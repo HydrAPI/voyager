@@ -236,6 +236,30 @@ fn base_name(f: &gio::File) -> String {
 }
 
 impl Worker {
+    fn new(tx: async_channel::Sender<Msg>, cancel: gio::Cancellable, paused: Arc<AtomicBool>) -> Worker {
+        Worker {
+            tx,
+            cancel,
+            undo: vec![],
+            total_bytes: 0,
+            done_bytes: 0,
+            total_items: 0,
+            done_items: 0,
+            by_bytes: false,
+            file_all: None,
+            dir_all: None,
+            skip_errors: false,
+            skipped: 0,
+            new_name: None,
+            // So the first progress is shown right away.
+            last: Instant::now() - Duration::from_secs(1),
+            verb: "",
+            paused,
+            clock: Clock::new(),
+            moves: MoveCount::default(),
+        }
+    }
+
     fn cancelled(&self) -> bool {
         self.cancel.is_cancelled()
     }
@@ -1382,26 +1406,7 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
         let cancel = op.cancel.clone();
         let paused = op.paused.clone();
         std::thread::spawn(move || {
-            let mut w = Worker {
-                tx: tx.clone(),
-                cancel,
-                undo: vec![],
-                total_bytes: 0,
-                done_bytes: 0,
-                total_items: 0,
-                done_items: 0,
-                by_bytes: false,
-                file_all: None,
-                dir_all: None,
-                skip_errors: false,
-                skipped: 0,
-                new_name: None,
-                last: Instant::now() - Duration::from_secs(1),
-                verb: "",
-                paused,
-                clock: Clock::new(),
-                moves: MoveCount::default(),
-            };
+            let mut w = Worker::new(tx.clone(), cancel, paused);
             let created = w.run(job);
             let _ = tx.send_blocking(Msg::Done(created, std::mem::take(&mut w.undo)));
         });
@@ -2223,29 +2228,14 @@ mod tests {
         (created, asked, undo)
     }
 
-    /// run_job_answered, also giving each progress report (fraction, text).
-    fn run_job_watched(job: Job, answers: Vec<(Resolution, Option<String>)>, paused: Arc<AtomicBool>, cancel: gio::Cancellable) -> (Vec<String>, Vec<String>, Vec<Moved>, Vec<(f64, String)>) {
+    /// What run_job_watched gives: the items created, the questions asked,
+    /// what undo would need, each progress report (fraction, text).
+    type Watched = (Vec<String>, Vec<String>, Vec<Moved>, Vec<(f64, String)>);
+
+    /// run_job_answered, also giving each progress report.
+    fn run_job_watched(job: Job, answers: Vec<(Resolution, Option<String>)>, paused: Arc<AtomicBool>, cancel: gio::Cancellable) -> Watched {
         let (tx, rx) = async_channel::unbounded::<Msg>();
-        let mut w = Worker {
-            tx,
-            cancel,
-            undo: vec![],
-            total_bytes: 0,
-            done_bytes: 0,
-            total_items: 0,
-            done_items: 0,
-            by_bytes: false,
-            file_all: None,
-            dir_all: None,
-            skip_errors: false,
-            skipped: 0,
-            new_name: None,
-            last: Instant::now(),
-            verb: "",
-            paused,
-            clock: Clock::new(),
-            moves: MoveCount::default(),
-        };
+        let mut w = Worker::new(tx, cancel, paused);
         let ui = std::thread::spawn(move || {
             let (mut asked, mut progress) = (vec![], vec![]);
             let mut answers = answers.into_iter();

@@ -132,17 +132,51 @@ fn work(job: Job) {
             let mut errors = vec![];
             for (uri, key, value) in writes {
                 let f = gio::File::for_uri(&uri);
-                let v = match &value {
-                    Value::Text(t) => crate::util::Meta::Text(t),
-                    Value::List(l) => crate::util::Meta::List(l),
-                    Value::Unset => crate::util::Meta::Unset,
-                };
-                if let Err(e) = crate::util::set_metadata(&f, &key, v) {
+                if let Err(e) = set(&f, &key, &value) {
                     errors.push(format!("{}: {}", crate::util::display_name(&f), e.message()));
                 }
             }
             let _ = reply.send_blocking(errors);
         }
+    }
+}
+
+/// Sets (or removes) GVfs metadata on a file, "metadata::<key>", as Caja
+/// keeps notes ("annotation"), emblems ("emblems", a list) and custom icons
+/// ("custom-icon") there. gio-rs has no setter for lists or for removing.
+fn set(file: &gio::File, key: &str, value: &Value) -> Result<(), glib::Error> {
+    use glib::translate::*;
+    let attr = format!("metadata::{key}");
+    let text: Vec<std::ffi::CString> = match value {
+        Value::Text(t) => vec![std::ffi::CString::new(t.as_str()).unwrap_or_default()],
+        Value::List(l) => l.iter().map(|t| std::ffi::CString::new(t.as_str()).unwrap_or_default()).collect(),
+        Value::Unset => vec![],
+    };
+    let mut ptrs: Vec<*const std::ffi::c_char> = text.iter().map(|c| c.as_ptr()).collect();
+    ptrs.push(std::ptr::null());
+    let (kind, data): (gio::ffi::GFileAttributeType, glib::ffi::gpointer) = match value {
+        Value::Text(_) => (gio::ffi::G_FILE_ATTRIBUTE_TYPE_STRING, ptrs[0] as glib::ffi::gpointer),
+        Value::List(_) => (gio::ffi::G_FILE_ATTRIBUTE_TYPE_STRINGV, ptrs.as_mut_ptr() as glib::ffi::gpointer),
+        Value::Unset => (gio::ffi::G_FILE_ATTRIBUTE_TYPE_INVALID, std::ptr::null_mut()),
+    };
+    let mut error = std::ptr::null_mut();
+    // SAFETY: the strings and the pointer array outlive the call, which
+    // copies what it needs; the type matches the data passed.
+    let ok = unsafe {
+        gio::ffi::g_file_set_attribute(
+            file.to_glib_none().0,
+            attr.to_glib_none().0,
+            kind,
+            data,
+            gio::ffi::G_FILE_QUERY_INFO_NONE,
+            std::ptr::null_mut(),
+            &mut error,
+        )
+    };
+    if ok != 0 {
+        Ok(())
+    } else {
+        Err(unsafe { from_glib_full(error) })
     }
 }
 
@@ -199,5 +233,21 @@ mod tests {
         assert_eq!(Meta::of(&merged), m);
         assert_eq!(merged.name().to_str(), Some("x"));
         assert!(!plain.has_attribute("metadata::annotation"), "the original stays as it was");
+    }
+
+    /// Needs GVfs's metadata service: run in a session of its own, e.g.
+    /// HOME=<scratch> XDG_RUNTIME_DIR=<new dir> dbus-run-session -- cargo test -- --ignored metadata_written
+    #[test]
+    #[ignore = "needs a GVfs session of its own: run with --ignored"]
+    fn metadata_written_and_removed() {
+        let dir = crate::testutil::TestDir::new("metadata-write");
+        let file = gio::File::for_path(dir.file("x.txt", "x"));
+        let read = || Meta::of(&file.query_info(ATTRS, gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE).unwrap());
+        set(&file, "annotation", &Value::Text("a note".into())).unwrap();
+        set(&file, "emblems", &Value::List(vec!["important".into(), "urgent".into()])).unwrap();
+        assert_eq!(read(), Meta { note: "a note".into(), emblems: vec!["important".into(), "urgent".into()], ..Meta::default() });
+        set(&file, "annotation", &Value::Unset).unwrap();
+        set(&file, "emblems", &Value::Unset).unwrap();
+        assert!(read().is_empty(), "{:?}", read());
     }
 }

@@ -78,12 +78,6 @@ pub fn reload_thumbnailers() {
     let _ = std::fs::remove_dir_all(fail_dir());
 }
 
-#[allow(dead_code)]
-pub fn clear_cache() {
-    ICONS.with(|c| c.borrow_mut().clear());
-    ICONS_GEN.with(|g| g.set(g.get() + 1));
-}
-
 thread_local! {
     /// Changes when ICONS is emptied: the pictures kept on icons (see
     /// icon_pixbuf) are then out of date.
@@ -421,7 +415,6 @@ fn icon_pixbuf_cached(icon: Option<&gio::Icon>, size: i32) -> Option<Pixbuf> {
     pb
 }
 
-#[allow(dead_code)]
 pub fn named_pixbuf(name: &str, size: i32) -> Option<Pixbuf> {
     let icon: gio::Icon = gio::ThemedIcon::new(name).upcast();
     icon_pixbuf(Some(&icon), size)

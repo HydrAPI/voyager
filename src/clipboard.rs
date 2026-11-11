@@ -124,15 +124,6 @@ pub fn get(cb: impl Fn(bool, Vec<String>) + 'static) {
     });
 }
 
-/// Fast check whether there's something pasteable (used for menu sensitivity).
-#[allow(dead_code)]
-pub fn has_files() -> bool {
-    let c = clipboard();
-    c.wait_is_target_available(&gdk::Atom::intern(MATE))
-        || c.wait_is_target_available(&gdk::Atom::intern(GNOME))
-        || c.wait_is_uris_available()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -682,6 +682,19 @@ pub fn is_editable_focused(win: &gtk::Window) -> bool {
         .unwrap_or(false)
 }
 
+/// Whether a preview set to `mode` ("always", "local", "never", as Caja's
+/// Preview settings) is shown for `file`. Local files are those with a
+/// path of their own, network shares mounted by the system included; GVfs
+/// places (smb://, sftp://, a phone) aren't.
+pub fn preview_on(mode: &str, file: &gio::File) -> bool {
+    match mode {
+        "always" => true,
+        "never" => false,
+        // The trash is local too, as in Caja.
+        _ => file.is_native() || file.has_uri_scheme("trash"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -902,65 +915,5 @@ mod tests {
                 .collect();
             assert_eq!(bookmark_lines(&text), want, "{text:?}");
         });
-    }
-}
-
-/// A value for set_metadata.
-pub enum Meta<'a> {
-    Text(&'a str),
-    List(&'a [String]),
-    /// Removes the key.
-    Unset,
-}
-
-/// Sets (or removes) GVfs metadata on a file, "metadata::<key>", as Caja
-/// keeps notes ("annotation"), emblems ("emblems", a list) and custom icons
-/// ("custom-icon") there. gio-rs has no setter for lists or for removing.
-pub fn set_metadata(file: &gio::File, key: &str, value: Meta) -> Result<(), glib::Error> {
-    use glib::translate::*;
-    let attr = format!("metadata::{key}");
-    let text: Vec<std::ffi::CString> = match &value {
-        Meta::Text(t) => vec![std::ffi::CString::new(*t).unwrap_or_default()],
-        Meta::List(l) => l.iter().map(|t| std::ffi::CString::new(t.as_str()).unwrap_or_default()).collect(),
-        Meta::Unset => vec![],
-    };
-    let mut ptrs: Vec<*const std::ffi::c_char> = text.iter().map(|c| c.as_ptr()).collect();
-    ptrs.push(std::ptr::null());
-    let (kind, data): (gio::ffi::GFileAttributeType, glib::ffi::gpointer) = match value {
-        Meta::Text(_) => (gio::ffi::G_FILE_ATTRIBUTE_TYPE_STRING, ptrs[0] as glib::ffi::gpointer),
-        Meta::List(_) => (gio::ffi::G_FILE_ATTRIBUTE_TYPE_STRINGV, ptrs.as_mut_ptr() as glib::ffi::gpointer),
-        Meta::Unset => (gio::ffi::G_FILE_ATTRIBUTE_TYPE_INVALID, std::ptr::null_mut()),
-    };
-    let mut error = std::ptr::null_mut();
-    // SAFETY: the strings and the pointer array outlive the call, which
-    // copies what it needs; the type matches the data passed.
-    let ok = unsafe {
-        gio::ffi::g_file_set_attribute(
-            file.to_glib_none().0,
-            attr.to_glib_none().0,
-            kind,
-            data,
-            gio::ffi::G_FILE_QUERY_INFO_NONE,
-            std::ptr::null_mut(),
-            &mut error,
-        )
-    };
-    if ok != 0 {
-        Ok(())
-    } else {
-        Err(unsafe { from_glib_full(error) })
-    }
-}
-
-/// Whether a preview set to `mode` ("always", "local", "never", as Caja's
-/// Preview settings) is shown for `file`. Local files are those with a
-/// path of their own, network shares mounted by the system included; GVfs
-/// places (smb://, sftp://, a phone) aren't.
-pub fn preview_on(mode: &str, file: &gio::File) -> bool {
-    match mode {
-        "always" => true,
-        "never" => false,
-        // The trash is local too, as in Caja.
-        _ => file.is_native() || file.has_uri_scheme("trash"),
     }
 }

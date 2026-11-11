@@ -414,11 +414,31 @@ pub fn choose_action(widget: &gtk::Widget, ctx: &gdk::DragContext, dest: &gio::F
     }
 }
 
-#[allow(dead_code)]
+/// Where a mouse button goes, if it's one of the back and forward buttons
+/// chosen in Preferences.
+pub enum Nav {
+    Back,
+    Forward,
+}
+
+pub fn nav_of(button: u32) -> Option<Nav> {
+    let (on, back, fwd) = config::with(|c| (c.mouse_extra_buttons, c.mouse_back_button, c.mouse_forward_button));
+    let b = button as i32;
+    // Never the main three: they click, paste, open menus.
+    if !on || b <= 3 {
+        None
+    } else if b == back {
+        Some(Nav::Back)
+    } else if b == fwd {
+        Some(Nav::Forward)
+    } else {
+        None
+    }
+}
+
 pub struct Pane {
     pub root: gtk::Box,
     pub tab_label: gtk::Label,
-    pub tab_icon: gtk::Image,
     store: gtk::ListStore,
     filter: gtk::TreeModelFilter,
     stack: gtk::Stack,
@@ -997,12 +1017,10 @@ impl Pane {
         // the extra space evenly instead of favouring long names.
         tab_label.set_width_chars(12);
         tab_label.set_max_width_chars(12);
-        let tab_icon = gtk::Image::new();
 
         let pane = Rc::new(Pane {
             root,
             tab_label,
-            tab_icon,
             store,
             filter,
             stack,
@@ -1410,52 +1428,32 @@ impl Pane {
                     1 => p.icon_press(ev, iv.path_at_pos(bx as i32, by as i32).is_some(), path),
                     3 => {
                         iv.grab_focus();
-                        match &path {
-                            Some(tp) if !iv.path_is_selected(tp) => {
+                        p.context_click(
+                            ev,
+                            path.as_ref(),
+                            |tp| iv.path_is_selected(tp),
+                            |tp| {
                                 iv.unselect_all();
                                 iv.select_path(tp);
                                 iv.set_cursor(tp, None::<&gtk::CellRenderer>, false);
-                            }
-                            None => iv.unselect_all(),
-                            _ => {}
-                        }
-                        p.emit(Event::Context {
-                            event: Some(std::ops::Deref::deref(ev).clone()),
-                            on_item: path.is_some(),
-                        });
-                        glib::Propagation::Stop
+                            },
+                            || iv.unselect_all(),
+                        )
                     }
                     2 => {
                         let row = path.as_ref().and_then(|tp| p.row_at_filter_path(tp));
                         let press = ev.event_type() == gdk::EventType::ButtonPress;
-                        match row {
-                            Some(r) if r.is_dir => {
-                                if press {
-                                    p.emit(Event::OpenNewTab(gio::File::for_uri(&r.uri)));
-                                }
-                            }
-                            Some(r) => {
-                                if press {
-                                    p.emit(Event::OpenFile(r));
-                                }
-                            }
-                            None => {
-                                if press {
+                        if press {
+                            match row {
+                                Some(r) => p.open_middle(r),
+                                None => {
                                     crate::scroll::autoscroll(iv.upcast_ref(), ev);
                                 }
                             }
                         }
                         glib::Propagation::Stop
                     }
-                    8 => {
-                        p.emit(Event::Back);
-                        glib::Propagation::Stop
-                    }
-                    9 => {
-                        p.emit(Event::Forward);
-                        glib::Propagation::Stop
-                    }
-                    _ => glib::Propagation::Proceed,
+                    b => p.nav_button(b),
                 }
             });
         }
@@ -1528,20 +1526,17 @@ impl Pane {
                 match ev.button() {
                     3 => {
                         tv.grab_focus();
-                        match &path {
-                            Some(tp) if !sel.path_is_selected(tp) => {
+                        p.context_click(
+                            ev,
+                            path.as_ref(),
+                            |tp| sel.path_is_selected(tp),
+                            |tp| {
                                 sel.unselect_all();
                                 sel.select_path(tp);
                                 tv.set_cursor(tp, None::<&gtk::TreeViewColumn>, false);
-                            }
-                            None => sel.unselect_all(),
-                            _ => {}
-                        }
-                        p.emit(Event::Context {
-                            event: Some(std::ops::Deref::deref(ev).clone()),
-                            on_item: path.is_some(),
-                        });
-                        glib::Propagation::Stop
+                            },
+                            || sel.unselect_all(),
+                        )
                     }
                     2 => {
                         let row = path.as_ref().and_then(|tp| p.row_at_filter_path(tp));
@@ -1554,27 +1549,13 @@ impl Pane {
                         if press {
                             let shift = ev.state().contains(gdk::ModifierType::SHIFT_MASK);
                             match row {
-                                Some(r) if shift || !crate::scroll::autoscroll(tv.upcast_ref(), ev) => {
-                                    if r.is_dir {
-                                        p.emit(Event::OpenNewTab(gio::File::for_uri(&r.uri)));
-                                    } else {
-                                        p.emit(Event::OpenFile(r));
-                                    }
-                                }
+                                Some(r) if shift || !crate::scroll::autoscroll(tv.upcast_ref(), ev) => p.open_middle(r),
                                 Some(_) => {}
                                 None => {
                                     crate::scroll::autoscroll(tv.upcast_ref(), ev);
                                 }
                             }
                         }
-                        glib::Propagation::Stop
-                    }
-                    8 => {
-                        p.emit(Event::Back);
-                        glib::Propagation::Stop
-                    }
-                    9 => {
-                        p.emit(Event::Forward);
                         glib::Propagation::Stop
                     }
                     1 => {
@@ -1600,7 +1581,7 @@ impl Pane {
                         }
                         glib::Propagation::Proceed
                     }
-                    _ => glib::Propagation::Proceed,
+                    b => p.nav_button(b),
                 }
             });
         }
@@ -2856,16 +2837,30 @@ impl Pane {
             return; // don't disturb an in-progress rename
         }
         let existing = self.index.borrow().get(&uri).cloned();
+        // A folder read again keeps the number of items counted.
+        let (sv, st) = match &existing {
+            Some(it) if is_dir => (self.store.gv::<u64>(it, COL_SIZE as i32), self.store.gv::<String>(it, COL_SIZE_TEXT as i32)),
+            _ => (size_val, size_text),
+        };
+        // The URI first: a row that's there has it already.
+        let values: [(u32, &dyn ToValue); 14] = [
+            (COL_URI, &uri),
+            (COL_ICON, &icon),
+            (COL_NAME, &display),
+            (COL_SIZE, &sv),
+            (COL_SIZE_TEXT, &st),
+            (COL_MTIME, &mtime),
+            (COL_MTIME_TEXT, &mtext),
+            (COL_TYPE, &tdesc),
+            (COL_IS_DIR, &is_dir),
+            (COL_HIDDEN, &hidden),
+            (COL_THUMB, &thumb),
+            (COL_CTYPE, &ctype),
+            (COL_KEY, &key),
+            (COL_ORIG, &orig),
+        ];
         match existing {
             Some(it) => {
-                let (sv, st) = if is_dir {
-                    (
-                        self.store.gv::<u64>(&it, COL_SIZE as i32),
-                        self.store.gv::<String>(&it, COL_SIZE_TEXT as i32),
-                    )
-                } else {
-                    (size_val, size_text.clone())
-                };
                 // GtkIconView measures all its items again on any row
                 // changing: leave rows read again unchanged be (a file
                 // copied in is reported when created and when done).
@@ -2888,46 +2883,11 @@ impl Pane {
                 if same {
                     return;
                 }
-                self.store.set(
-                    &it,
-                    &[
-                        (COL_ICON, &icon),
-                        (COL_NAME, &display),
-                        (COL_SIZE, &sv),
-                        (COL_SIZE_TEXT, &st),
-                        (COL_MTIME, &mtime),
-                        (COL_MTIME_TEXT, &mtext),
-                        (COL_TYPE, &tdesc),
-                        (COL_IS_DIR, &is_dir),
-                        (COL_HIDDEN, &hidden),
-                        (COL_THUMB, &thumb),
-                        (COL_CTYPE, &ctype),
-                        (COL_KEY, &key),
-                        (COL_ORIG, &orig),
-                    ],
-                );
+                self.store.set(&it, &values[1..]);
                 self.set_extra(&it, extra.as_ref(), trashed);
             }
             None => {
-                let it = self.store.insert_with_values(
-                    None,
-                    &[
-                        (COL_ICON, &icon),
-                        (COL_NAME, &display),
-                        (COL_URI, &uri),
-                        (COL_SIZE, &size_val),
-                        (COL_SIZE_TEXT, &size_text),
-                        (COL_MTIME, &mtime),
-                        (COL_MTIME_TEXT, &mtext),
-                        (COL_TYPE, &tdesc),
-                        (COL_IS_DIR, &is_dir),
-                        (COL_HIDDEN, &hidden),
-                        (COL_THUMB, &thumb),
-                        (COL_CTYPE, &ctype),
-                        (COL_KEY, &key),
-                        (COL_ORIG, &orig),
-                    ],
-                );
+                let it = self.store.insert_with_values(None, &values);
                 self.set_extra(&it, extra.as_ref(), trashed);
                 self.index.borrow_mut().insert(uri.clone(), it);
             }
@@ -4081,6 +4041,50 @@ impl Pane {
     /// The icon view's item at (`x`, `y`) (widget coordinates), hit as
     /// Caja hits items: on its picture or its name's text, not the room
     /// around them, which GtkIconView counts as the item too.
+    /// A right click in a view: the item clicked on is selected, unless it
+    /// already is (then the selection stays as it is); a click on nothing
+    /// selects nothing. Then the context menu.
+    fn context_click(
+        &self,
+        ev: &gdk::EventButton,
+        path: Option<&gtk::TreePath>,
+        is_selected: impl Fn(&gtk::TreePath) -> bool,
+        select_only: impl Fn(&gtk::TreePath),
+        unselect_all: impl Fn(),
+    ) -> glib::Propagation {
+        match path {
+            Some(tp) if !is_selected(tp) => select_only(tp),
+            None => unselect_all(),
+            _ => {}
+        }
+        self.emit(Event::Context {
+            event: Some(std::ops::Deref::deref(ev).clone()),
+            on_item: path.is_some(),
+        });
+        glib::Propagation::Stop
+    }
+
+    /// A middle click on an item: a folder opens in a new tab, a file opens.
+    fn open_middle(&self, row: RowInfo) {
+        if row.is_dir {
+            self.emit(Event::OpenNewTab(gio::File::for_uri(&row.uri)));
+        } else {
+            self.emit(Event::OpenFile(row));
+        }
+    }
+
+    /// The mouse's back and forward buttons over a view: this pane goes
+    /// back or forward, even when the other one has the focus. Other
+    /// buttons go on to the window.
+    fn nav_button(&self, button: u32) -> glib::Propagation {
+        match nav_of(button) {
+            Some(Nav::Back) => self.emit(Event::Back),
+            Some(Nav::Forward) => self.emit(Event::Forward),
+            None => return glib::Propagation::Proceed,
+        }
+        glib::Propagation::Stop
+    }
+
     fn icon_hit(&self, x: i32, y: i32) -> Option<gtk::TreePath> {
         let iv = &self.icon_view;
         let (bx, by) = iv.convert_widget_to_bin_window_coords(x, y);

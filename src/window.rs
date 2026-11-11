@@ -318,7 +318,6 @@ struct ClosedTab {
 
 const MAX_CLOSED_TABS: usize = 25;
 
-#[allow(dead_code)]
 pub struct AppWindow {
     pub window: gtk::ApplicationWindow,
     notebook: gtk::Notebook,
@@ -342,8 +341,6 @@ pub struct AppWindow {
     ops_btn: gtk::ToggleButton,
     ops_bar: gtk::ProgressBar,
     ops_pop: gtk::Popover,
-    fwd_btn: gtk::Button,
-    up_btn: gtk::Button,
     path_box: gtk::Box,
     path_scroll: gtk::ScrolledWindow,
     crumbs: RefCell<Vec<gio::File>>,
@@ -689,8 +686,6 @@ impl AppWindow {
             ops_btn,
             ops_bar,
             ops_pop,
-            fwd_btn,
-            up_btn,
             path_box,
             path_scroll,
             crumbs: RefCell::new(vec![]),
@@ -1586,23 +1581,13 @@ impl AppWindow {
         {
             let w = w.clone();
             self.window.connect_button_press_event(move |_, ev| {
-                if let Some(s) = w.upgrade() {
-                    let (on, back, fwd) = config::with(|c| (c.mouse_extra_buttons, c.mouse_back_button, c.mouse_forward_button));
-                    // Never the main three: they click, paste, open menus.
-                    let b = ev.button() as i32;
-                    if !on || b <= 3 {
-                        return glib::Propagation::Proceed;
-                    }
-                    if b == back {
-                        s.window.activate_action("back", None);
-                    } else if b == fwd {
-                        s.window.activate_action("forward", None);
-                    } else {
-                        return glib::Propagation::Proceed;
-                    }
-                    return glib::Propagation::Stop;
+                let Some(s) = w.upgrade() else { return glib::Propagation::Proceed };
+                match crate::pane::nav_of(ev.button()) {
+                    Some(crate::pane::Nav::Back) => s.window.activate_action("back", None),
+                    Some(crate::pane::Nav::Forward) => s.window.activate_action("forward", None),
+                    None => return glib::Propagation::Proceed,
                 }
-                glib::Propagation::Proceed
+                glib::Propagation::Stop
             });
         }
         // Back-button history popup on right-click.

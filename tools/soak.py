@@ -243,7 +243,7 @@ def outer(args):
         unlock(run)
         shutil.rmtree(run)
     os.makedirs(run)
-    keep = {"PATH", "LANG", "LANGUAGE", "TERM", "TZ"} | {k for k in os.environ if k.startswith(("LC_", "ARKHA_"))}
+    keep = {"PATH", "LANG", "LANGUAGE", "TERM", "TZ"} | {k for k in os.environ if k.startswith(("LC_", "ARKHA_"))} | {"LLVM_PROFILE_FILE"}
     env = {k: v for k, v in os.environ.items() if k in keep}
     env.update({
         "HOME": HOME,
