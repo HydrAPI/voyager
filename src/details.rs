@@ -105,6 +105,38 @@ pub fn shown_captions(captions: &[String], size: i32) -> Vec<&'static str> {
     captions.iter().take(n).filter_map(|c| choosable().find(|d| d.id == c)).map(|d| d.id).collect()
 }
 
+/// The file attribute `id` needs beyond those always read (see pane.rs).
+fn attribute(id: &str) -> Option<&'static str> {
+    match id {
+        "atime" => Some("time::access"),
+        "btime" => Some("time::created"),
+        "owner" => Some("owner::user"),
+        "group" => Some("owner::group"),
+        "permissions" | "octal" => Some("unix::mode"),
+        "disk" => Some("standard::allocated-size"),
+        _ => None,
+    }
+}
+
+/// What to add to the attributes read for each item (",owner::user,…") for
+/// details `ids`: nothing for the usual ones, so a folder shown as before
+/// batch 3 costs what it did.
+pub fn attributes(ids: &[&str]) -> String {
+    let mut out = String::new();
+    for a in ids.iter().filter_map(|id| attribute(id)) {
+        if !out.split(',').any(|x| x == a) {
+            out.push(',');
+            out.push_str(a);
+        }
+    }
+    out
+}
+
+/// Whether attributes `wanted` (as from `attributes`) are all in `read`.
+pub fn attributes_read(wanted: &str, read: &str) -> bool {
+    wanted.split(',').filter(|a| !a.is_empty()).all(|a| read.split(',').any(|r| r == a))
+}
+
 /// "drwxr-xr-x", as ls and Caja show a mode; empty if it isn't known.
 pub fn permissions_text(mode: u32) -> String {
     if mode == 0 {
@@ -303,6 +335,15 @@ mod tests {
         assert_eq!(shown_captions(&mine, 32), Vec::<&str>::new());
         assert_eq!(shown_captions(&mine, 48), ["owner"]);
         assert_eq!(shown_captions(&mine, 256), ["owner"]);
+    }
+
+    #[test]
+    fn attributes_only_for_details_that_need_them() {
+        assert_eq!(attributes(&["size", "type", "mtime", "name", "mime", "extension", "location", "trashed", "orig"]), "");
+        assert_eq!(attributes(&["owner", "permissions", "octal", "owner", "disk"]), ",owner::user,unix::mode,standard::allocated-size");
+        assert!(attributes_read("", ""));
+        assert!(attributes_read(",unix::mode", ",owner::user,unix::mode"));
+        assert!(!attributes_read(",unix::mode,time::access", ",unix::mode"));
     }
 
     #[test]

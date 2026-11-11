@@ -41,8 +41,7 @@ pub const COL_TRASHED: u32 = 20;
 const ATTRS: &str = "standard::name,standard::display-name,standard::type,standard::icon,\
 standard::size,standard::content-type,standard::is-hidden,standard::is-backup,\
 standard::is-symlink,standard::symlink-target,time::modified,access::can-read,\
-thumbnail::path,thumbnail::is-valid,trash::orig-path,trash::deletion-date,\
-time::access,time::created,owner::user,owner::group,unix::mode,standard::allocated-size";
+thumbnail::path,thumbnail::is-valid,trash::orig-path,trash::deletion-date";
 
 /// Typed getter for tree model cells, and the rows of a list.
 pub trait ModelGet {
@@ -465,11 +464,20 @@ pub struct Pane {
     list_text: gtk::CellRendererText,
     name_col: gtk::TreeViewColumn,
     /// A column for each detail (details::DETAILS), shown as chosen (see
-    /// apply_column_choice).
+    /// apply_column_choice), in the list view once first shown.
     detail_cols: Vec<(&'static str, gtk::TreeViewColumn)>,
+    /// How many of them are in the list view.
+    added_cols: Cell<usize>,
     /// Set while apply_column_choice moves columns, so that isn't taken
     /// for the user dragging one.
     placing_columns: Cell<bool>,
+    /// The attributes read for each item besides ATTRS: those of the
+    /// details chosen to be shown or sorted by (see wanted_attrs), nothing
+    /// with the defaults.
+    extra_attrs: RefCell<String>,
+    /// Whether the folder shown is the Trash (when each item was trashed
+    /// goes in the model there).
+    in_trash: Cell<bool>,
     sort_cols: Vec<(u32, gtk::TreeViewColumn)>,
     /// The list view's columns with what they show ("name" or a detail)
     /// and whether they show an icon too (for fitting them to their contents).
@@ -819,9 +827,8 @@ impl Pane {
             let c = gtk::TreeViewColumn::new();
             c.set_title(d.title);
             c.set_resizable(true);
-            // At least as wide as its title, with room for the sort arrow.
-            let width = d.min_width.max(tree_view.create_pango_layout(Some(d.title)).pixel_size().0 + 32);
-            c.set_min_width(width);
+            // Made at least as wide as its title when first shown.
+            c.set_min_width(d.min_width);
             c.set_reorderable(true);
             let r = gtk::CellRendererText::new();
             r.set_xalign(d.xalign);
@@ -849,8 +856,9 @@ impl Pane {
             // The list's rows are all as high (fixed height mode), which
             // takes columns of a set width.
             c.set_sizing(gtk::TreeViewColumnSizing::Fixed);
-            c.set_fixed_width(width);
-            tree_view.append_column(&c);
+            c.set_fixed_width(d.min_width);
+            // Put in the list view when first shown (apply_column_choice):
+            // with the usual columns, it has just those.
             detail_cols.push((d.id, c));
         }
         let mut fit_cols = vec![(name_col.clone(), "name", true)];
@@ -1009,6 +1017,9 @@ impl Pane {
             name_col,
             detail_cols,
             placing_columns: Cell::new(false),
+            added_cols: Cell::new(0),
+            extra_attrs: RefCell::new(String::new()),
+            in_trash: Cell::new(false),
             sort_cols,
             fit_cols,
             info_bar,
@@ -1589,32 +1600,13 @@ impl Pane {
                 true
             });
         }
-        // A right click on a column header: which columns to show.
-        let held = |on: bool| HEADER_HELD.store(on, std::sync::atomic::Ordering::Relaxed);
+        // A right click on a column header: which columns to show (the
+        // others' headers get it as they're added, see apply_column_choice).
         self.tree_view.connect_button_release_event(move |_, _| {
-            held(false);
+            HEADER_HELD.store(false, std::sync::atomic::Ordering::Relaxed);
             glib::Propagation::Proceed
         });
-        for (_, col) in &self.sort_cols {
-            let Some(button) = col.button() else { continue };
-            let w = w.clone();
-            button.connect_button_release_event(move |_, _| {
-                held(false);
-                glib::Propagation::Proceed
-            });
-            button.connect_button_press_event(move |_, ev| {
-                if ev.button() == 1 {
-                    held(true);
-                }
-                if ev.button() != 3 {
-                    return glib::Propagation::Proceed;
-                }
-                if let Some(p) = w.upgrade() {
-                    p.column_menu(ev);
-                }
-                glib::Propagation::Stop
-            });
-        }
+        self.wire_header(&self.name_col);
         // A column dragged to another place: kept in that order everywhere.
         {
             let w = w.clone();
@@ -1624,7 +1616,7 @@ impl Pane {
                 HEADER_HELD.store(false, std::sync::atomic::Ordering::Relaxed);
                 // Not while columns are placed, or taken away (the pane closing).
                 let all = tv.columns();
-                if p.placing_columns.get() || p.columns_mode.get() || all.len() != p.detail_cols.len() + 1 {
+                if p.placing_columns.get() || p.columns_mode.get() || all.len() != p.added_cols.get() + 1 {
                     return;
                 }
                 // The name stays first (a column dropped before it goes after).
@@ -2200,11 +2192,13 @@ impl Pane {
         }
         self.emit(Event::Location);
         self.emit(Event::Loading(true));
+        self.read_attrs_wanted();
+        let attrs = self.attrs();
 
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
             let res = file
-                .enumerate_children_future(ATTRS, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT)
+                .enumerate_children_future(&attrs, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT)
                 .await;
             let en = match res {
                 Ok(en) => en,
@@ -2479,11 +2473,12 @@ impl Pane {
             if p.gen.get() != gen {
                 return;
             }
+            let attrs = p.attrs();
             glib::MainContext::default().spawn_local(async move {
                 let mut found = vec![];
                 let mut gone = vec![];
                 for f in files {
-                    match f.query_info_future(ATTRS, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT).await {
+                    match f.query_info_future(&attrs, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT).await {
                         Ok(info) => found.push((f, info)),
                         Err(_) => gone.push(f.uri().to_string()),
                     }
@@ -2509,7 +2504,7 @@ impl Pane {
 
     /// Synchronously add a file (used right after creating it).
     pub fn add_file_now(self: &Rc<Self>, f: &gio::File) {
-        if let Ok(info) = f.query_info(ATTRS, gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE) {
+        if let Ok(info) = f.query_info(&self.attrs(), gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE) {
             let parent = self.current();
             self.add_info(&parent, &info, true);
         }
@@ -2522,7 +2517,7 @@ impl Pane {
         let infos = files
             .iter()
             .filter(|f| !self.index.borrow().contains_key(f.uri().as_str()))
-            .filter_map(|f| f.query_info(ATTRS, gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE).ok())
+            .filter_map(|f| f.query_info(&self.attrs(), gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE).ok())
             .collect();
         self.add_infos(&self.current(), infos, true);
     }
@@ -2762,13 +2757,11 @@ impl Pane {
         };
         let key = collate_key(&display);
         let mtext = util::format_time(mtime);
-        let atime = info.attribute_uint64("time::access") as i64;
-        let btime = info.attribute_uint64("time::created") as i64;
-        let owner = info.attribute_string("owner::user").map(|s| s.to_string()).unwrap_or_default();
-        let group = info.attribute_string("owner::group").map(|s| s.to_string()).unwrap_or_default();
-        let mode = info.attribute_uint32("unix::mode");
-        let alloc = info.attribute_uint64("standard::allocated-size");
-        let trashed = trash_time(info);
+        // Only what was read for chosen details (see wanted_attrs), and
+        // the time trashed in the Trash: a folder shown with the usual
+        // details is read and kept as before.
+        let extra = (!self.extra_attrs.borrow().is_empty()).then(|| Extra::of(info));
+        let trashed = if self.in_trash.get() { trash_time(info) } else { 0 };
 
         if self.editing.borrow().as_deref() == Some(uri.as_str()) {
             return; // don't disturb an in-progress rename
@@ -2797,12 +2790,7 @@ impl Pane {
                     && st_.gv::<String>(&it, COL_THUMB as i32) == thumb
                     && st_.gv::<String>(&it, COL_CTYPE as i32) == ctype
                     && st_.gv::<String>(&it, COL_ORIG as i32) == orig
-                    && st_.gv::<i64>(&it, COL_ATIME as i32) == atime
-                    && st_.gv::<i64>(&it, COL_BTIME as i32) == btime
-                    && st_.gv::<String>(&it, COL_OWNER as i32) == owner
-                    && st_.gv::<String>(&it, COL_GROUP as i32) == group
-                    && st_.gv::<u32>(&it, COL_MODE as i32) == mode
-                    && st_.gv::<u64>(&it, COL_ALLOC as i32) == alloc
+                    && extra.as_ref().is_none_or(|e| *e == Extra::in_row(st_.upcast_ref(), &it))
                     && st_.gv::<i64>(&it, COL_TRASHED as i32) == trashed
                     && match (st_.gv::<Option<gio::Icon>>(&it, COL_ICON as i32), &icon) {
                         (Some(a), Some(b)) => a.equal(Some(b)),
@@ -2827,15 +2815,9 @@ impl Pane {
                         (COL_CTYPE, &ctype),
                         (COL_KEY, &key),
                         (COL_ORIG, &orig),
-                        (COL_ATIME, &atime),
-                        (COL_BTIME, &btime),
-                        (COL_OWNER, &owner),
-                        (COL_GROUP, &group),
-                        (COL_MODE, &mode),
-                        (COL_ALLOC, &alloc),
-                        (COL_TRASHED, &trashed),
                     ],
                 );
+                self.set_extra(&it, extra.as_ref(), trashed);
             }
             None => {
                 let it = self.store.insert_with_values(
@@ -2855,15 +2837,9 @@ impl Pane {
                         (COL_CTYPE, &ctype),
                         (COL_KEY, &key),
                         (COL_ORIG, &orig),
-                        (COL_ATIME, &atime),
-                        (COL_BTIME, &btime),
-                        (COL_OWNER, &owner),
-                        (COL_GROUP, &group),
-                        (COL_MODE, &mode),
-                        (COL_ALLOC, &alloc),
-                        (COL_TRASHED, &trashed),
                     ],
                 );
+                self.set_extra(&it, extra.as_ref(), trashed);
                 self.index.borrow_mut().insert(uri.clone(), it);
             }
         }
@@ -3417,6 +3393,52 @@ impl Pane {
 
     // ------------------------------------------------------------ columns view
 
+    /// The attributes read for each item: always ATTRS, and those of the
+    /// chosen details (wanted_attrs) as of this folder's loading.
+    fn attrs(&self) -> String {
+        format!("{ATTRS}{}", self.extra_attrs.borrow())
+    }
+
+    /// What the chosen details need read besides ATTRS: the list's columns,
+    /// the icon captions and the sort order (nothing with the defaults).
+    fn wanted_attrs(&self) -> String {
+        let (by, _) = self.sort_state();
+        let mut ids = config::with(|s| {
+            let mut ids = crate::details::known(&s.list_columns);
+            ids.extend(crate::details::known(&s.icon_captions));
+            ids
+        });
+        ids.push(crate::details::get(&by).map_or("name", |d| d.id));
+        crate::details::attributes(&ids)
+    }
+
+    /// Before reading a folder: read what the chosen details need.
+    fn read_attrs_wanted(&self) {
+        *self.extra_attrs.borrow_mut() = self.wanted_attrs();
+        self.in_trash.set(self.is_trash());
+    }
+
+    /// The chosen details' values for a row, if they were read.
+    fn set_extra(&self, it: &gtk::TreeIter, extra: Option<&Extra>, trashed: i64) {
+        if let Some(e) = extra {
+            self.store.set(
+                it,
+                &[(COL_ATIME, &e.atime), (COL_BTIME, &e.btime), (COL_OWNER, &e.owner), (COL_GROUP, &e.group), (COL_MODE, &e.mode), (COL_ALLOC, &e.alloc)],
+            );
+        }
+        if self.in_trash.get() {
+            self.store.set(it, &[(COL_TRASHED, &trashed)]);
+        }
+    }
+
+    /// Reads the folder again if a detail now chosen (a column, a caption,
+    /// the sort order) needs something it wasn't read with.
+    pub fn reload_if_details_missing(self: &Rc<Self>) {
+        if !crate::details::attributes_read(&self.wanted_attrs(), &self.extra_attrs.borrow()) {
+            self.reload();
+        }
+    }
+
     /// Shows the list view's columns as chosen (Settings::list_columns), in
     /// that order after the name; in search results also each one's folder,
     /// and in the Trash when and from where each item was put there. Just
@@ -3433,10 +3455,31 @@ impl Pane {
         if self.columns_mode.get() {
             shown.clear();
         }
+        // Left as they are if that's how they are (every folder shown asks).
+        let now: Vec<&str> = self
+            .tree_view
+            .columns()
+            .iter()
+            .filter(|c| c.is_visible())
+            .filter_map(|c| self.detail_cols.iter().find(|(_, dc)| dc == c).map(|(id, _)| *id))
+            .collect();
+        if now == shown {
+            return;
+        }
         self.placing_columns.set(true);
         let mut prev = self.name_col.clone();
         for id in &shown {
             if let Some((_, c)) = self.detail_cols.iter().find(|(i, _)| i == id) {
+                if c.tree_view().is_none() {
+                    // At least as wide as its title, with room for the sort arrow.
+                    let title = c.title().unwrap_or_default();
+                    let width = c.min_width().max(self.tree_view.create_pango_layout(Some(&title)).pixel_size().0 + 32);
+                    c.set_min_width(width);
+                    c.set_fixed_width(c.fixed_width().max(width));
+                    self.tree_view.append_column(c);
+                    self.added_cols.set(self.added_cols.get() + 1);
+                    self.wire_header(c);
+                }
                 self.tree_view.move_column_after(c, Some(&prev));
                 c.set_visible(true);
                 prev = c.clone();
@@ -3448,6 +3491,30 @@ impl Pane {
             }
         }
         self.placing_columns.set(false);
+    }
+
+    /// A column header's clicks: the right one shows the column menu; a
+    /// held left one may be a drag (see quiet_header_drags).
+    fn wire_header(&self, col: &gtk::TreeViewColumn) {
+        let Some(button) = col.button() else { return };
+        let held = |on: bool| HEADER_HELD.store(on, std::sync::atomic::Ordering::Relaxed);
+        button.connect_button_release_event(move |_, _| {
+            held(false);
+            glib::Propagation::Proceed
+        });
+        let w = self.me.borrow().clone();
+        button.connect_button_press_event(move |_, ev| {
+            if ev.button() == 1 {
+                held(true);
+            }
+            if ev.button() != 3 {
+                return glib::Propagation::Proceed;
+            }
+            if let Some(p) = w.upgrade() {
+                p.column_menu(ev);
+            }
+            glib::Propagation::Stop
+        });
     }
 
     /// The column headers' menu: which columns to show, and the chooser.
@@ -4243,6 +4310,8 @@ impl Pane {
         self.emit(Event::Location);
         self.emit(Event::Loading(true));
         let params = q.params();
+        self.read_attrs_wanted();
+        let attrs = self.attrs();
         let token = self.search_gen.clone();
         let (tx, rx) = async_channel::unbounded::<Vec<(String, String)>>();
         std::thread::spawn(move || {
@@ -4259,7 +4328,7 @@ impl Pane {
                 let found = rx.recv().await;
                 let done = found.is_err();
                 if let Ok(found) = found {
-                    waiting.extend(read_infos(found).await);
+                    waiting.extend(read_infos(found, &attrs).await);
                 }
                 let Some(p) = w.upgrade() else { return };
                 if p.gen.get() != gen {
@@ -4635,6 +4704,42 @@ fn cell_rect(iv: &gtk::IconView, path: &gtk::TreePath, cell: &impl IsA<gtk::Cell
     iv.cell_rect(path, Some(cell))
 }
 
+/// The details read only when chosen (see Pane::wanted_attrs).
+#[derive(PartialEq)]
+struct Extra {
+    atime: i64,
+    btime: i64,
+    owner: String,
+    group: String,
+    mode: u32,
+    alloc: u64,
+}
+
+impl Extra {
+    fn of(info: &gio::FileInfo) -> Extra {
+        Extra {
+            atime: info.attribute_uint64("time::access") as i64,
+            btime: info.attribute_uint64("time::created") as i64,
+            owner: info.attribute_string("owner::user").map(|s| s.to_string()).unwrap_or_default(),
+            group: info.attribute_string("owner::group").map(|s| s.to_string()).unwrap_or_default(),
+            mode: info.attribute_uint32("unix::mode"),
+            alloc: info.attribute_uint64("standard::allocated-size"),
+        }
+    }
+
+    fn in_row(m: &gtk::TreeModel, it: &gtk::TreeIter) -> Extra {
+        let text = |col: u32| value_str(&m.value(it, col as i32)).to_string();
+        Extra {
+            atime: m.gv(it, COL_ATIME as i32),
+            btime: m.gv(it, COL_BTIME as i32),
+            owner: text(COL_OWNER),
+            group: text(COL_GROUP),
+            mode: m.gv(it, COL_MODE as i32),
+            alloc: m.gv(it, COL_ALLOC as i32),
+        }
+    }
+}
+
 /// When an item in the Trash was put there (0 elsewhere): its
 /// trash::deletion-date is the local time without a zone, "2026-11-11T13:05:00".
 fn trash_time(info: &gio::FileInfo) -> i64 {
@@ -4701,14 +4806,14 @@ fn mark_drawing(view: &gtk::Widget) {
 
 /// The details of items found, (folder URI, name) pairs, read all at once
 /// (one after another, each would wait for the last).
-async fn read_infos(found: Vec<(String, String)>) -> Vec<(gio::File, gio::FileInfo)> {
+async fn read_infos(found: Vec<(String, String)>, attrs: &str) -> Vec<(gio::File, gio::FileInfo)> {
     let out = Rc::new(RefCell::new(Vec::with_capacity(found.len())));
     let left = Rc::new(Cell::new(found.len()));
     let (tx, rx) = async_channel::bounded::<()>(1);
     for (parent, name) in found {
         let parent = gio::File::for_uri(&parent);
         let (out, left, tx) = (out.clone(), left.clone(), tx.clone());
-        parent.child(&name).query_info_async(ATTRS, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT, gio::Cancellable::NONE, move |res| {
+        parent.child(&name).query_info_async(attrs, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT, gio::Cancellable::NONE, move |res| {
             if let Ok(info) = res {
                 out.borrow_mut().push((parent, info));
             }

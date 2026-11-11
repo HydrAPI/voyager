@@ -44,6 +44,7 @@ fn reapply_view_settings() {
         } else {
             p.apply_sort(&s.sort_by, s.sort_desc);
         }
+        p.reload_if_details_missing();
     });
     sync_all_windows();
 }
@@ -212,7 +213,7 @@ fn column_chooser() -> gtk::Box {
                 })
                 .collect();
             config::update(|s| s.list_columns = ids);
-            for_all_panes(|p| p.apply_column_choice());
+            show_chosen_columns();
         })
     };
     let fill: Rc<dyn Fn()> = {
@@ -258,9 +259,18 @@ fn column_chooser() -> gtk::Box {
     reset.connect_clicked(move |_| {
         config::update(|s| s.list_columns = crate::details::DEFAULT_COLUMNS.iter().map(|c| c.to_string()).collect());
         fill();
-        for_all_panes(|p| p.apply_column_choice());
+        show_chosen_columns();
     });
     outer
+}
+
+/// Every pane's list view with the columns now chosen, its folder read
+/// again if one of them needs more than it was read with.
+fn show_chosen_columns() {
+    for_all_panes(|p| {
+        p.apply_column_choice();
+        p.reload_if_details_missing();
+    });
 }
 
 fn for_all_panes(f: impl Fn(&Rc<Pane>)) {
@@ -1445,6 +1455,7 @@ impl AppWindow {
         self.add("reset-view", |w| {
             if let Some(p) = w.current_pane() {
                 p.reset_view();
+                p.reload_if_details_missing();
                 w.update_for_pane(&p);
             }
         });
@@ -2410,7 +2421,7 @@ impl AppWindow {
             Event::Drop { uris, dest, action } => self.handle_drop(uris, dest, action),
             Event::Rename { uri, new_name } => self.rename(pane, &uri, &new_name),
             Event::Sort { by, desc } => self.user_sort(pane, &by, desc),
-            Event::ColumnsChanged => for_all_panes(|p| p.apply_column_choice()),
+            Event::ColumnsChanged => show_chosen_columns(),
         }
     }
 
@@ -2439,6 +2450,7 @@ impl AppWindow {
             for_all_panes(|p| {
                 if p.current().equal(&folder) {
                     p.apply_sort(by, desc);
+                    p.reload_if_details_missing();
                 }
             });
         } else {
@@ -2446,7 +2458,10 @@ impl AppWindow {
                 s.sort_by = by.to_string();
                 s.sort_desc = desc;
             });
-            for_all_panes(|p| p.apply_sort(by, desc));
+            for_all_panes(|p| {
+                p.apply_sort(by, desc);
+                p.reload_if_details_missing();
+            });
         }
         sync_all_windows();
     }
