@@ -24,12 +24,12 @@ thread_local! {
     static DIMS: RefCell<HashMap<String, Option<ThumbHeader>>> = RefCell::new(HashMap::new());
     /// Thumbnails being loaded, and the loaders' queue (see thumb_pixbuf).
     static LOADING: RefCell<HashSet<(String, i32)>> = RefCell::new(HashSet::new());
-    static LOAD_QUEUE: RefCell<Option<Arc<LoadQueue>>> = const { RefCell::new(None) };
+    static LOAD_QUEUE: RefCell<Option<Arc<Pool<ThumbKey>>>> = const { RefCell::new(None) };
     /// Views being drawn (see set_drawing).
     static DRAWING: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     /// (uri, mtime) pairs already sent to the worker; an edited file gets a new entry.
     static QUEUED: RefCell<HashSet<(String, i64)>> = RefCell::new(HashSet::new());
-    static MAKERS: RefCell<Option<Arc<JobQueue>>> = const { RefCell::new(None) };
+    static MAKERS: RefCell<Option<Arc<Pool<ThumbJob>>>> = const { RefCell::new(None) };
     /// The custom thumbnailer for each content type asked about.
     /// Shared, not copied: asked about for every file of a folder.
     static CUSTOM_FOR: RefCell<HashMap<String, Option<Arc<Thumbnailer>>>> = RefCell::new(HashMap::new());
@@ -447,48 +447,72 @@ pub fn set_drawing(on: bool) {
     DRAWING.with(|d| d.set(if on { d.get() + 1 } else { d.get().saturating_sub(1) }));
 }
 
-/// Pictures to load, the latest first: those are the ones shown now.
-struct LoadQueue {
-    jobs: Mutex<Vec<(String, i32)>>,
+/// A thumbnail to load: (path, size).
+type ThumbKey = (String, i32);
+
+/// Jobs for threads of their own, the latest first: views ask for what
+/// they show, so that's what was just scrolled to.
+struct Pool<J> {
+    jobs: Mutex<Vec<J>>,
     ready: Condvar,
 }
 
+impl<J: Send + 'static> Pool<J> {
+    /// `threads` threads, each doing `work` for one job after another and
+    /// sending what it gives on `tx` (they end once nothing receives it).
+    fn start<R: Send + 'static>(threads: usize, work: impl Fn(J) -> R + Send + Sync + 'static, tx: async_channel::Sender<R>) -> Arc<Pool<J>> {
+        let pool = Arc::new(Pool { jobs: Mutex::new(vec![]), ready: Condvar::new() });
+        let work = Arc::new(work);
+        for _ in 0..threads {
+            let (pool, work, tx) = (pool.clone(), work.clone(), tx.clone());
+            std::thread::spawn(move || loop {
+                let job = {
+                    let mut jobs = pool.jobs.lock().unwrap();
+                    loop {
+                        if let Some(j) = jobs.pop() {
+                            break j;
+                        }
+                        jobs = pool.ready.wait(jobs).unwrap();
+                    }
+                };
+                if tx.send_blocking(work(job)).is_err() {
+                    return;
+                }
+            });
+        }
+        pool
+    }
+
+    fn push(&self, job: J) {
+        self.jobs.lock().unwrap().push(job);
+        self.ready.notify_one();
+    }
+}
+
+/// Loads a thumbnail (path, size) on the loaders' threads: the latest asked
+/// for first, those are the ones shown now.
 fn load_thumb(path: &str, size: i32) {
     let key = (path.to_string(), size);
     if !LOADING.with(|l| l.borrow_mut().insert(key.clone())) {
         return;
     }
-    let q = LOAD_QUEUE.with(|q| q.borrow_mut().get_or_insert_with(start_loaders).clone());
-    q.jobs.lock().unwrap().push(key);
-    q.ready.notify_one();
+    LOAD_QUEUE.with(|q| q.borrow_mut().get_or_insert_with(start_loaders).clone()).push(key);
 }
 
-fn start_loaders() -> Arc<LoadQueue> {
-    let q = Arc::new(LoadQueue { jobs: Mutex::new(vec![]), ready: Condvar::new() });
+fn start_loaders() -> Arc<Pool<ThumbKey>> {
     // A Pixbuf can't be sent between threads, its pixels can.
     type Pixels = (glib::Bytes, bool, i32, i32, i32);
     let (tx, rx) = async_channel::unbounded::<(String, i32, Option<Pixels>)>();
-    for _ in 0..4 {
-        let q = q.clone();
-        let tx = tx.clone();
-        std::thread::spawn(move || loop {
-            let (path, size) = {
-                let mut jobs = q.jobs.lock().unwrap();
-                loop {
-                    if let Some(j) = jobs.pop() {
-                        break j;
-                    }
-                    jobs = q.ready.wait(jobs).unwrap();
-                }
-            };
+    let q = Pool::start(
+        4,
+        |(path, size): ThumbKey| {
             let pixels = load_at_scale(std::path::Path::new(&path), size)
                 .ok()
                 .map(|p| (p.read_pixel_bytes(), p.has_alpha(), p.width(), p.height(), p.rowstride()));
-            if tx.send_blocking((path, size, pixels)).is_err() {
-                return;
-            }
-        });
-    }
+            (path, size, pixels)
+        },
+        tx,
+    );
     glib::MainContext::default().spawn_local(async move {
         while let Ok(first) = rx.recv().await {
             // Everything loaded meanwhile, then one redraw.
@@ -695,15 +719,8 @@ pub fn remove_thumbnail_listener(id: usize) {
     LISTENERS.with(|l| l.borrow_mut().retain(|(i, _)| *i != id));
 }
 
-/// Thumbnails to make, the latest asked for first: views ask for what
-/// they show, so that's what was just scrolled to.
 /// Called with (uri, thumbnail path) when a thumbnail is made.
 type Listener = Box<dyn Fn(&str, &str)>;
-
-struct JobQueue {
-    jobs: Mutex<Vec<ThumbJob>>,
-    ready: Condvar,
-}
 
 /// How many thumbnails are made at once (see makers_for); 1 if the number
 /// of processors can't be told.
@@ -722,34 +739,23 @@ fn makers_for(cpus: usize) -> usize {
     }
 }
 
-fn makers() -> Arc<JobQueue> {
+/// The thumbnails to make, the latest asked for first.
+fn makers() -> Arc<Pool<ThumbJob>> {
     if let Some(q) = MAKERS.with(|m| m.borrow().clone()) {
         return q;
     }
-    let q = Arc::new(JobQueue { jobs: Mutex::new(vec![]), ready: Condvar::new() });
     let (done_tx, done_rx) = async_channel::unbounded::<(String, Option<String>)>();
-    for _ in 0..maker_count() {
-        let q = q.clone();
-        let done_tx = done_tx.clone();
-        std::thread::spawn(move || loop {
-            let job = {
-                let mut jobs = q.jobs.lock().unwrap();
-                loop {
-                    if let Some(j) = jobs.pop() {
-                        break j;
-                    }
-                    jobs = q.ready.wait(jobs).unwrap();
-                }
-            };
+    let q = Pool::start(
+        maker_count(),
+        |job: ThumbJob| {
             let res = make_thumbnail(&job);
             if res.is_none() {
                 record_failure(&job);
             }
-            if done_tx.send_blocking((job.uri, res)).is_err() {
-                return;
-            }
-        });
-    }
+            (job.uri, res)
+        },
+        done_tx,
+    );
     glib::MainContext::default().spawn_local(async move {
         while let Ok((uri, res)) = done_rx.recv().await {
             if let Some(p) = res {
@@ -917,15 +923,13 @@ pub fn request_thumbnail(uri: &str, path: &std::path::Path, mtime: i64, size: u6
         return;
     }
     glib::g_debug!("arkha", "thumbnail: asked for {ctype} ({uri})");
-    let q = makers();
-    q.jobs.lock().unwrap().push(ThumbJob {
+    makers().push(ThumbJob {
         uri: uri.to_string(),
         src: path.to_path_buf(),
         mtime,
         out,
         custom,
     });
-    q.ready.notify_one();
 }
 
 /// A usable existing thumbnail for this file, if the cache has a fresh one.
