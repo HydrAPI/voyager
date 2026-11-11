@@ -5049,22 +5049,66 @@ fn capture_shortcut(parent: &gtk::Window, label: &str) -> Option<String> {
 /// List of custom thumbnailers (commands for file types the built-in image
 /// thumbnailer doesn't do) with Add / Edit / Remove; saved straight away.
 fn thumbnailers_editor(parent: &gtk::Window) -> gtk::Box {
-    let list: Rc<RefCell<Vec<thumbnailers::Thumbnailer>>> = Rc::new(RefCell::new(thumbnailers::load()));
-    let store = gtk::ListStore::new(&[String::static_type(), String::static_type(), String::static_type()]);
+    let spec = ListSpec {
+        columns: &["Name", "File types", "Command"],
+        // Ones whose program is missing are skipped when making thumbnails.
+        row: |t: &thumbnailers::Thumbnailer| {
+            let name = if thumbnailers::installed(t) { t.name.clone() } else { format!("{} (not installed)", t.name) };
+            vec![name, t.types.clone(), t.command.clone()]
+        },
+        blank: thumbnailers::Thumbnailer::default,
+        edit: edit_thumbnailer,
+        add_title: "Add Thumbnailer",
+        edit_title: "Edit Thumbnailer",
+        reorder: false,
+        min_height: 90,
+    };
+    // Saved, and thumbnails made again in the open folders with the new list.
+    let bx = list_editor(parent, thumbnailers::load(), spec, |list| {
+        thumbnailers::save(list);
+        icons::reload_thumbnailers();
+        for_all_panes(|p| p.reload());
+    });
+    bx.add(&hint_label("Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used. File types none of them handles use the thumbnailers installed on the system, as Caja does: PDF with Evince, office documents, audio cover art and so on."));
+    bx
+}
+
+/// What list_editor edits and how.
+struct ListSpec<T> {
+    columns: &'static [&'static str],
+    /// The text of each column for an item.
+    row: fn(&T) -> Vec<String>,
+    /// What Add starts from.
+    blank: fn() -> T,
+    /// The dialog that changes an item (title, item): None if cancelled.
+    edit: fn(&gtk::Window, &str, &T) -> Option<T>,
+    add_title: &'static str,
+    edit_title: &'static str,
+    /// Up and down buttons, where the order counts.
+    reorder: bool,
+    min_height: i32,
+}
+
+/// A list edited in Preferences: a table with Add, Edit and Remove (and up
+/// and down), every change given to `save` straight away. More (a hint)
+/// can be added to the box it gives.
+fn list_editor<T: Clone + 'static>(parent: &gtk::Window, items: Vec<T>, spec: ListSpec<T>, save: impl Fn(&[T]) + 'static) -> gtk::Box {
+    let list = Rc::new(RefCell::new(items));
+    let store = gtk::ListStore::new(&vec![String::static_type(); spec.columns.len()]);
     let refill = {
         let (store, list) = (store.clone(), list.clone());
         move || {
             store.clear();
-            for t in list.borrow().iter() {
-                // Ones whose program is missing are skipped when making thumbnails.
-                let name = if thumbnailers::installed(t) { t.name.clone() } else { format!("{} (not installed)", t.name) };
-                store.insert_with_values(None, &[(0, &name), (1, &t.types), (2, &t.command)]);
+            for item in list.borrow().iter() {
+                let texts = (spec.row)(item);
+                let values: Vec<(u32, &dyn ToValue)> = texts.iter().enumerate().map(|(i, t)| (i as u32, t as &dyn ToValue)).collect();
+                store.insert_with_values(None, &values);
             }
         }
     };
     refill();
     let tv = gtk::TreeView::with_model(&store);
-    for (i, title) in ["Name", "File types", "Command"].into_iter().enumerate() {
+    for (i, title) in spec.columns.iter().enumerate() {
         let r = gtk::CellRendererText::new();
         r.set_property("ellipsize", pango::EllipsizeMode::End);
         let c = gtk::TreeViewColumn::new();
@@ -5077,47 +5121,52 @@ fn thumbnailers_editor(parent: &gtk::Window) -> gtk::Box {
     }
     let sw = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
     sw.set_shadow_type(gtk::ShadowType::In);
-    sw.set_min_content_height(90);
+    sw.set_min_content_height(spec.min_height);
     sw.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
     sw.add(&tv);
     let selected = {
         let tv = tv.clone();
         move || tv.selection().selected().and_then(|(m, it)| m.path(&it)?.indices().first().map(|&i| i as usize))
     };
-    // Save, and redo thumbnails in the open folders with the new list.
-    let changed = {
-        let (list, refill) = (list.clone(), refill.clone());
-        move || {
-            thumbnailers::save(&list.borrow());
-            icons::reload_thumbnailers();
+    // Saved and shown again, with `select` selected.
+    let changed = Rc::new({
+        let (list, tv) = (list.clone(), tv.clone());
+        move |select: Option<usize>| {
+            save(&list.borrow());
             refill();
-            for_all_panes(|p| p.reload());
+            if let Some(i) = select {
+                tv.selection().select_path(&gtk::TreePath::from_indicesv(&[i as i32]));
+            }
         }
-    };
-    let changed = Rc::new(changed);
-    let add = gtk::Button::with_mnemonic("Add…");
-    let edit = gtk::Button::with_mnemonic("Edit…");
-    let remove = gtk::Button::with_mnemonic("Remove");
+    });
+    let add = gtk::Button::with_mnemonic("_Add…");
+    let edit = gtk::Button::with_mnemonic("_Edit…");
+    let remove = gtk::Button::with_mnemonic("_Remove");
+    let up = gtk::Button::from_icon_name(Some("go-up-symbolic"), gtk::IconSize::Button);
+    up.set_tooltip_text(Some("Move up"));
+    let down = gtk::Button::from_icon_name(Some("go-down-symbolic"), gtk::IconSize::Button);
+    down.set_tooltip_text(Some("Move down"));
     {
         let (list, changed, parent) = (list.clone(), changed.clone(), parent.clone());
         add.connect_clicked(move |_| {
-            if let Some(t) = edit_thumbnailer(&parent, "Add Thumbnailer", &thumbnailers::Thumbnailer::default()) {
-                list.borrow_mut().push(t);
-                changed();
+            if let Some(item) = (spec.edit)(&parent, spec.add_title, &(spec.blank)()) {
+                list.borrow_mut().push(item);
+                let n = list.borrow().len();
+                changed(Some(n - 1));
             }
         });
     }
-    let do_edit = {
+    let do_edit = Rc::new({
         let (list, changed, parent, selected) = (list.clone(), changed.clone(), parent.clone(), selected.clone());
-        Rc::new(move || {
+        move || {
             let Some(i) = selected() else { return };
             let cur = list.borrow()[i].clone();
-            if let Some(t) = edit_thumbnailer(&parent, "Edit Thumbnailer", &cur) {
-                list.borrow_mut()[i] = t;
-                changed();
+            if let Some(item) = (spec.edit)(&parent, spec.edit_title, &cur) {
+                list.borrow_mut()[i] = item;
+                changed(Some(i));
             }
-        })
-    };
+        }
+    });
     {
         let do_edit = do_edit.clone();
         edit.connect_clicked(move |_| do_edit());
@@ -5128,28 +5177,46 @@ fn thumbnailers_editor(parent: &gtk::Window) -> gtk::Box {
         remove.connect_clicked(move |_| {
             if let Some(i) = selected() {
                 list.borrow_mut().remove(i);
-                changed();
+                changed(None);
             }
         });
     }
-    {
-        let (edit, remove) = (edit.clone(), remove.clone());
-        let sync = move |on: bool| {
-            edit.set_sensitive(on);
-            remove.set_sensitive(on);
-        };
-        sync(false);
-        tv.selection().connect_changed(move |_| sync(selected().is_some()));
+    for (btn, delta) in [(&up, -1i32), (&down, 1)] {
+        let (list, changed, selected) = (list.clone(), changed.clone(), selected.clone());
+        btn.connect_clicked(move |_| {
+            let Some(i) = selected() else { return };
+            let j = i as i32 + delta;
+            if j < 0 || j as usize >= list.borrow().len() {
+                return;
+            }
+            list.borrow_mut().swap(i, j as usize);
+            changed(Some(j as usize));
+        });
     }
+    // Buttons that need a selected item.
+    let sync = {
+        let (edit, remove, up, down, list) = (edit.clone(), remove.clone(), up.clone(), down.clone(), list.clone());
+        move |sel: Option<usize>| {
+            let n = list.borrow().len();
+            edit.set_sensitive(sel.is_some());
+            remove.set_sensitive(sel.is_some());
+            up.set_sensitive(sel.is_some_and(|i| i > 0));
+            down.set_sensitive(sel.is_some_and(|i| i + 1 < n));
+        }
+    };
+    sync(None);
+    tv.selection().connect_changed(move |_| sync(selected()));
     let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     buttons.pack_start(&add, false, false, 0);
     buttons.pack_start(&edit, false, false, 0);
     buttons.pack_start(&remove, false, false, 0);
-    let hint = hint_label("Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used. File types none of them handles use the thumbnailers installed on the system, as Caja does: PDF with Evince, office documents, audio cover art and so on.");
+    if spec.reorder {
+        buttons.pack_end(&down, false, false, 0);
+        buttons.pack_end(&up, false, false, 0);
+    }
     let bx = gtk::Box::new(gtk::Orientation::Vertical, 6);
     bx.add(&sw);
     bx.add(&buttons);
-    bx.add(&hint);
     bx
 }
 
@@ -5217,125 +5284,18 @@ fn edit_thumbnailer(parent: &gtk::Window, title: &str, cur: &thumbnailers::Thumb
 /// List of custom context menu actions with Add / Edit / Remove / reorder;
 /// every change is saved straight away.
 fn custom_actions_editor(parent: &gtk::Window) -> gtk::Box {
-    let list: Rc<RefCell<Vec<actions::CustomAction>>> = Rc::new(RefCell::new(actions::load()));
-    let store = gtk::ListStore::new(&[String::static_type(), String::static_type()]);
-    let refill = {
-        let (store, list) = (store.clone(), list.clone());
-        move || {
-            store.clear();
-            for a in list.borrow().iter() {
-                store.insert_with_values(None, &[(0, &a.name), (1, &a.command)]);
-            }
-        }
+    let spec = ListSpec {
+        columns: &["Name", "Command"],
+        row: |a: &actions::CustomAction| vec![a.name.clone(), a.command.clone()],
+        blank: || actions::CustomAction { id: actions::new_id(), files: true, folders: true, ..Default::default() },
+        edit: edit_custom_action,
+        add_title: "Add Custom Action",
+        edit_title: "Edit Custom Action",
+        reorder: true,
+        min_height: 130,
     };
-    refill();
-    let tv = gtk::TreeView::with_model(&store);
-    for (i, title) in ["Name", "Command"].into_iter().enumerate() {
-        let r = gtk::CellRendererText::new();
-        r.set_property("ellipsize", pango::EllipsizeMode::End);
-        let c = gtk::TreeViewColumn::new();
-        c.set_title(title);
-        c.set_expand(true);
-        CellLayoutExt::pack_start(&c, &r, true);
-        CellLayoutExt::add_attribute(&c, &r, "text", i as i32);
-        tv.append_column(&c);
-    }
-    let sw = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
-    sw.set_shadow_type(gtk::ShadowType::In);
-    sw.set_min_content_height(130);
-    sw.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
-    sw.add(&tv);
-    let selected = {
-        let tv = tv.clone();
-        move || tv.selection().selected().and_then(|(m, it)| m.path(&it)?.indices().first().map(|&i| i as usize))
-    };
-    let changed = {
-        let (list, refill, tv) = (list.clone(), refill.clone(), tv.clone());
-        move |select: Option<usize>| {
-            actions::save(&list.borrow());
-            refill();
-            if let Some(i) = select {
-                tv.selection().select_path(&gtk::TreePath::from_indicesv(&[i as i32]));
-            }
-        }
-    };
-    let changed = Rc::new(changed);
-    let add = gtk::Button::with_mnemonic("_Add…");
-    let edit = gtk::Button::with_mnemonic("_Edit…");
-    let remove = gtk::Button::with_mnemonic("_Remove");
-    let up = gtk::Button::from_icon_name(Some("go-up-symbolic"), gtk::IconSize::Button);
-    up.set_tooltip_text(Some("Move up"));
-    let down = gtk::Button::from_icon_name(Some("go-down-symbolic"), gtk::IconSize::Button);
-    down.set_tooltip_text(Some("Move down"));
-    {
-        let (list, changed, parent) = (list.clone(), changed.clone(), parent.clone());
-        add.connect_clicked(move |_| {
-            let blank = actions::CustomAction { id: actions::new_id(), files: true, folders: true, ..Default::default() };
-            if let Some(a) = edit_custom_action(&parent, "Add Custom Action", &blank) {
-                list.borrow_mut().push(a);
-                let n = list.borrow().len();
-                changed(Some(n - 1));
-            }
-        });
-    }
-    let do_edit = {
-        let (list, changed, parent, selected) = (list.clone(), changed.clone(), parent.clone(), selected.clone());
-        move || {
-            let Some(i) = selected() else { return };
-            let cur = list.borrow()[i].clone();
-            if let Some(a) = edit_custom_action(&parent, "Edit Custom Action", &cur) {
-                list.borrow_mut()[i] = a;
-                changed(Some(i));
-            }
-        }
-    };
-    let do_edit = Rc::new(do_edit);
-    {
-        let do_edit = do_edit.clone();
-        edit.connect_clicked(move |_| do_edit());
-    }
-    tv.connect_row_activated(move |_, _, _| do_edit());
-    {
-        let (list, changed, selected) = (list.clone(), changed.clone(), selected.clone());
-        remove.connect_clicked(move |_| {
-            if let Some(i) = selected() {
-                list.borrow_mut().remove(i);
-                changed(None);
-            }
-        });
-    }
-    for (btn, delta) in [(&up, -1i32), (&down, 1)] {
-        let (list, changed, selected) = (list.clone(), changed.clone(), selected.clone());
-        btn.connect_clicked(move |_| {
-            let Some(i) = selected() else { return };
-            let j = i as i32 + delta;
-            if j < 0 || j as usize >= list.borrow().len() {
-                return;
-            }
-            list.borrow_mut().swap(i, j as usize);
-            changed(Some(j as usize));
-        });
-    }
-    // Buttons that need a selected action.
-    let sync = {
-        let (edit, remove, up, down, list) = (edit.clone(), remove.clone(), up.clone(), down.clone(), list.clone());
-        move |sel: Option<usize>| {
-            let n = list.borrow().len();
-            edit.set_sensitive(sel.is_some());
-            remove.set_sensitive(sel.is_some());
-            up.set_sensitive(sel.is_some_and(|i| i > 0));
-            down.set_sensitive(sel.is_some_and(|i| i + 1 < n));
-        }
-    };
-    sync(None);
-    tv.selection().connect_changed(move |_| sync(selected()));
+    let bx = list_editor(parent, actions::load(), spec, actions::save);
     let hint = hint_label("Commands run in the current folder. %f selected file, %F all selected files, %n / %N their names, %d current folder.");
-    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    buttons.pack_start(&add, false, false, 0);
-    buttons.pack_start(&edit, false, false, 0);
-    buttons.pack_start(&remove, false, false, 0);
-    buttons.pack_end(&down, false, false, 0);
-    buttons.pack_end(&up, false, false, 0);
     // The shell commands run with, as `<shell> -c <command>`.
     let shell = gtk::Entry::new();
     shell.set_text(&config::get().action_shell);
@@ -5360,9 +5320,6 @@ fn custom_actions_editor(parent: &gtk::Window) -> gtk::Box {
     shell_label.set_mnemonic_widget(Some(&shell));
     shell_row.add(&shell_label);
     shell_row.add(&shell);
-    let bx = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    bx.add(&sw);
-    bx.add(&buttons);
     bx.add(&shell_row);
     bx.add(&hint);
     bx
