@@ -484,6 +484,8 @@ pub struct Pane {
     meta: RefCell<HashMap<String, crate::metadata::Meta>>,
     /// Items arrived whose metadata is to be read (see on_monitor).
     meta_pending: RefCell<Vec<gio::File>>,
+    /// The folder's background (see backgrounds.rs), on both views.
+    bg_css: gtk::CssProvider,
     sort_cols: Vec<(u32, gtk::TreeViewColumn)>,
     /// The list view's columns with what they show ("name" or a detail)
     /// and whether they show an icon too (for fitting them to their contents).
@@ -773,6 +775,11 @@ impl Pane {
 
         // ---- list view
         let tree_view = gtk::TreeView::with_model(&filter);
+        // The folder's background (see show_background), on both views.
+        let bg_css = gtk::CssProvider::new();
+        for v in [icon_view.upcast_ref::<gtk::Widget>(), tree_view.upcast_ref()] {
+            v.style_context().add_provider(&bg_css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        }
         mark_drawing(tree_view.upcast_ref());
         tree_view.set_headers_clickable(true);
         tree_view.set_enable_search(false);
@@ -1028,6 +1035,7 @@ impl Pane {
             in_trash: Cell::new(false),
             meta: RefCell::new(HashMap::new()),
             meta_pending: RefCell::new(vec![]),
+            bg_css,
             sort_cols,
             fit_cols,
             info_bar,
@@ -1684,7 +1692,9 @@ impl Pane {
         enable_drag_source_tv(&self.tree_view);
         let views: [gtk::Widget; 2] = [self.icon_view.clone().upcast(), self.tree_view.clone().upcast()];
         for view in views {
-            view.drag_dest_set(gtk::DestDefaults::empty(), &drop_targets(), dnd_actions());
+            // Files, and colours, patterns and emblems (see backgrounds.rs).
+            let all: Vec<gtk::TargetEntry> = drop_targets().into_iter().chain(crate::backgrounds::targets()).collect();
+            view.drag_dest_set(gtk::DestDefaults::empty(), &all, dnd_actions());
             // Files are moved by ops, which the monitor picks up. Never let GTK
             // remove the dragged row from the store behind our index's back.
             view.connect_drag_data_delete(|v, _| v.stop_signal_emission_by_name("drag-data-delete"));
@@ -1728,9 +1738,18 @@ impl Pane {
                 view.connect_drag_motion(move |view, ctx, x, y, time| {
                     let Some(p) = w.upgrade() else { return false };
                     // Nothing it can take (text, or out of an archive on Wayland): say so.
-                    if view.drag_dest_find_target(ctx, None).is_none() {
+                    let Some(kind) = view.drag_dest_find_target(ctx, None) else {
                         p.highlight_drop(None);
                         ctx.drag_status(gdk::DragAction::empty(), time);
+                        return true;
+                    };
+                    // An emblem goes on the item under it; a colour or
+                    // pattern on the folder's background (not search results).
+                    if crate::backgrounds::is_target(&kind.name()) {
+                        let on = if kind.name() == crate::backgrounds::EMBLEM_TARGET { p.item_at(x, y) } else { None };
+                        p.highlight_drop(on.as_ref().map(|t| &t.0));
+                        let ok = if kind.name() == crate::backgrounds::EMBLEM_TARGET { on.is_some() } else { !p.is_searching() };
+                        ctx.drag_status(if ok { gdk::DragAction::COPY } else { gdk::DragAction::empty() }, time);
                         return true;
                     }
                     let target = p.drop_target(x, y);
@@ -1796,6 +1815,16 @@ impl Pane {
                         return;
                     }
                     let Some(p) = w.upgrade() else { return };
+                    let kind = sel.target().name();
+                    if crate::backgrounds::is_target(&kind) {
+                        p.highlight_drop(None);
+                        let d = crate::backgrounds::parse(&kind, &sel.data());
+                        ctx.drag_finish(d.is_some(), false, time);
+                        if let Some(d) = d {
+                            p.background_dropped(x, y, d);
+                        }
+                        return;
+                    }
                     let mut uris: Vec<String> = sel.uris().iter().map(|s| s.to_string()).collect();
                     let target = p.drop_target(x, y);
                     if target.is_none() && p.is_searching() {
@@ -2323,6 +2352,7 @@ impl Pane {
         }
         self.count_dir_items(gen);
         self.read_metadata(gen);
+        self.show_background();
         // free space
         let w = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
@@ -4421,6 +4451,7 @@ impl Pane {
         self.emit(Event::Loading(true));
         let params = q.params();
         self.read_attrs_wanted();
+        self.show_background();
         let attrs = self.attrs();
         let token = self.search_gen.clone();
         let (tx, rx) = async_channel::unbounded::<Vec<(String, String)>>();
@@ -4661,6 +4692,98 @@ impl Pane {
     // --------------------------------------------------------------- DnD helpers
 
     /// Folder under the pointer that can accept a drop: (filter path, uri).
+    /// The item at (x, y) in the view shown, whatever it is.
+    fn item_at(&self, x: i32, y: i32) -> Option<(gtk::TreePath, String)> {
+        let path = match self.mode.get() {
+            ViewMode::List | ViewMode::Columns => self.tree_view.dest_row_at_pos(x, y).and_then(|(p, _)| p),
+            _ => self.icon_hit(x, y),
+        }?;
+        let r = self.row_at_filter_path(&path)?;
+        Some((path, r.uri))
+    }
+
+    /// A colour, pattern or emblem dropped (see backgrounds.rs): an emblem
+    /// on the item under it (on all the selected ones if it's one of them),
+    /// a colour or pattern as the folder's background, Reset taking it off.
+    fn background_dropped(self: &Rc<Self>, x: i32, y: i32, d: crate::backgrounds::Drop) {
+        use crate::backgrounds::Drop;
+        use crate::metadata::Value;
+        let parent = self.root.toplevel().and_downcast::<gtk::Window>();
+        let report = move |what: &'static str| {
+            move |errors: Vec<String>| {
+                if !errors.is_empty() {
+                    util::error_dialog(parent.as_ref(), what, &errors.join("\n"));
+                }
+            }
+        };
+        match d {
+            Drop::Emblem(keyword) => {
+                let Some((path, uri)) = self.item_at(x, y) else { return };
+                let selected = match self.mode.get() {
+                    ViewMode::List | ViewMode::Columns => self.tree_view.selection().path_is_selected(&path),
+                    _ => self.icon_view.path_is_selected(&path),
+                };
+                let uris = if selected { self.selected_uris() } else { vec![uri] };
+                let writes = uris
+                    .iter()
+                    .map(|u| {
+                        let mut k = self.meta.borrow().get(u).map(|m| m.emblems.clone()).unwrap_or_default();
+                        if keyword == crate::backgrounds::ERASE {
+                            k.clear();
+                        } else if !k.contains(&keyword) {
+                            k.push(keyword.clone());
+                        }
+                        (u.clone(), "emblems".to_string(), if k.is_empty() { Value::Unset } else { Value::List(k) })
+                    })
+                    .collect();
+                crate::metadata::write(writes, report("Could not change the emblems"));
+                let files: Vec<gio::File> = uris.iter().map(|u| gio::File::for_uri(u)).collect();
+                crate::window::refresh_everywhere(&files);
+            }
+            _ if self.is_searching() => {}
+            d => {
+                let (color, image) = match d {
+                    Drop::Color(c) => (c, String::new()),
+                    Drop::Pattern(p) => (String::new(), p),
+                    _ => (String::new(), String::new()),
+                };
+                let value = |v: &str| if v.is_empty() { Value::Unset } else { Value::Text(v.to_string()) };
+                let folder = self.current();
+                let writes = vec![(folder.uri().to_string(), "folder-background-color".to_string(), value(&color)), (folder.uri().to_string(), "folder-background-image".to_string(), value(&image))];
+                // Shown here at once, in the other panes there once written.
+                self.set_background(&color, &image);
+                let done = report("Could not change the background");
+                crate::metadata::write(writes, move |errors| {
+                    done(errors);
+                    crate::window::show_backgrounds_of(&folder);
+                });
+            }
+        }
+    }
+
+    fn set_background(&self, color: &str, image: &str) {
+        let _ = self.bg_css.load_from_data(crate::backgrounds::css("iconview.view:not(:selected), treeview.view:not(:selected)", color, image).as_bytes());
+    }
+
+    /// The folder's background (none in search results), read by
+    /// metadata.rs; the theme's until then.
+    pub fn show_background(self: &Rc<Self>) {
+        self.set_background("", "");
+        if self.is_searching() {
+            return;
+        }
+        let w = Rc::downgrade(self);
+        let (gen, folder) = (self.gen.get(), self.current());
+        crate::metadata::read_items(vec![folder.uri().to_string()], move |found| {
+            let Some(p) = w.upgrade() else { return };
+            if p.gen.get() == gen && p.current().equal(&folder) {
+                if let Some((_, m)) = found.first() {
+                    p.set_background(&m.bg_color, &m.bg_image);
+                }
+            }
+        });
+    }
+
     fn drop_target(&self, x: i32, y: i32) -> Option<(gtk::TreePath, String)> {
         let path = match self.mode.get() {
             ViewMode::List | ViewMode::Columns => self.tree_view.dest_row_at_pos(x, y).and_then(|(p, _)| p),

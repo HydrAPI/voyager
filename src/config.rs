@@ -97,6 +97,12 @@ pub struct Settings {
     /// util::preview_on): thumbnails, a text file's first lines in its icon,
     /// and how many items a folder has.
     pub show_thumbnails: String,
+    /// Colours added in Backgrounds and Emblems ("#rrggbb").
+    pub own_colors: Vec<String>,
+    /// The side pane's background: a colour ("#rrggbb") and/or a picture's
+    /// URI (see backgrounds.rs); empty for the theme's.
+    pub side_pane_color: String,
+    pub side_pane_image: String,
     pub text_in_icons: String,
     pub count_items: String,
     /// Images bigger than this (bytes) get no thumbnail (other files'
@@ -268,6 +274,9 @@ impl Default for Settings {
             confirm_trash: true,
             single_click: false,
             show_thumbnails: "local".into(),
+            own_colors: vec![],
+            side_pane_color: String::new(),
+            side_pane_image: String::new(),
             text_in_icons: "local".into(),
             count_items: "local".into(),
             thumbnail_limit: 10 << 20,
@@ -462,6 +471,11 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
             }
         }
     }
+    if let Ok(v) = kf.string_list(g, "own_colors") {
+        s.own_colors = v.iter().map(|x| x.to_string()).filter(|c| gdk::RGBA::parse(c).is_ok()).collect();
+    }
+    st!(side_pane_color);
+    st!(side_pane_image);
     if let Ok(v) = kf.uint64(g, "thumbnail_limit") {
         s.thumbnail_limit = v;
     }
@@ -611,6 +625,9 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_boolean(g, "confirm_trash", s.confirm_trash);
     kf.set_boolean(g, "single_click", s.single_click);
     kf.set_string(g, "show_thumbnails", &s.show_thumbnails);
+    set_string_list(&kf, g, "own_colors", &s.own_colors);
+    kf.set_string(g, "side_pane_color", &s.side_pane_color);
+    kf.set_string(g, "side_pane_image", &s.side_pane_image);
     kf.set_string(g, "text_in_icons", &s.text_in_icons);
     kf.set_string(g, "count_items", &s.count_items);
     kf.set_uint64(g, "thumbnail_limit", s.thumbnail_limit);
@@ -723,6 +740,7 @@ mod tests {
                 ("compact_levels", _) => list(&def.compact_levels[1..]),
                 ("sidebar_collapsed", _) => "devices;".into(),
                 ("show_thumbnails" | "text_in_icons" | "count_items", _) => "never".into(),
+                ("own_colors", _) => "#123456;".into(),
                 _ if v.parse::<i32>().is_ok() => (v.parse::<i32>().unwrap() + 8).to_string(),
                 _ if v.starts_with('[') => {
                     let mut items: Vec<String> = kf.string_list("General", k).unwrap().iter().map(|x| x.to_string()).collect();

@@ -12,7 +12,7 @@ use gio::prelude::*;
 use std::cell::RefCell;
 
 /// The metadata the views and Properties use.
-pub const ATTRS: &str = "metadata::emblems,metadata::annotation,metadata::custom-icon,metadata::custom-icon-name";
+pub const ATTRS: &str = "metadata::emblems,metadata::annotation,metadata::custom-icon,metadata::custom-icon-name,metadata::folder-background-color,metadata::folder-background-image";
 
 /// An item's metadata.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -24,6 +24,9 @@ pub struct Meta {
     pub icon: String,
     /// A theme icon's name.
     pub icon_name: String,
+    /// A folder's background (Caja's keys): "#rrggbb", a picture's URI.
+    pub bg_color: String,
+    pub bg_image: String,
 }
 
 impl Meta {
@@ -38,6 +41,8 @@ impl Meta {
             note: s("metadata::annotation"),
             icon: s("metadata::custom-icon"),
             icon_name: s("metadata::custom-icon-name"),
+            bg_color: s("metadata::folder-background-color"),
+            bg_image: s("metadata::folder-background-image"),
         }
     }
 

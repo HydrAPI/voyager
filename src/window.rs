@@ -275,6 +275,22 @@ fn show_chosen_columns() {
 
 /// Reads `files` again wherever they're shown (their metadata changed:
 /// GVfs doesn't tell folder monitors about that).
+/// Shows `folder`'s background again wherever it's open (it changed).
+pub fn show_backgrounds_of(folder: &gio::File) {
+    for_all_panes(|p| {
+        if !p.is_searching() && p.current().equal(folder) {
+            p.show_background();
+        }
+    });
+}
+
+/// Every window's side pane with the background now chosen.
+pub fn show_side_pane_backgrounds() {
+    for w in all_windows() {
+        w.sidebar.show_background();
+    }
+}
+
 pub fn refresh_everywhere(files: &[gio::File]) {
     for_all_panes(|p| {
         let shown: Vec<gio::File> = files.iter().filter(|f| p.shows(&f.uri())).cloned().collect();
@@ -789,7 +805,7 @@ impl AppWindow {
         edit.append_section(None, &section(&[("Dup_licate", "win.duplicate"), ("Ma_ke Link", "win.make-link"), ("_Rename…", "win.rename"), ("Copy T_o…", "win.copy-to"), ("_Move To…", "win.move-to")]));
         edit.append_section(None, &section(&[("Copy to Other _Pane", "win.copy-to-pane"), ("Move to Other Pa_ne", "win.move-to-pane")]));
         edit.append_section(None, &section(&[("Mo_ve to Trash", "win.trash"), ("_Delete", "win.delete"), ("_Restore", "win.restore")]));
-        edit.append_section(None, &section(&[("Pr_eferences", "win.preferences")]));
+        edit.append_section(None, &section(&[("_Backgrounds and Emblems…", "win.backgrounds"), ("Pr_eferences", "win.preferences")]));
         bar.append_submenu(Some("_Edit"), &edit);
 
         let view = gio::Menu::new();
@@ -1419,6 +1435,7 @@ impl AppWindow {
             });
         }
         self.add("preferences", |w| w.preferences());
+        self.add("backgrounds", |w| crate::backgrounds::show(w.window.upcast_ref()));
         self.add("about", |w| w.about());
         self.add("shortcuts", |w| w.shortcuts());
 

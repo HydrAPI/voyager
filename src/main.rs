@@ -15,6 +15,7 @@ mod folders;
 mod icons;
 mod keys;
 mod metadata;
+mod backgrounds;
 mod ops;
 mod pane;
 mod props;

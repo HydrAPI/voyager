@@ -194,10 +194,36 @@ impl Sidebar {
             pressed: RefCell::new(None),
             pressed_header: Cell::new(None),
         });
+        s.show_background();
         s.connect();
         s.refresh();
         ALL.with(|a| a.borrow_mut().push(Rc::downgrade(&s)));
         s
+    }
+
+    /// The background chosen for the side pane (a colour or pattern dropped
+    /// on it), or the theme's.
+    pub fn show_background(&self) {
+        // One setting for every window: on the screen, for Arkha's side
+        // panes only (their rows included, rebuilt as they are).
+        thread_local! {
+            static CSS: gtk::CssProvider = {
+                let css = gtk::CssProvider::new();
+                if let Some(screen) = gdk::Screen::default() {
+                    gtk::StyleContext::add_provider_for_screen(&screen, &css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+                }
+                css
+            };
+        }
+        let (color, image) = config::with(|s| (s.side_pane_color.clone(), s.side_pane_image.clone()));
+        let mut css = crate::backgrounds::css("list.arkha-sidebar", &color, &image);
+        // The rows show it through, but keep the theme's look when hovered or selected.
+        if !css.is_empty() {
+            css.push_str("\nlist.arkha-sidebar row:not(:selected):not(:hover) { background-color: transparent; background-image: none; }");
+        }
+        CSS.with(|p| {
+            let _ = p.load_from_data(css.as_bytes());
+        });
     }
 
     pub fn set_handler(&self, f: impl Fn(Request) + 'static) {
@@ -839,7 +865,10 @@ impl Sidebar {
             gtk::TargetEntry::new(BOOKMARK_TARGET, gtk::TargetFlags::SAME_APP, 1),
             gtk::TargetEntry::new(PLACE_TARGET, gtk::TargetFlags::SAME_APP, 3),
             gtk::TargetEntry::new("text/uri-list", gtk::TargetFlags::empty(), 2),
-        ];
+        ]
+        .into_iter()
+        .chain(crate::backgrounds::targets())
+        .collect::<Vec<_>>();
         let l = &self.list;
         l.drag_dest_set(gtk::DestDefaults::empty(), &targets, gdk::DragAction::COPY | gdk::DragAction::MOVE | gdk::DragAction::LINK | gdk::DragAction::ASK);
         let w = Rc::downgrade(self);
@@ -881,6 +910,10 @@ impl Sidebar {
     /// The row a drop at `y` would go to (for highlighting) and the action.
     fn drop_spot(&self, ctx: &gdk::DragContext, y: i32) -> (Option<gtk::ListBoxRow>, gdk::DragAction) {
         let none = (None, gdk::DragAction::empty());
+        // A colour or pattern (or Reset): the side pane's background.
+        if let Some(k) = self.kind(ctx).filter(|k| crate::backgrounds::is_target(k)) {
+            return (None, if k == crate::backgrounds::EMBLEM_TARGET { gdk::DragAction::empty() } else { gdk::DragAction::COPY });
+        }
         let Some(row) = self.list.row_at_y(y) else { return none };
         let i = row.index();
         let header = |sec: &str| {
@@ -917,6 +950,21 @@ impl Sidebar {
     }
 
     fn dropped(self: &Rc<Self>, ctx: &gdk::DragContext, y: i32, data: &gtk::SelectionData) -> bool {
+        use crate::backgrounds::Drop;
+        if let Some(k) = self.kind(ctx).filter(|k| crate::backgrounds::is_target(k)) {
+            let (color, image) = match crate::backgrounds::parse(&k, &data.data()) {
+                Some(Drop::Color(c)) => (c, String::new()),
+                Some(Drop::Pattern(p)) => (String::new(), p),
+                Some(Drop::Reset) => (String::new(), String::new()),
+                _ => return false,
+            };
+            config::update(|s| {
+                s.side_pane_color = color;
+                s.side_pane_image = image;
+            });
+            crate::window::show_side_pane_backgrounds();
+            return true;
+        }
         let Some(row) = self.list.row_at_y(y) else { return false };
         let i = row.index();
         match self.kind(ctx).as_deref() {
