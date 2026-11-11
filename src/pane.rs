@@ -28,11 +28,21 @@ pub const COL_THUMB: u32 = 10;
 pub const COL_CTYPE: u32 = 11;
 pub const COL_KEY: u32 = 12;
 pub const COL_ORIG: u32 = 13;
+// More about each item, for the list's columns, sorting and the icon
+// captions (see details.rs): 0 where not known.
+pub const COL_ATIME: u32 = 14;
+pub const COL_BTIME: u32 = 15;
+pub const COL_OWNER: u32 = 16;
+pub const COL_GROUP: u32 = 17;
+pub const COL_MODE: u32 = 18;
+pub const COL_ALLOC: u32 = 19;
+pub const COL_TRASHED: u32 = 20;
 
 const ATTRS: &str = "standard::name,standard::display-name,standard::type,standard::icon,\
 standard::size,standard::content-type,standard::is-hidden,standard::is-backup,\
 standard::is-symlink,standard::symlink-target,time::modified,access::can-read,\
-thumbnail::path,thumbnail::is-valid,trash::orig-path,trash::deletion-date";
+thumbnail::path,thumbnail::is-valid,trash::orig-path,trash::deletion-date,\
+time::access,time::created,owner::user,owner::group,unix::mode,standard::allocated-size";
 
 /// Typed getter for tree model cells, and the rows of a list.
 pub trait ModelGet {
@@ -95,7 +105,7 @@ fn cmp_text(m: &gtk::TreeModel, a: &gtk::TreeIter, b: &gtk::TreeIter, col: u32) 
 /// A string column's text, without copying it or checking it again for
 /// UTF-8 (as Value::get does): it's read for every item at every layout and
 /// sort, and the models only ever hold Rust strings. Empty if unset.
-fn value_str(v: &glib::Value) -> &str {
+pub(crate) fn value_str(v: &glib::Value) -> &str {
     debug_assert!(v.is::<String>());
     // SAFETY: a string Value (asserted above); its text lives as long as
     // `v`, and was valid UTF-8 when it was stored.
@@ -149,6 +159,9 @@ pub enum Event {
     Loading(bool),
     /// The user picked a sort order in the list view's column headers.
     Sort { by: String, desc: bool },
+    /// The list view's columns were chosen or reordered here (and the
+    /// setting changed): the other panes show them alike.
+    ColumnsChanged,
 }
 
 /// Where a pane's events go (the window).
@@ -166,6 +179,28 @@ pub struct RowInfo {
     pub ctype: String,
     pub size: u64,
     pub orig: String,
+}
+
+/// Whether a list view column header is held down (maybe being dragged).
+static HEADER_HELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// GTK 3 warns "Negative content width … (node button, owner GtkButton)"
+/// whenever a column header is dragged to another place: it gives the
+/// header a width of 1 pixel while it moves it (any GtkTreeView does it).
+/// That warning is left out while a header is held; all else is told.
+pub fn quiet_header_drags() {
+    // GTK logs through GLib's structured logging, so at the writer, which
+    // every message goes through (set before anything is logged).
+    glib::log_set_writer_func(|level, fields| {
+        if level == glib::LogLevel::Warning && HEADER_HELD.load(std::sync::atomic::Ordering::Relaxed) {
+            let field = |key: &str| fields.iter().find(|f| f.key() == key).and_then(|f| f.value_str());
+            let message = field("MESSAGE").unwrap_or_default();
+            if field("GLIB_DOMAIN") == Some("Gtk") && message.starts_with("Negative content width") && message.contains("owner GtkButton") {
+                return glib::LogWriterOutput::Handled;
+            }
+        }
+        glib::log_writer_default(level, fields)
+    });
 }
 
 /// Shades every second row of `tv` (also used by the bulk rename list).
@@ -395,7 +430,8 @@ pub struct Pane {
     label: crate::iconlabel::IconLabel,
     /// Caption lines under names in the icon view: 0, 1 (size) or 2 (and
     /// the date), more the larger the icons, as in Caja.
-    captions: Rc<Cell<u32>>,
+    /// The details shown under names in the icon view at this zoom level.
+    captions: Rc<RefCell<Vec<&'static str>>>,
     /// The longest side of thumbnails in the icon view.
     thumb_size: Rc<Cell<i32>>,
     /// The icon view's width the columns were last fitted to, and how many
@@ -428,11 +464,16 @@ pub struct Pane {
     list_pix: gtk::CellRendererPixbuf,
     list_text: gtk::CellRendererText,
     name_col: gtk::TreeViewColumn,
-    orig_col: gtk::TreeViewColumn,
+    /// A column for each detail (details::DETAILS), shown as chosen (see
+    /// apply_column_choice).
+    detail_cols: Vec<(&'static str, gtk::TreeViewColumn)>,
+    /// Set while apply_column_choice moves columns, so that isn't taken
+    /// for the user dragging one.
+    placing_columns: Cell<bool>,
     sort_cols: Vec<(u32, gtk::TreeViewColumn)>,
-    /// The list view's columns with the model column of their text and
-    /// whether they show an icon too (for fitting them to their contents).
-    fit_cols: Vec<(gtk::TreeViewColumn, u32, bool)>,
+    /// The list view's columns with what they show ("name" or a detail)
+    /// and whether they show an icon too (for fitting them to their contents).
+    fit_cols: Vec<(gtk::TreeViewColumn, &'static str, bool)>,
     info_bar: gtk::InfoBar,
     /// Empty Trash and Restore above the trash folder, as in Caja.
     trash_bar: gtk::InfoBar,
@@ -560,12 +601,19 @@ impl Pane {
             String::static_type(),
             String::static_type(),
             String::static_type(),
+            i64::static_type(),
+            i64::static_type(),
+            String::static_type(),
+            String::static_type(),
+            u32::static_type(),
+            u64::static_type(),
+            i64::static_type(),
         ]);
 
         // Sorting (folders first, regardless of direction). A big folder
         // takes tens of thousands of comparisons: the names, dearest to
         // read, only on a tie.
-        for id in 0..4u32 {
+        for id in 0..crate::details::sort_count() {
             let ff = folders_first.clone();
             store.set_sort_func(gtk::SortColumn::Index(id), move |m, a, b| {
                 if ff.get() {
@@ -580,12 +628,7 @@ impl Pane {
                         return if desc { o.reverse() } else { o };
                     }
                 }
-                let o = match id {
-                    1 => m.gv::<u64>(a, COL_SIZE as i32).cmp(&m.gv::<u64>(b, COL_SIZE as i32)),
-                    2 => cmp_text(m, a, b, COL_TYPE),
-                    3 => m.gv::<i64>(a, COL_MTIME as i32).cmp(&m.gv::<i64>(b, COL_MTIME as i32)),
-                    _ => Ordering::Equal,
-                };
+                let o = if id == 0 { Ordering::Equal } else { crate::details::cmp(crate::details::sort_name(id), m, a, b) };
                 o.then_with(|| cmp_text(m, a, b, COL_KEY))
             });
         }
@@ -642,7 +685,7 @@ impl Pane {
         CellRendererExt::set_alignment(&icon_pix, 0.5, 1.0);
         let label = crate::iconlabel::IconLabel::new();
         let icon_text: gtk::CellRendererText = label.clone().upcast();
-        let captions = Rc::new(Cell::new(0u32));
+        let captions: Rc<RefCell<Vec<&'static str>>> = Rc::default();
         let thumb_size = Rc::new(Cell::new(64));
         let icon_columns = Rc::new(Cell::new(1));
         let labels_shown = Rc::new(Cell::new(true));
@@ -671,7 +714,7 @@ impl Pane {
                         label.set_label_text(value_str(&m.value(it, COL_NAME as i32)));
                         return;
                     }
-                    label.set_label_text(&icon_cell_text(m, it, captions.get(), columns.get()));
+                    label.set_label_text(&icon_cell_text(m, it, &captions.borrow(), columns.get()));
             });
             text_fill = fill.clone();
             CellLayoutExt::set_cell_data_func(&icon_view, &icon_text, Some(Box::new(move |_, cell, m, it| fill(cell, m, it))));
@@ -769,39 +812,51 @@ impl Pane {
             );
         }
         tree_view.append_column(&name_col);
-        let mk_col = |title: &str, col: u32, xalign: f32, width: i32| {
+        // A column for every detail, hidden until chosen. Those whose text
+        // the model holds show it; the others make it for the rows drawn.
+        let mut detail_cols = vec![];
+        for d in crate::details::DETAILS {
             let c = gtk::TreeViewColumn::new();
-            c.set_title(title);
+            c.set_title(d.title);
             c.set_resizable(true);
+            // At least as wide as its title, with room for the sort arrow.
+            let width = d.min_width.max(tree_view.create_pango_layout(Some(d.title)).pixel_size().0 + 32);
             c.set_min_width(width);
+            c.set_reorderable(true);
             let r = gtk::CellRendererText::new();
-            r.set_xalign(xalign);
+            r.set_xalign(d.xalign);
             r.set_property("ellipsize", pango::EllipsizeMode::End);
             CellLayoutExt::pack_start(&c, &r, true);
-            CellLayoutExt::add_attribute(&c, &r, "text", col as i32);
-            c
-        };
-        let size_col = mk_col("Size", COL_SIZE_TEXT, 1.0, 90);
-        let type_col = mk_col("Type", COL_TYPE, 0.0, 130);
-        let date_col = mk_col("Modified", COL_MTIME_TEXT, 0.0, 150);
-        let orig_col = mk_col("Original Location", COL_ORIG, 0.0, 160);
-        for c in [&size_col, &type_col, &date_col, &orig_col] {
-            tree_view.append_column(c);
+            let held = match d.id {
+                "size" => Some(COL_SIZE_TEXT),
+                "type" => Some(COL_TYPE),
+                "mtime" => Some(COL_MTIME_TEXT),
+                "orig" => Some(COL_ORIG),
+                _ => None,
+            };
+            match held {
+                Some(col) => CellLayoutExt::add_attribute(&c, &r, "text", col as i32),
+                None => {
+                    let id = d.id;
+                    CellLayoutExt::set_cell_data_func(
+                        &c,
+                        &r,
+                        Some(Box::new(move |_, cell, m, it| cell.set_property("text", crate::details::text(id, m, it)))),
+                    );
+                }
+            }
+            c.set_visible(false);
+            // The list's rows are all as high (fixed height mode), which
+            // takes columns of a set width.
+            c.set_sizing(gtk::TreeViewColumnSizing::Fixed);
+            c.set_fixed_width(width);
+            tree_view.append_column(&c);
+            detail_cols.push((d.id, c));
         }
-        orig_col.set_visible(false);
-        let fit_cols = vec![
-            (name_col.clone(), COL_NAME, true),
-            (size_col.clone(), COL_SIZE_TEXT, false),
-            (type_col.clone(), COL_TYPE, false),
-            (date_col.clone(), COL_MTIME_TEXT, false),
-            (orig_col.clone(), COL_ORIG, false),
-        ];
-        let sort_cols = vec![
-            (0, name_col.clone()),
-            (1, size_col),
-            (2, type_col),
-            (3, date_col),
-        ];
+        let mut fit_cols = vec![(name_col.clone(), "name", true)];
+        fit_cols.extend(detail_cols.iter().map(|(id, c)| (c.clone(), *id, false)));
+        let mut sort_cols = vec![(0, name_col.clone())];
+        sort_cols.extend(detail_cols.iter().map(|(id, c)| (crate::details::sort_id(id), c.clone())));
         for (_, c) in &sort_cols {
             c.set_clickable(true);
         }
@@ -952,7 +1007,8 @@ impl Pane {
             list_pix,
             list_text,
             name_col,
-            orig_col,
+            detail_cols,
+            placing_columns: Cell::new(false),
             sort_cols,
             fit_cols,
             info_bar,
@@ -1533,14 +1589,76 @@ impl Pane {
                 true
             });
         }
+        // A right click on a column header: which columns to show.
+        let held = |on: bool| HEADER_HELD.store(on, std::sync::atomic::Ordering::Relaxed);
+        self.tree_view.connect_button_release_event(move |_, _| {
+            held(false);
+            glib::Propagation::Proceed
+        });
+        for (_, col) in &self.sort_cols {
+            let Some(button) = col.button() else { continue };
+            let w = w.clone();
+            button.connect_button_release_event(move |_, _| {
+                held(false);
+                glib::Propagation::Proceed
+            });
+            button.connect_button_press_event(move |_, ev| {
+                if ev.button() == 1 {
+                    held(true);
+                }
+                if ev.button() != 3 {
+                    return glib::Propagation::Proceed;
+                }
+                if let Some(p) = w.upgrade() {
+                    p.column_menu(ev);
+                }
+                glib::Propagation::Stop
+            });
+        }
+        // A column dragged to another place: kept in that order everywhere.
+        {
+            let w = w.clone();
+            self.tree_view.connect_columns_changed(move |tv| {
+                let Some(p) = w.upgrade() else { return };
+                // A drag ends with its column put down.
+                HEADER_HELD.store(false, std::sync::atomic::Ordering::Relaxed);
+                // Not while columns are placed, or taken away (the pane closing).
+                let all = tv.columns();
+                if p.placing_columns.get() || p.columns_mode.get() || all.len() != p.detail_cols.len() + 1 {
+                    return;
+                }
+                // The name stays first (a column dropped before it goes after).
+                if all.first() != Some(&p.name_col) {
+                    p.placing_columns.set(true);
+                    tv.move_column_after(&p.name_col, None::<&gtk::TreeViewColumn>);
+                    p.placing_columns.set(false);
+                }
+                let chosen = config::with(|s| crate::details::known(&s.list_columns));
+                let order: Vec<&'static str> = all
+                    .iter()
+                    .filter_map(|c| p.detail_cols.iter().find(|(_, dc)| dc == c).map(|(id, _)| *id))
+                    .filter(|id| chosen.contains(id))
+                    .collect();
+                if order != chosen {
+                    config::update(|s| s.list_columns = order.iter().map(|id| id.to_string()).collect());
+                    // The other panes, once GTK is done with the drag.
+                    let w = Rc::downgrade(&p);
+                    glib::idle_add_local_once(move || {
+                        if let Some(p) = w.upgrade() {
+                            p.emit(Event::ColumnsChanged);
+                        }
+                    });
+                }
+            });
+        }
         for (id, col) in &self.sort_cols {
             let w = w.clone();
             let id = *id;
             col.connect_clicked(move |_| {
                 if let Some(p) = w.upgrade() {
                     let (cur, desc) = p.sort_state();
-                    let name = sort_name(id);
-                    let desc = if cur == name { !desc } else { id == 3 || id == 1 };
+                    let name = crate::details::sort_name(id);
+                    let desc = if cur == name { !desc } else { crate::details::get(name).is_some_and(|d| d.desc_first) };
                     p.emit(Event::Sort { by: name.to_string(), desc });
                 }
             });
@@ -2073,7 +2191,7 @@ impl Pane {
         self.loading.set(true);
         *self.free_space.borrow_mut() = None;
         let file = self.current();
-        self.orig_col.set_visible(self.is_trash());
+        self.apply_column_choice();
         self.tab_label.set_text(&self.title());
         self.tab_label.set_tooltip_text(Some(&util::pretty_location(&file)));
         self.apply_folder_settings();
@@ -2644,6 +2762,13 @@ impl Pane {
         };
         let key = collate_key(&display);
         let mtext = util::format_time(mtime);
+        let atime = info.attribute_uint64("time::access") as i64;
+        let btime = info.attribute_uint64("time::created") as i64;
+        let owner = info.attribute_string("owner::user").map(|s| s.to_string()).unwrap_or_default();
+        let group = info.attribute_string("owner::group").map(|s| s.to_string()).unwrap_or_default();
+        let mode = info.attribute_uint32("unix::mode");
+        let alloc = info.attribute_uint64("standard::allocated-size");
+        let trashed = trash_time(info);
 
         if self.editing.borrow().as_deref() == Some(uri.as_str()) {
             return; // don't disturb an in-progress rename
@@ -2672,6 +2797,13 @@ impl Pane {
                     && st_.gv::<String>(&it, COL_THUMB as i32) == thumb
                     && st_.gv::<String>(&it, COL_CTYPE as i32) == ctype
                     && st_.gv::<String>(&it, COL_ORIG as i32) == orig
+                    && st_.gv::<i64>(&it, COL_ATIME as i32) == atime
+                    && st_.gv::<i64>(&it, COL_BTIME as i32) == btime
+                    && st_.gv::<String>(&it, COL_OWNER as i32) == owner
+                    && st_.gv::<String>(&it, COL_GROUP as i32) == group
+                    && st_.gv::<u32>(&it, COL_MODE as i32) == mode
+                    && st_.gv::<u64>(&it, COL_ALLOC as i32) == alloc
+                    && st_.gv::<i64>(&it, COL_TRASHED as i32) == trashed
                     && match (st_.gv::<Option<gio::Icon>>(&it, COL_ICON as i32), &icon) {
                         (Some(a), Some(b)) => a.equal(Some(b)),
                         (a, b) => a.is_none() && b.is_none(),
@@ -2695,6 +2827,13 @@ impl Pane {
                         (COL_CTYPE, &ctype),
                         (COL_KEY, &key),
                         (COL_ORIG, &orig),
+                        (COL_ATIME, &atime),
+                        (COL_BTIME, &btime),
+                        (COL_OWNER, &owner),
+                        (COL_GROUP, &group),
+                        (COL_MODE, &mode),
+                        (COL_ALLOC, &alloc),
+                        (COL_TRASHED, &trashed),
                     ],
                 );
             }
@@ -2716,6 +2855,13 @@ impl Pane {
                         (COL_CTYPE, &ctype),
                         (COL_KEY, &key),
                         (COL_ORIG, &orig),
+                        (COL_ATIME, &atime),
+                        (COL_BTIME, &btime),
+                        (COL_OWNER, &owner),
+                        (COL_GROUP, &group),
+                        (COL_MODE, &mode),
+                        (COL_ALLOC, &alloc),
+                        (COL_TRASHED, &trashed),
                     ],
                 );
                 self.index.borrow_mut().insert(uri.clone(), it);
@@ -3246,12 +3392,14 @@ impl Pane {
     /// Makes `col` exactly as wide as its widest text (and the header's),
     /// for every row in the folder, not just those in view.
     fn fit_column(&self, col: &gtk::TreeViewColumn) {
-        let Some((_, text_col, icon)) = self.fit_cols.iter().find(|(c, _, _)| c == col) else { return };
+        let Some((_, id, icon)) = self.fit_cols.iter().find(|(c, _, _)| c == col) else { return };
         let tv = &self.tree_view;
         let text_width = |t: &str| tv.create_pango_layout(Some(t)).pixel_size().0;
         let mut width = 0;
+        let m: &gtk::TreeModel = self.filter.upcast_ref();
         for it in self.filter.rows() {
-            width = width.max(text_width(&self.filter.gv::<String>(&it, *text_col as i32)));
+            let text = if *id == "name" { m.gv::<String>(&it, COL_NAME as i32) } else { crate::details::text(id, m, &it) };
+            width = width.max(text_width(&text));
         }
         // Cell padding, and the icon with its gap in the Name column.
         width += 12;
@@ -3269,15 +3417,77 @@ impl Pane {
 
     // ------------------------------------------------------------ columns view
 
+    /// Shows the list view's columns as chosen (Settings::list_columns), in
+    /// that order after the name; in search results also each one's folder,
+    /// and in the Trash when and from where each item was put there. Just
+    /// the names in the columns view.
+    pub fn apply_column_choice(&self) {
+        let mut shown = config::with(|s| crate::details::known(&s.list_columns));
+        if self.is_searching() {
+            if !shown.contains(&"location") {
+                shown.push("location");
+            }
+        } else if self.is_trash() {
+            shown.extend(["trashed", "orig"]);
+        }
+        if self.columns_mode.get() {
+            shown.clear();
+        }
+        self.placing_columns.set(true);
+        let mut prev = self.name_col.clone();
+        for id in &shown {
+            if let Some((_, c)) = self.detail_cols.iter().find(|(i, _)| i == id) {
+                self.tree_view.move_column_after(c, Some(&prev));
+                c.set_visible(true);
+                prev = c.clone();
+            }
+        }
+        for (id, c) in &self.detail_cols {
+            if !shown.contains(id) {
+                c.set_visible(false);
+            }
+        }
+        self.placing_columns.set(false);
+    }
+
+    /// The column headers' menu: which columns to show, and the chooser.
+    fn column_menu(self: &Rc<Self>, event: &gdk::Event) {
+        let menu = gtk::Menu::new();
+        let chosen = config::with(|s| crate::details::known(&s.list_columns));
+        for d in crate::details::choosable() {
+            let item = gtk::CheckMenuItem::with_label(d.title);
+            item.set_active(chosen.contains(&d.id));
+            let w = Rc::downgrade(self);
+            let id = d.id;
+            item.connect_toggled(move |item| {
+                let on = item.is_active();
+                config::update(|s| {
+                    s.list_columns.retain(|c| c != id);
+                    if on {
+                        s.list_columns.push(id.to_string());
+                    }
+                });
+                if let Some(p) = w.upgrade() {
+                    p.emit(Event::ColumnsChanged);
+                }
+            });
+            menu.append(&item);
+        }
+        menu.append(&gtk::SeparatorMenuItem::new());
+        let more = gtk::MenuItem::with_mnemonic("_Visible Columns…");
+        more.set_action_name(Some("win.visible-columns"));
+        menu.append(&more);
+        menu.show_all();
+        menu.set_attach_widget(Some(&self.tree_view));
+        menu.popup_at_pointer(Some(event));
+    }
+
     /// Switches the list view's place between the list and the columns.
     fn apply_columns_layout(&self) {
         let on = self.mode.get() == ViewMode::Columns;
         self.columns_mode.set(on);
         // Just the names in the open folder's column.
-        for (c, _, _) in &self.fit_cols[1..] {
-            c.set_visible(!on);
-        }
-        self.orig_col.set_visible(!on && self.is_trash());
+        self.apply_column_choice();
         self.tree_view.set_headers_visible(!on);
         if on {
             // A width fitted in the list view doesn't fit a column.
@@ -3582,7 +3792,7 @@ impl Pane {
                 iv.set_column_spacing(4);
                 iv.set_spacing(2);
                 self.labels_shown.set(true);
-                self.captions.set(0);
+                self.captions.borrow_mut().clear();
                 self.image.set_tint(false);
                 self.image.set_x_shift(0);
                 self.label.set_x_shift(0);
@@ -3611,11 +3821,7 @@ impl Pane {
                 self.label.set_style(3, if size <= 24 { -2 } else { 0 });
                 // The text starts at the icon's bottom, 1 px in.
                 self.icon_text.set_padding(self.icon_text.padding().0, 1);
-                self.captions.set(match size {
-                    ..=71 => 0,
-                    72..=191 => 1,
-                    _ => 2,
-                });
+                *self.captions.borrow_mut() = config::with(|s| crate::details::shown_captions(&s.icon_captions, size));
                 self.thumb_size.set(px(64.0));
                 self.image.set_tint(true);
                 iv.style_context().add_class("caja-like");
@@ -3658,7 +3864,7 @@ impl Pane {
         }
         if self.labels_shown.get() {
             if let Some(r) = cell_rect(iv, path, &self.icon_text) {
-                let text = icon_cell_text(&model, &it, self.captions.get(), self.icon_columns.get());
+                let text = icon_cell_text(&model, &it, &self.captions.borrow(), self.icon_columns.get());
                 boxes.extend(self.label.text_box(iv.upcast_ref(), &r, &text, iv.path_is_selected(path)));
             }
         }
@@ -3870,7 +4076,7 @@ impl Pane {
                     let uri: String = model.gv(&it, COL_URI as i32);
                     if editing.as_deref() != Some(uri.as_str()) {
                         if let Some(rect) = cell_rect(iv, &path, &self.icon_text) {
-                            let text = icon_label_text(&model, &it, self.captions.get());
+                            let text = icon_label_text(&model, &it, &self.captions.borrow());
                             if selected {
                                 self.label.draw_selected(iv.upcast_ref(), cr, &rect, &text);
                             } else {
@@ -3965,16 +4171,16 @@ impl Pane {
 
     pub fn sort_state(&self) -> (String, bool) {
         match self.store.sort_column_id() {
-            Some((gtk::SortColumn::Index(i), t)) => (sort_name(i).to_string(), t == gtk::SortType::Descending),
+            Some((gtk::SortColumn::Index(i), t)) => (crate::details::sort_name(i).to_string(), t == gtk::SortType::Descending),
             _ => ("name".into(), false),
         }
     }
 
     pub fn apply_sort(&self, by: &str, desc: bool) {
-        let id = sort_id(by);
+        let id = crate::details::sort_id(by);
         let order = if desc { gtk::SortType::Descending } else { gtk::SortType::Ascending };
         // Force a resort even when unchanged (e.g. folders-first toggled).
-        self.store.set_sort_column_id(gtk::SortColumn::Index((id + 1) % 4), order);
+        self.store.set_sort_column_id(gtk::SortColumn::Index((id + 1) % crate::details::sort_count()), order);
         self.store.set_sort_column_id(gtk::SortColumn::Index(id), order);
         for (cid, col) in &self.sort_cols {
             col.set_sort_indicator(*cid == id);
@@ -4028,7 +4234,7 @@ impl Pane {
         self.clear_rows();
         self.loading.set(true);
         *self.free_space.borrow_mut() = None;
-        self.orig_col.set_visible(false);
+        self.apply_column_choice();
         self.tab_label.set_text(&self.title());
         self.tab_label.set_tooltip_text(Some(&self.title()));
         if self.columns_mode.get() {
@@ -4429,22 +4635,12 @@ fn cell_rect(iv: &gtk::IconView, path: &gtk::TreePath, cell: &impl IsA<gtk::Cell
     iv.cell_rect(path, Some(cell))
 }
 
-fn sort_id(by: &str) -> u32 {
-    match by {
-        "size" => 1,
-        "type" => 2,
-        "mtime" => 3,
-        _ => 0,
-    }
-}
-
-fn sort_name(id: u32) -> &'static str {
-    match id {
-        1 => "size",
-        2 => "type",
-        3 => "mtime",
-        _ => "name",
-    }
+/// When an item in the Trash was put there (0 elsewhere): its
+/// trash::deletion-date is the local time without a zone, "2026-11-11T13:05:00".
+fn trash_time(info: &gio::FileInfo) -> i64 {
+    info.attribute_string("trash::deletion-date")
+        .and_then(|d| glib::DateTime::from_iso8601(&d, Some(&glib::TimeZone::local())).ok())
+        .map_or(0, |d| d.to_unix())
 }
 
 fn count_entries(path: &std::path::Path, hidden: bool) -> Option<u64> {
@@ -4531,7 +4727,7 @@ async fn read_infos(found: Vec<(String, String)>) -> Vec<(gio::File, gio::FileIn
 /// What an icon view's name cell shows: its label text (see
 /// icon_label_text), whole in the last row, as Caja shows it: there's
 /// nothing below for it to cover.
-fn icon_cell_text(m: &gtk::TreeModel, it: &gtk::TreeIter, captions: u32, columns: i32) -> String {
+fn icon_cell_text(m: &gtk::TreeModel, it: &gtk::TreeIter, captions: &[&str], columns: i32) -> String {
     let mut text = icon_label_text(m, it, captions);
     let cols = columns.max(1);
     let last_row_start = (m.iter_n_children(None) - 1).max(0) / cols * cols;
@@ -4541,20 +4737,16 @@ fn icon_cell_text(m: &gtk::TreeModel, it: &gtk::TreeIter, captions: u32, columns
     text
 }
 
-/// An icon view label's text: the name, then the captions Caja shows at
-/// large zoom levels (the size or number of items, then the date).
-fn icon_label_text(m: &gtk::TreeModel, it: &gtk::TreeIter, captions: u32) -> String {
+/// An icon view label's text: the name, then the captions shown at this
+/// zoom level (see details::shown_captions), a line each.
+fn icon_label_text(m: &gtk::TreeModel, it: &gtk::TreeIter, captions: &[&str]) -> String {
     let mut text = value_str(&m.value(it, COL_NAME as i32)).to_string();
-    if captions >= 1 {
-        let size: String = m.gv(it, COL_SIZE_TEXT as i32);
+    for id in captions {
+        let line = crate::details::text(id, m, it);
         text.push(crate::iconlabel::CAPTION_SEP);
-        // Kept until a folder's items are counted, so the label doesn't grow.
-        text.push_str(if size.is_empty() { "…" } else { &size });
-    }
-    if captions >= 2 {
-        let date = glib::DateTime::from_unix_local(m.gv(it, COL_MTIME as i32)).ok().and_then(|d| d.format("%c").ok()).map(|d| d.to_string()).unwrap_or_default();
-        text.push(crate::iconlabel::CAPTION_SEP);
-        text.push_str(&date);
+        // A folder's size is kept until its items are counted, so the
+        // label doesn't grow.
+        text.push_str(if line.is_empty() && *id == "size" { "…" } else { &line });
     }
     text
 }
@@ -4677,15 +4869,11 @@ mod tests {
     }
 
     #[test]
-    fn names_of_modes_and_sorting() {
+    fn names_of_modes_and_types() {
         for m in [ViewMode::Icon, ViewMode::List, ViewMode::Compact, ViewMode::Columns] {
             assert_eq!(ViewMode::from_str(m.as_str()), m);
         }
         assert_eq!(ViewMode::from_str("bogus"), ViewMode::Icon);
-        for by in ["name", "size", "type", "mtime"] {
-            assert_eq!(sort_name(sort_id(by)), by);
-        }
-        assert_eq!(sort_id("bogus"), 0);
         assert_eq!(type_description("inode/directory", true), "Folder");
         assert!(!type_description("text/plain", false).is_empty());
     }

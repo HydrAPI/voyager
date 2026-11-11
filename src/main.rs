@@ -6,6 +6,7 @@ mod bulkrename;
 mod clipboard;
 mod columns;
 mod config;
+mod details;
 mod iconlabel;
 mod iconview;
 mod info;
@@ -30,6 +31,7 @@ use gio::prelude::*;
 use gtk::prelude::*;
 
 fn main() -> glib::ExitCode {
+    pane::quiet_header_drags();
     // Before any window: they load icons (see there).
     util::tell_metadata_store_in_background();
     let app = gtk::Application::new(

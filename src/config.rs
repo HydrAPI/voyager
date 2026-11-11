@@ -66,6 +66,11 @@ pub struct Settings {
     /// Order of the side pane's sections (see SIDEBAR_SECTIONS); rearranged
     /// by dragging their headings.
     pub sidebar_sections: Vec<String>,
+    /// The list view's columns after the name, in order (see details.rs).
+    pub list_columns: Vec<String>,
+    /// What shows under the names in the icon view, the more of them the
+    /// bigger the icons (see details::shown_captions); "none" leaves a gap.
+    pub icon_captions: Vec<String>,
     /// Side pane sections showing only their heading.
     pub sidebar_collapsed: Vec<String>,
     /// Mount removable media when inserted (see sidebar::init_automount);
@@ -239,6 +244,8 @@ impl Default for Settings {
             bar_order: BAR_ITEMS.iter().map(|g| g.to_string()).collect(),
             rename_tab_order: RENAME_TABS.iter().map(|t| t.to_string()).collect(),
             sidebar_sections: SIDEBAR_SECTIONS.iter().map(|t| t.to_string()).collect(),
+            list_columns: crate::details::DEFAULT_COLUMNS.iter().map(|t| t.to_string()).collect(),
+            icon_captions: crate::details::DEFAULT_CAPTIONS.iter().map(|t| t.to_string()).collect(),
             sidebar_collapsed: vec![],
             automount: true,
             unmount_only: false,
@@ -393,6 +400,17 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
             }
         }
         s.rename_tab_order = order;
+    }
+    if let Ok(v) = kf.string_list(g, "list_columns") {
+        let v: Vec<String> = v.iter().map(|x| x.to_string()).collect();
+        s.list_columns = crate::details::known(&v).iter().map(|t| t.to_string()).collect();
+    }
+    if let Ok(v) = kf.string_list(g, "icon_captions") {
+        // Three places; any not known are gaps.
+        let v: Vec<String> = v.iter().map(|x| x.to_string()).collect();
+        s.icon_captions = (0..3)
+            .map(|i| v.get(i).filter(|c| crate::details::known(std::slice::from_ref(c)).len() == 1).cloned().unwrap_or_else(|| "none".into()))
+            .collect();
     }
     if let Ok(v) = kf.string_list(g, "sidebar_sections") {
         let mut order: Vec<String> = vec![];
@@ -564,6 +582,8 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     set_string_list(&kf, g, "bar_order", &s.bar_order);
     set_string_list(&kf, g, "rename_tab_order", &s.rename_tab_order);
     set_string_list(&kf, g, "sidebar_sections", &s.sidebar_sections);
+    set_string_list(&kf, g, "list_columns", &s.list_columns);
+    set_string_list(&kf, g, "icon_captions", &s.icon_captions);
     kf.set_boolean(g, "automount", s.automount);
     kf.set_boolean(g, "unmount_only", s.unmount_only);
     kf.set_boolean(g, "path_as_text", s.path_as_text);
@@ -718,6 +738,21 @@ mod tests {
         set_string_list(&kf, "G", "k", &odd);
         let back: Vec<String> = kf.string_list("G", "k").unwrap().iter().map(|x| x.to_string()).collect();
         assert_eq!(back, odd);
+    }
+
+    #[test]
+    fn columns_and_captions() {
+        let kf = glib::KeyFile::new();
+        kf.set_value("General", "list_columns", "owner;bogus;size;owner;orig;");
+        kf.set_value("General", "icon_captions", "type;bogus;");
+        let s = from_keyfile(&kf);
+        assert_eq!(s.list_columns, ["owner", "size"]);
+        assert_eq!(s.icon_captions, ["type", "none", "none"]);
+        // No columns at all is a choice too, and kept.
+        let none = Settings { list_columns: vec![], ..Settings::default() };
+        assert!(from_keyfile(&to_keyfile(&none)).list_columns.is_empty());
+        let d = Settings::default();
+        assert_eq!(from_keyfile(&to_keyfile(&d)).icon_captions, ["none", "size", "mtime"]);
     }
 
     #[test]

@@ -299,8 +299,11 @@ class Run:
         for d in [".config/arkha", ".local/share", ".cache"]:
             os.makedirs(os.path.join(self.home, d), exist_ok=True)
         # Never asking before trashing: nothing could answer on Wayland.
+        # Every list column and some icon captions, so all of them are drawn.
         with open(os.path.join(self.home, ".config/arkha/arkha.conf"), "w") as f:
-            f.write("[General]\nconfirm_trash=false\n")
+            f.write("[General]\nconfirm_trash=false\n"
+                    "list_columns=size;type;mtime;atime;btime;owner;group;permissions;octal;mime;extension;location;disk;\n"
+                    "icon_captions=owner;permissions;extension;\n")
         self.files = make_fixture(self.home, random.Random(args.seed))
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         self.procs = []
@@ -468,7 +471,8 @@ class Run:
         if kind == "view":
             return V("s", rnd.choice(["icon", "list", "compact", "columns"]))
         if kind == "sort":
-            return V("s", rnd.choice(["name", "size", "type", "mtime"]))
+            return V("s", rnd.choice(["name", "size", "type", "mtime", "atime", "btime", "owner", "group", "permissions",
+                                      "octal", "mime", "extension", "location", "disk", "trashed", "orig"]))
         if kind == "template":
             return V("s", self.Gio.File.new_for_path(os.path.join(self.home, "Templates/Empty Text.txt")).get_uri())
         if kind == "toggle":

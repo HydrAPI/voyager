@@ -160,6 +160,109 @@ fn owner_of(pane: &Rc<Pane>) -> Option<Rc<AppWindow>> {
     all_windows().into_iter().find(|w| w.panes.borrow().iter().any(|p| Rc::ptr_eq(p, pane)))
 }
 
+/// Arrange Items' sort orders: the name and the first three details (the
+/// usual ones), or (`more`) the others there are menu items for.
+fn sort_section(more: bool) -> gio::Menu {
+    let menu = gio::Menu::new();
+    if !more {
+        menu.append(Some("By _Name"), Some("win.sort-by::name"));
+    }
+    for (i, d) in crate::details::DETAILS.iter().enumerate() {
+        if let Some(label) = d.menu.filter(|_| (i >= 3) == more) {
+            menu.append(Some(label), Some(&format!("win.sort-by::{}", d.id)));
+        }
+    }
+    menu
+}
+
+/// The list view's columns to choose and put in order (Preferences, and
+/// View → Visible Columns): each detail with a check box, those shown first
+/// and in their order. Changes show at once.
+fn column_chooser() -> gtk::Box {
+    let outer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    let list = gtk::ListBox::new();
+    list.set_selection_mode(gtk::SelectionMode::Single);
+    let sw = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
+    sw.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    sw.set_shadow_type(gtk::ShadowType::In);
+    // All of them without scrolling.
+    sw.set_min_content_height(370);
+    sw.set_hexpand(true);
+    sw.add(&list);
+    let buttons = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let up = gtk::Button::with_mnemonic("Move _Up");
+    let down = gtk::Button::with_mnemonic("Move _Down");
+    let reset = gtk::Button::with_mnemonic("_Reset to Default");
+    for b in [&up, &down, &reset] {
+        buttons.add(b);
+    }
+    outer.pack_start(&sw, true, true, 0);
+    outer.pack_start(&buttons, false, false, 0);
+
+    // The setting: the checked rows' details, in the list's order.
+    let save = {
+        let list = list.clone();
+        Rc::new(move || {
+            let ids: Vec<String> = list
+                .children()
+                .iter()
+                .filter_map(|row| {
+                    let check = row.downcast_ref::<gtk::ListBoxRow>()?.child()?.downcast::<gtk::CheckButton>().ok()?;
+                    check.is_active().then(|| row.widget_name().to_string())
+                })
+                .collect();
+            config::update(|s| s.list_columns = ids);
+            for_all_panes(|p| p.apply_column_choice());
+        })
+    };
+    let fill: Rc<dyn Fn()> = {
+        let (list, save) = (list.clone(), save.clone());
+        Rc::new(move || {
+            for c in list.children() {
+                list.remove(&c);
+            }
+            let chosen = config::with(|s| crate::details::known(&s.list_columns));
+            let rest = crate::details::choosable().map(|d| d.id).filter(|id| !chosen.contains(id));
+            for id in chosen.iter().copied().chain(rest.collect::<Vec<_>>()) {
+                let Some(d) = crate::details::get(id) else { continue };
+                let row = gtk::ListBoxRow::new();
+                row.set_widget_name(d.id);
+                let check = gtk::CheckButton::with_label(d.title);
+                check.set_active(chosen.contains(&d.id));
+                check.set_margin_start(6);
+                let save = save.clone();
+                check.connect_toggled(move |_| save());
+                row.add(&check);
+                list.add(&row);
+            }
+            list.show_all();
+        })
+    };
+    fill();
+    let shift = |by: i32| {
+        let (list, save) = (list.clone(), save.clone());
+        move |_: &gtk::Button| {
+            let Some(row) = list.selected_row() else { return };
+            let to = row.index() + by;
+            if to < 0 || to >= list.children().len() as i32 {
+                return;
+            }
+            list.remove(&row);
+            list.insert(&row, to);
+            list.select_row(Some(&row));
+            save();
+        }
+    };
+    up.connect_clicked(shift(-1));
+    down.connect_clicked(shift(1));
+    reset.connect_clicked(move |_| {
+        config::update(|s| s.list_columns = crate::details::DEFAULT_COLUMNS.iter().map(|c| c.to_string()).collect());
+        fill();
+        for_all_panes(|p| p.apply_column_choice());
+    });
+    outer
+}
+
 fn for_all_panes(f: impl Fn(&Rc<Pane>)) {
     for w in all_windows() {
         for p in w.panes.borrow().iter() {
@@ -674,9 +777,11 @@ impl AppWindow {
         view.append_section(None, &section(&[("S_witch to Other Pane", "win.switch-pane"), ("Same Location as O_ther Pane", "win.same-location")]));
         view.append_section(None, &section(&[("_Main Toolbar", "win.show-toolbar"), ("Location _Bar", "win.show-locbar")]));
         let sort = gio::Menu::new();
-        sort.append_section(None, &section(&[("By _Name", "win.sort-by::name"), ("By _Size", "win.sort-by::size"), ("By _Type", "win.sort-by::type"), ("By Modification _Date", "win.sort-by::mtime")]));
+        sort.append_section(None, &sort_section(false));
+        sort.append_section(None, &sort_section(true));
         sort.append_section(None, &section(&[("_Reversed Order", "win.sort-desc"), ("_Folders Before Files", "win.folders-first")]));
         view.append_submenu(Some("Arrange _Items"), &sort);
+        view.append_section(None, &section(&[("_Visible Columns…", "win.visible-columns")]));
         view.append_section(None, &section(&[("Reset View to _Defaults", "win.reset-view")]));
         view.append_section(None, &section(&[("Zoom _In", "win.zoom-in"), ("Zoom _Out", "win.zoom-out"), ("Normal Si_ze", "win.zoom-normal")]));
         view.append_section(None, &section(&[("Loc_k Toolbar", "win.lock-bar")]));
@@ -856,9 +961,8 @@ impl AppWindow {
                 }
                 if shown("bg:arrange") {
                     let arrange = gio::Menu::new();
-                    for (l, a) in [("By _Name", "win.sort-by::name"), ("By _Size", "win.sort-by::size"), ("By _Type", "win.sort-by::type"), ("By Modification _Date", "win.sort-by::mtime")] {
-                        arrange.append(Some(l), Some(a));
-                    }
+                    arrange.append_section(None, &sort_section(false));
+                    arrange.append_section(None, &sort_section(true));
                     let more = gio::Menu::new();
                     more.append(Some("_Reversed Order"), Some("win.sort-desc"));
                     more.append(Some("_Folders Before Files"), Some("win.folders-first"));
@@ -1337,6 +1441,7 @@ impl AppWindow {
             config::update(|s| s.show_locbar = v);
             w.update_locbar_visibility();
         });
+        self.add("visible-columns", |w| w.show_column_chooser());
         self.add("reset-view", |w| {
             if let Some(p) = w.current_pane() {
                 p.reset_view();
@@ -2305,12 +2410,28 @@ impl AppWindow {
             Event::Drop { uris, dest, action } => self.handle_drop(uris, dest, action),
             Event::Rename { uri, new_name } => self.rename(pane, &uri, &new_name),
             Event::Sort { by, desc } => self.user_sort(pane, &by, desc),
+            Event::ColumnsChanged => for_all_panes(|p| p.apply_column_choice()),
         }
     }
 
     /// A sort order the user picked in `pane`: remembered for its folder (and
     /// applied to other tabs showing it) with per-folder views on, otherwise
     /// the new sorting everywhere.
+    /// View → Visible Columns, as in Caja.
+    fn show_column_chooser(&self) {
+        let d = gtk::Dialog::with_buttons(Some("Visible Columns"), Some(&self.window), gtk::DialogFlags::DESTROY_WITH_PARENT, &[("_Close", gtk::ResponseType::Close)]);
+        let area = d.content_area();
+        area.set_spacing(12);
+        area.set_border_width(12);
+        let text = gtk::Label::new(Some("Choose the order of information to appear in the list view."));
+        text.set_xalign(0.0);
+        area.add(&text);
+        area.add(&column_chooser());
+        d.set_default_size(420, -1);
+        d.connect_response(|d, _| d.close());
+        d.show_all();
+    }
+
     fn user_sort(self: &Rc<Self>, pane: &Rc<Pane>, by: &str, desc: bool) {
         if config::with(|s| s.per_folder) {
             let folder = pane.current();
@@ -3545,8 +3666,11 @@ impl AppWindow {
         });
         option(&v, "View new folders using:", view.upcast_ref());
         let arrange = gtk::ComboBoxText::new();
-        for (id, label) in [("name", "By Name"), ("size", "By Size"), ("type", "By Type"), ("mtime", "By Modification Date")] {
-            arrange.append(Some(id), label);
+        arrange.append(Some("name"), "By Name");
+        for d in crate::details::DETAILS {
+            if let Some(label) = d.menu {
+                arrange.append(Some(d.id), &label.replace('_', ""));
+            }
         }
         arrange.set_active_id(Some(&s.sort_by));
         arrange.connect_changed(|c| {
@@ -3738,6 +3862,32 @@ impl AppWindow {
             }
         });
         option(&dp, "Dates:", dates.upcast_ref());
+        head(&dp, "Icon Captions");
+        let about = gtk::Label::new(Some("What shows under the names in the icon view. More of it shows as you zoom in."));
+        about.set_xalign(0.0);
+        about.set_line_wrap(true);
+        about.style_context().add_class("dim-label");
+        indent(&dp, about.upcast_ref());
+        for (i, label) in ["First:", "Second:", "Third:"].iter().enumerate() {
+            let combo = gtk::ComboBoxText::new();
+            combo.append(Some("none"), "None");
+            for d in crate::details::choosable() {
+                combo.append(Some(d.id), d.title);
+            }
+            combo.set_active_id(Some(s.icon_captions.get(i).map_or("none", |c| c.as_str())));
+            combo.connect_changed(move |c| {
+                let Some(id) = c.active_id() else { return };
+                config::update(|s| {
+                    s.icon_captions.resize(3, "none".into());
+                    s.icon_captions[i] = id.to_string();
+                });
+                for_all_panes(|p| {
+                    p.apply_zoom();
+                    p.reload();
+                });
+            });
+            option(&dp, label, combo.upcast_ref());
+        }
         head(&dp, "Window");
         let side = check("Show the side _pane");
         side.set_action_name(Some("win.show-sidebar"));
@@ -3809,6 +3959,18 @@ impl AppWindow {
         let info_b = bar_button("_Info panel", "Show or hide the info panel in the folder you're in (F11)", s.show_info_button, |s, v| s.show_info_button = v, |w| w.info_btn.clone().upcast());
         inline(&dp, "Buttons:", &[zoom_b.upcast_ref(), view_b.upcast_ref(), split_b.upcast_ref(), info_b.upcast_ref()]);
         add_page("display", "Display", "view-reveal-symbolic", &dp);
+
+        // List Columns, as in Caja.
+        let lc = page();
+        head(&lc, "List Columns");
+        let about = gtk::Label::new(Some("Choose the order of information to appear in the list view. Columns can also be dragged to another place, and a right click on the column headers shows or hides them."));
+        about.set_xalign(0.0);
+        about.set_line_wrap(true);
+        about.set_max_width_chars(60);
+        about.style_context().add_class("dim-label");
+        indent(&lc, about.upcast_ref());
+        indent(&lc, column_chooser().upcast_ref());
+        add_page("columns", "List Columns", "view-list-symbolic", &lc);
 
         // Previews: thumbnails and the Media Info tab
         let pv = page();
