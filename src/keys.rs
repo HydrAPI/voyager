@@ -136,16 +136,19 @@ pub fn is_default(action: &str) -> bool {
 
 /// Sets `action`'s shortcuts (None = back to the defaults) and applies them.
 pub fn set(app: &gtk::Application, action: &str, accels: Option<Vec<String>>) {
-    config::update(|s| {
-        s.keybindings.retain(|(a, _)| a != action);
-        if let Some(accels) = accels {
-            let default = BINDINGS.iter().find(|b| b.action == action).map(|b| b.defaults.to_vec()).unwrap_or_default();
-            if accels != default {
-                s.keybindings.push((action.to_string(), accels));
-            }
-        }
-    });
+    config::update(|s| set_in(s, action, accels));
     apply(app);
+}
+
+/// Keeps `accels` for `action` in `s` unless they're its defaults.
+fn set_in(s: &mut config::Settings, action: &str, accels: Option<Vec<String>>) {
+    s.keybindings.retain(|(a, _)| a != action);
+    if let Some(accels) = accels {
+        let default = BINDINGS.iter().find(|b| b.action == action).map(|b| b.defaults.to_vec()).unwrap_or_default();
+        if accels != default {
+            s.keybindings.push((action.to_string(), accels));
+        }
+    }
 }
 
 pub fn reset_all(app: &gtk::Application) {
@@ -195,6 +198,21 @@ mod tests {
         assert_eq!(current_in(&s, "win.new-folder"), ["F7"]);
         assert!(current_in(&s, "win.about").is_empty());
         assert!(current_in(&s, "win.no-such-action").is_empty());
+    }
+
+    #[test]
+    fn shortcuts_kept_only_when_not_the_defaults() {
+        let mut s = config::Settings::default();
+        set_in(&mut s, "win.new-folder", Some(vec!["<Ctrl><Shift>n".into()]));
+        assert!(s.keybindings.is_empty());
+        set_in(&mut s, "win.new-folder", Some(vec!["F7".into()]));
+        set_in(&mut s, "win.reload", Some(vec![]));
+        assert_eq!(s.keybindings, [("win.new-folder".to_string(), vec!["F7".to_string()]), ("win.reload".to_string(), vec![])]);
+        assert_eq!(current_in(&s, "win.new-folder"), ["F7"]);
+        // None: back to the defaults.
+        set_in(&mut s, "win.new-folder", None);
+        assert_eq!(s.keybindings, [("win.reload".to_string(), vec![])]);
+        assert_eq!(current_in(&s, "win.new-folder"), ["<Ctrl><Shift>n"]);
     }
 
     #[test]

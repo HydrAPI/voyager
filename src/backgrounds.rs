@@ -107,9 +107,14 @@ fn patterns_dir() -> std::path::PathBuf {
 
 /// Patterns: Caja's, if it's installed, then your own.
 fn patterns() -> Vec<std::path::PathBuf> {
+    patterns_in(&[std::path::PathBuf::from("/usr/share/caja/patterns"), patterns_dir()])
+}
+
+/// The pictures in `dirs`, each folder's sorted by name.
+fn patterns_in(dirs: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
     let mut out = vec![];
-    for dir in [std::path::PathBuf::from("/usr/share/caja/patterns"), patterns_dir()] {
-        if let Ok(rd) = std::fs::read_dir(&dir) {
+    for dir in dirs {
+        if let Ok(rd) = std::fs::read_dir(dir) {
             // Caja's "reset" picture is its Reset item, not a pattern.
             let mut v: Vec<_> = rd.flatten().map(|e| e.path()).filter(|p| p.is_file() && p.file_stem().is_none_or(|s| s != "reset")).collect();
             v.sort();
@@ -133,18 +138,23 @@ pub fn keyword_ok(keyword: &str) -> bool {
 /// Installs a picture as your own emblem `keyword` (as Caja does: a 48 px
 /// PNG and an .icon file naming it), for every program using the theme.
 fn add_emblem(picture: &std::path::Path, keyword: &str) -> Result<(), String> {
-    let pb = icons::load_at_scale(picture, 48).map_err(|e| e.message().to_string())?;
-    let dir = emblems_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let name = keyword.trim().to_lowercase().replace(' ', "-");
-    pb.savev(dir.join(format!("emblem-{name}.png")), "png", &[]).map_err(|e| e.message().to_string())?;
-    let _ = std::fs::write(dir.join(format!("emblem-{name}.icon")), format!("[Icon Data]\nDisplayName={}\n", keyword.trim()));
+    install_emblem(&emblems_dir(), picture, keyword)?;
     // The theme lists it once it's looked at again.
     let _ = std::fs::File::open(glib::home_dir().join(".icons").join("hicolor")).and_then(|f| f.set_modified(std::time::SystemTime::now()));
     if let Some(t) = gtk::IconTheme::default() {
         t.rescan_if_needed();
     }
     Ok(())
+}
+
+/// Writes emblem `keyword` into `dir`: the picture scaled to fit 48 px,
+/// and an .icon file with the keyword as its name.
+fn install_emblem(dir: &std::path::Path, picture: &std::path::Path, keyword: &str) -> Result<(), String> {
+    let pb = icons::load_at_scale(picture, 48).map_err(|e| e.message().to_string())?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let name = keyword.trim().to_lowercase().replace(' ', "-");
+    pb.savev(dir.join(format!("emblem-{name}.png")), "png", &[]).map_err(|e| e.message().to_string())?;
+    std::fs::write(dir.join(format!("emblem-{name}.icon")), format!("[Icon Data]\nDisplayName={}\n", keyword.trim())).map_err(|e| e.to_string())
 }
 
 /// A swatch to drag: a picture and its name.
@@ -214,11 +224,11 @@ pub fn show(parent: &gtk::Window) {
         w.present();
         return;
     }
-    let win = gtk::Window::new(gtk::WindowType::Toplevel);
-    win.set_title("Backgrounds and Emblems");
-    win.set_transient_for(Some(parent));
-    win.set_type_hint(gdk::WindowTypeHint::Dialog);
-    win.set_default_size(560, 440);
+    // A dialog (not modal) with Close, as Caja's: Escape closes it too.
+    let dialog = gtk::Dialog::with_buttons(Some("Backgrounds and Emblems"), Some(parent), gtk::DialogFlags::DESTROY_WITH_PARENT, &[("_Close", gtk::ResponseType::Close)]);
+    dialog.connect_response(|d, _| d.close());
+    dialog.set_default_size(560, 440);
+    let win: gtk::Window = dialog.clone().upcast();
     win.connect_destroy(|_| {
         WINDOW.with(|w| w.borrow_mut().take());
         FLOWS.with(|f| f.borrow_mut().clear());
@@ -261,7 +271,7 @@ pub fn show(parent: &gtk::Window) {
             flow
         })
         .collect();
-    win.add(&nb);
+    dialog.content_area().pack_start(&nb, true, true, 0);
     WINDOW.with(|w| *w.borrow_mut() = Some(win.clone()));
     // The lists, filled again whenever one changes.
     FLOWS.with(|f| *f.borrow_mut() = flows.clone());
@@ -448,5 +458,36 @@ mod tests {
     fn emblem_keywords() {
         assert!(keyword_ok("My Stuff 2"));
         assert!(!keyword_ok("a/b") && !keyword_ok("  ") && !keyword_ok("Erase"));
+    }
+
+    #[test]
+    fn patterns_without_cajas_reset_picture() {
+        let t = crate::testutil::TestDir::new("patterns");
+        for f in ["caja/b.png", "caja/a.jpg", "caja/reset.png", "caja/sub/c.png", "own/z.png"] {
+            t.file(f, "");
+        }
+        let names: Vec<String> = patterns_in(&[t.0.join("caja"), t.0.join("own"), t.0.join("missing")])
+            .iter()
+            .map(|p| p.strip_prefix(&t.0).unwrap().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(names, ["caja/a.jpg", "caja/b.png", "own/z.png"]);
+    }
+
+    #[test]
+    fn new_emblems_as_caja_installs_them() {
+        let t = crate::testutil::TestDir::new("emblems");
+        let picture = t.0.join("wide.png");
+        let pb = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, true, 8, 200, 100).unwrap();
+        pb.fill(0xff0000ff);
+        pb.savev(&picture, "png", &[]).unwrap();
+        let dir = t.0.join("icons/emblems");
+        install_emblem(&dir, &picture, " My Stuff ").unwrap();
+        let made = gdk_pixbuf::Pixbuf::from_file(dir.join("emblem-my-stuff.png")).unwrap();
+        assert_eq!((made.width(), made.height()), (48, 24));
+        assert_eq!(std::fs::read_to_string(dir.join("emblem-my-stuff.icon")).unwrap(), "[Icon Data]\nDisplayName=My Stuff\n");
+        // Not a picture: an error, nothing written.
+        let text = t.file("notes.txt", "hello");
+        assert!(install_emblem(&dir, &text, "notes").is_err());
+        assert!(!dir.join("emblem-notes.png").exists());
     }
 }

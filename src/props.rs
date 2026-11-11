@@ -1121,6 +1121,13 @@ extern "C" {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn digits_grouped_by_three() {
+        for (n, want) in [(0, "0"), (999, "999"), (1000, "1,000"), (123456, "123,456"), (1234567, "1,234,567"), (u64::MAX, "18,446,744,073,709,551,615")] {
+            assert_eq!(super::group_digits(n), want);
+        }
+    }
+
+    #[test]
     fn parse_media_info() {
         let text = "General\nComplete name                            : /a/b c.mp4\nFormat                                   : MPEG-4\n\nVideo\nID                                       : 1\nFormat/Info                              : Advanced Video Codec : x\n\nEmpty\n";
         let s = super::parse_media_info(text);

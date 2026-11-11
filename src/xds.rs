@@ -40,7 +40,12 @@ fn suggested_name(win: &gdk::Window) -> Option<String> {
     if format != 8 {
         return None;
     }
-    let raw = String::from_utf8_lossy(&data).trim_end_matches('\0').to_string();
+    name_from(&data)
+}
+
+/// The file name in what a source suggests: its last part, if it's a name.
+fn name_from(data: &[u8]) -> Option<String> {
+    let raw = String::from_utf8_lossy(data).trim_end_matches('\0').to_string();
     let name = raw.rsplit('/').next().unwrap_or("").to_string();
     (!name.is_empty() && name != "." && name != "..").then_some(name)
 }
@@ -67,4 +72,19 @@ pub fn finish(ctx: &gdk::DragContext, sel: &gtk::SelectionData, time: u32) -> bo
     ctx.drag_finish(saved, false, time);
     gdk::property_delete(&ctx.source_window(), &atom());
     saved
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn suggested_names_stay_in_the_folder() {
+        assert_eq!(name_from(b"report.pdf\0").as_deref(), Some("report.pdf"));
+        assert_eq!(name_from(b"../../.bashrc").as_deref(), Some(".bashrc"));
+        assert_eq!(name_from(b"/etc/passwd").as_deref(), Some("passwd"));
+        for bad in [&b""[..], b"..", b".", b"a/", b"/", b"x/.."] {
+            assert_eq!(name_from(bad), None, "{:?}", String::from_utf8_lossy(bad));
+        }
+    }
 }

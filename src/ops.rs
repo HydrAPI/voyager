@@ -2469,6 +2469,107 @@ mod tests {
         assert_eq!(read(&s.0.join("c")), "2");
     }
 
+    fn undo_len() -> usize {
+        UNDO.with(|u| u.borrow().len())
+    }
+    fn redo_len() -> usize {
+        REDO.with(|r| r.borrow().len())
+    }
+
+    #[test]
+    fn undo_list_bookkeeping() {
+        // (Each test runs on a thread of its own, with lists of its own.)
+        let s = home_scratch("undolist");
+        assert!(undo(None).is_err() && redo(None).is_err());
+        assert_eq!((undo_label(), redo_label()), (None, None));
+        // A new folder named right away is one step, under its new name.
+        let made = gio::File::for_path(s.0.join("New Folder"));
+        let named = gio::File::for_path(s.0.join("Photos"));
+        note_created(&made, true, None);
+        note_rename(&made, &named);
+        assert_eq!(undo_len(), 1);
+        assert_eq!(undo_label().as_deref(), Some("_Undo Creation of Folder “Photos”"));
+        // Renamed to its own name: nothing. Another item: a step of its own.
+        note_rename(&named, &named);
+        assert_eq!(undo_len(), 1);
+        let other = gio::File::for_path(s.0.join("other"));
+        note_rename(&made, &other);
+        assert_eq!(undo_len(), 2);
+        assert_eq!(undo_label().as_deref(), Some("_Undo Rename of “other”"));
+        // Nothing changed, nothing noted.
+        note_renames(vec![]);
+        note_modes(vec![(other.clone(), 0o644, 0o644)]);
+        note_chowns(vec![(other.clone(), (1, 1), (1, 1))]);
+        assert_eq!(undo_len(), 2);
+        // Only what changed: one item of two.
+        note_modes(vec![(other.clone(), 0o644, 0o600), (named.clone(), 0o644, 0o644)]);
+        assert_eq!(UNDO.with(|u| u.borrow().last().map(|a| matches!(a, Action::Mode { items } if items.len() == 1))), Some(true));
+        // At most UNDO_STEPS, the oldest forgotten.
+        for i in 0..UNDO_STEPS + 5 {
+            note_renames(vec![(format!("file:///x/{i}"), format!("file:///x/{i}-b"))]);
+        }
+        assert_eq!(undo_len(), UNDO_STEPS);
+        assert_eq!(undo_label().as_deref(), Some(format!("_Undo Rename of “{}-b”", UNDO_STEPS + 4).as_str()));
+    }
+
+    #[test]
+    fn undo_then_redo_moves_between_the_lists() {
+        let s = home_scratch("undoredo-lists");
+        write(&s.0.join("a"), "1");
+        let (a, b) = (gio::File::for_path(s.0.join("a")), gio::File::for_path(s.0.join("b")));
+        fs::rename(s.0.join("a"), s.0.join("b")).unwrap();
+        note_rename(&a, &b);
+        undo(None).unwrap();
+        assert_eq!(read(&s.0.join("a")), "1");
+        assert_eq!((undo_len(), redo_len()), (0, 1));
+        assert_eq!(redo_label().as_deref(), Some("_Redo Rename of “b”"));
+        redo(None).unwrap();
+        assert_eq!(read(&s.0.join("b")), "1");
+        assert_eq!((undo_len(), redo_len()), (1, 0));
+        // Undone again, then something new: nothing to redo any more.
+        undo(None).unwrap();
+        assert_eq!(redo_len(), 1);
+        note_renames(vec![(uri(&s.0.join("a")), uri(&s.0.join("c")))]);
+        assert_eq!((undo_len(), redo_len()), (1, 0));
+        // A step that can't be undone any more ("c" isn't there): an
+        // error, and the step is gone.
+        assert!(undo(None).is_err());
+        assert_eq!((undo_len(), redo_len()), (0, 0));
+    }
+
+    #[test]
+    fn undo_and_redo_of_a_group_change() {
+        use std::os::unix::fs::MetadataExt;
+        let s = home_scratch("undochown");
+        write(&s.0.join("f"), "x");
+        let p = s.0.join("f");
+        let (uid, gid) = (fs::metadata(&p).unwrap().uid(), fs::metadata(&p).unwrap().gid());
+        // Another group of ours, if we have one (any user may give a file
+        // of theirs to one of their groups).
+        // SAFETY: the buffer is as long as getgroups is told.
+        let groups = unsafe {
+            let n = libc::getgroups(0, std::ptr::null_mut());
+            let mut v = vec![0 as libc::gid_t; n.max(0) as usize];
+            let n = libc::getgroups(v.len() as i32, v.as_mut_ptr());
+            v.truncate(n.max(0) as usize);
+            v
+        };
+        let Some(&other) = groups.iter().find(|&&g| g != gid) else {
+            eprintln!("only one group: not tested");
+            return;
+        };
+        std::os::unix::fs::chown(&p, None, Some(other)).unwrap();
+        note_chowns(vec![(gio::File::for_path(&p), (uid, gid), (uid, other))]);
+        assert_eq!(undo_label().as_deref(), Some("_Undo Change of Owner or Group of “f”"));
+        undo(None).unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().gid(), gid);
+        redo(None).unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().gid(), other);
+        // Only local files.
+        let remote = Action::Chown { items: vec![("sftp://host/f".into(), (uid, gid), (uid, other))] };
+        assert!(perform(None, remote, true).is_err());
+    }
+
     fn home_scratch(name: &str) -> TestDir {
         TestDir::new(name)
     }

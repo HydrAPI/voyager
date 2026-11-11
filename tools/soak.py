@@ -17,11 +17,17 @@ Weston running in an Xvfb (for a seat: keyboard and pointer). Nothing
 shows on the screen.
 
 Arkha is driven through its actions over D-Bus (org.gtk.Actions), as the
-menus and shortcuts call them, and its dialogs (questions, conflicts,
-errors, file choosers) are answered through accessibility (AT-SPI) by
-pressing one of their buttons, on X11 and Wayland alike. Windows without
-buttons (Preferences, Properties) are only opened on X11, where Escape
-closes them. Meanwhile another thread keeps changing files in one folder.
+menus and shortcuts call them, and by keyboard and mouse input (clicks,
+drags, the wheel, keys, typing; xdotool in the run's own X server, on
+Wayland into Weston's window). Its dialogs (questions, conflicts, errors,
+file choosers) are answered through accessibility (AT-SPI) by pressing one
+of their buttons, on X11 and Wayland alike. Windows without buttons
+(Preferences, Properties) are only opened on X11, where Escape closes
+them. Meanwhile another thread keeps changing files in one folder.
+
+No other program can be started by opening a file: the folders listing
+applications are empty in the sandbox, so Arkha finds none to open files
+with, and a question whether to run a program is never answered Run.
 
 The report goes to target/soak/<run>/report.txt (and is printed); the exit
 status is 1 if the run found a problem.
@@ -53,9 +59,9 @@ ANSWERS = {"Cancel", "Skip", "Skip All", "Keep Both", "Merge", "Replace", "Delet
 # Window actions: (name, parameter kind, weight, kind). Kinds: "plain" (no
 # dialog), "dialog" (opens one with buttons, answered through AT-SPI), and
 # "x11" (a window without buttons, closed with Escape: X11 only).
-# Left out: anything that starts other programs (open, open-with,
-# open-with-other, open-new-tab and -window with files selected, terminal,
-# compress, extract, custom-action); windows are closed now and then below
+# "input": keyboard and mouse input (see do_input), not an action.
+# Left out: what starts other programs whatever the sandbox hides
+# (terminal, compress, extract, custom-action); windows are closed now and then below
 # (not close-all-windows: Arkha quits, which would look like a crash).
 ACTIONS = [
     ("back", None, 4, "plain"), ("forward", None, 3, "plain"), ("up", None, 4, "plain"),
@@ -85,7 +91,19 @@ ACTIONS = [
     # Asks before deleting where there's no trash (the Trash itself, /usr).
     ("trash", None, 3, "dialog"),
     ("properties", None, 2, "x11"), ("preferences", None, 1, "x11"), ("shortcuts", None, 1, "x11"),
+    # Opening: folders open, files ask which program (none there to pick).
+    ("open", None, 2, "dialog"), ("open-new-tab", None, 1, "dialog"), ("open-new-window", None, 1, "dialog"),
+    ("open-with-other", None, 1, "dialog"),
+    ("backgrounds", None, 1, "dialog"), ("visible-columns", None, 1, "dialog"),
+    ("click", None, 8, "input"), ("double-click", None, 4, "input"), ("right-click", None, 4, "input"),
+    ("middle-click", None, 2, "input"), ("drag", None, 4, "input"), ("wheel", None, 3, "input"),
+    ("keys", None, 6, "input"), ("typeahead", None, 3, "input"), ("rename-inline", None, 2, "input"),
+    ("side-button", None, 1, "input"), ("search", None, 2, "input"), ("location-typed", None, 1, "input"),
 ]
+
+# What the "keys" input presses (one to four of them).
+KEYS = ["Up", "Down", "Left", "Right", "Home", "End", "Page_Up", "Page_Down", "space", "shift+Down", "shift+End", "ctrl+space",
+        "Return", "BackSpace", "Escape", "Tab", "Delete", "alt+Up", "alt+Left", "alt+Right", "Menu", "shift+F10", "ctrl+plus", "ctrl+minus"]
 
 
 # ------------------------------------------------------------------ fixture
@@ -257,7 +275,9 @@ def outer(args):
     })
     sandbox = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--unshare-pid", "--unshare-net", "--unshare-ipc",
                "--die-with-parent", "--new-session"]
-    for d in ["/home", "/mnt", "/media", "/run/user", "/srv"]:
+    # No applications to start: opening a file only asks which to use.
+    for d in ["/home", "/mnt", "/media", "/run/user", "/srv", "/usr/share/applications", "/usr/local/share/applications",
+              "/var/lib/flatpak/exports/share/applications"]:
         if os.path.isdir(d):
             sandbox += ["--tmpfs", d]
     if os.path.isdir("/run/media"):
@@ -633,12 +653,162 @@ class Run:
                                  text=True, timeout=10).stdout.split()
         except subprocess.TimeoutExpired:
             return
+        # Enter only where every dialog is seen through AT-SPI and none asks
+        # whether to run a program (Run is what Enter would do).
+        seen = self.dialogs()
+        may_enter = bool(seen) and not any(n.replace("_", "").startswith("Run") for d in seen for _, n, _ in self.buttons(d))
         for w in ids:
             kind = subprocess.run(["xprop", "-id", w, "_NET_WM_WINDOW_TYPE", "WM_TRANSIENT_FOR"], env=env, capture_output=True, text=True).stdout
             if "DIALOG" not in kind and "window id #" not in kind:
                 continue
-            key = "Return" if self.rnd.random() < 0.3 else "Escape"
+            key = "Return" if may_enter and self.rnd.random() < 0.3 else "Escape"
             subprocess.run(["xdotool", "windowfocus", "--sync", w, "key", key], env=env, capture_output=True, timeout=10)
+
+    # -- keyboard and mouse
+
+    def xdo(self, *args):
+        try:
+            subprocess.run(["xdotool", *map(str, args)], env=os.environ, capture_output=True, timeout=10)
+        except subprocess.TimeoutExpired:
+            self.note(f"xdotool {' '.join(map(str, args))}: no answer within 10 s")
+
+    def input_window(self):
+        """(X window, width, height, top) to send input to: on X11 one of
+        Arkha's main windows, raised and focused; on Wayland Weston's window
+        (below its panel)."""
+        env = os.environ
+        try:
+            if self.args.backend == "x11":
+                ids = subprocess.run(["xdotool", "search", "--onlyvisible", "--pid", str(self.pid), ""], env=env, capture_output=True,
+                                     text=True, timeout=10).stdout.split()
+                mains = []
+                for w in ids:
+                    kind = subprocess.run(["xprop", "-id", w, "_NET_WM_WINDOW_TYPE", "WM_TRANSIENT_FOR"], env=env, capture_output=True,
+                                          text=True, timeout=10).stdout
+                    if "DIALOG" in kind or "window id #" in kind or "MENU" in kind or "TOOLTIP" in kind:
+                        continue
+                    mains.append(w)
+                top = 0
+            else:
+                mains = subprocess.run(["xdotool", "search", "--classname", "weston"], env=env, capture_output=True, text=True,
+                                       timeout=10).stdout.split()
+                top = 40
+            if not mains:
+                return None
+            w = self.rnd.choice(mains)
+            geo = subprocess.run(["xdotool", "getwindowgeometry", "--shell", w], env=env, capture_output=True, text=True, timeout=10).stdout
+            size = dict(l.split("=", 1) for l in geo.split() if "=" in l)
+            width, height = int(size.get("WIDTH", 0)), int(size.get("HEIGHT", 0))
+            if width < 300 or height < 200:
+                return None
+        except (subprocess.TimeoutExpired, ValueError):
+            return None
+        if self.args.backend == "x11":
+            self.xdo("windowraise", w)
+        self.xdo("windowfocus", "--sync", w)
+        return w, width, height, top
+
+    def do_input(self, name):
+        """Keyboard or mouse input to a window, as a person would give it."""
+        t = self.input_window()
+        if not t:
+            return
+        w, width, height, top = t
+        rnd = self.rnd
+        point = lambda: (rnd.randrange(10, width - 10), rnd.randrange(top + 10, height - 10))
+        x, y = point()
+        if self.args.log_actions:
+            with open(os.path.join(self.dir, "actions.txt"), "a") as f:
+                f.write(f"{time.monotonic() - self.started:9.2f} input {name} at {x},{y}\n")
+        move = ["mousemove", "--window", w, x, y]
+        word = lambda n: "".join(rnd.choice("abcdefghijklmnopqrstuvwxyz0123456789 ._-") for _ in range(rnd.randint(1, n)))
+        if name == "click":
+            mods = rnd.choice([[], [], [], ["ctrl"], ["shift"]])
+            for m in mods:
+                self.xdo("keydown", m)
+            self.xdo(*move, "click", 1)
+            for m in mods:
+                self.xdo("keyup", m)
+        elif name == "double-click":
+            self.xdo(*move, "click", "--repeat", 2, "--delay", 60, 1)
+        elif name == "right-click":
+            self.xdo(*move, "click", 3)
+            time.sleep(0.4)
+            # A few steps through the menu, never choosing: some items start
+            # programs (a terminal).
+            self.xdo("key", *(["Down"] * rnd.randint(0, 3)), "Escape")
+        elif name == "middle-click":
+            # A file or folder opens (a folder in a new tab); on nothing,
+            # autoscroll, ended by moving and clicking.
+            self.xdo(*move, "click", 2)
+            time.sleep(0.5)
+            x2, y2 = point()
+            self.xdo("mousemove", "--window", w, x2, y2)
+            time.sleep(0.3)
+            self.xdo("click", 1)
+        elif name == "drag":
+            # Items dragged somewhere else in the window (another folder,
+            # the side pane, the path bar): moved, or with Ctrl copied, with
+            # Shift+Ctrl linked, with Alt asked (the menu closed again).
+            mods = rnd.choice([[], [], ["ctrl"], ["shift", "ctrl"], ["alt"]])
+            x2, y2 = point()
+            self.xdo(*move, "mousedown", 1)
+            for m in mods:
+                self.xdo("keydown", m)
+            for i in range(1, 11):
+                self.xdo("mousemove", "--window", w, x + (x2 - x) * i // 10, y + (y2 - y) * i // 10)
+                time.sleep(0.04)
+            self.xdo("mouseup", 1)
+            for m in mods:
+                self.xdo("keyup", m)
+            if "alt" in mods:
+                time.sleep(0.4)
+                self.xdo("key", "Escape")
+        elif name == "wheel":
+            ctrl = rnd.random() < 0.25
+            if ctrl:
+                self.xdo("keydown", "ctrl")
+            self.xdo(*move, "click", "--repeat", rnd.randint(1, 8), "--delay", 30, rnd.choice([4, 5]))
+            if ctrl:
+                self.xdo("keyup", "ctrl")
+        elif name == "keys":
+            keys = [rnd.choice(KEYS) for _ in range(rnd.randint(1, 4))]
+            if any(k in ("Menu", "shift+F10") for k in keys):
+                keys.append("Escape")
+            self.xdo("key", "--delay", 50, *keys)
+        elif name == "typeahead":
+            self.xdo(*move, "click", 1)
+            self.xdo("type", "--delay", 60, word(3))
+            time.sleep(0.3)
+            self.xdo("key", rnd.choice(["Down", "Up", "Escape", "Escape"]))
+        elif name == "rename-inline":
+            self.xdo("key", "F2")
+            time.sleep(0.4)
+            if rnd.random() < 0.3:
+                self.xdo("key", "ctrl+a")
+            # Now and then a slash (refused) or nothing.
+            text = rnd.choice([word(12), word(12), word(12), "a/b", ""])
+            if text:
+                self.xdo("type", "--delay", 30, text)
+            self.xdo("key", rnd.choice(["Return", "Return", "Return", "Escape"]))
+        elif name == "side-button":
+            self.xdo(*move, "click", rnd.choice([8, 9]))
+        elif name == "search":
+            self.xdo("key", "ctrl+f")
+            time.sleep(0.3)
+            self.xdo("type", "--delay", 40, rnd.choice(["a", "file", "txt", "sub", "zz", word(4)]))
+            self.xdo("key", "Return")
+            time.sleep(rnd.uniform(0.3, 2))
+            if rnd.random() < 0.5:
+                self.xdo("key", "Escape")
+        elif name == "location-typed":
+            self.xdo("key", "ctrl+l")
+            time.sleep(0.3)
+            self.xdo("key", "ctrl+a")
+            target = rnd.choice([self.files + "/", self.files + "/tr", self.home + "/", "/usr/sh", "~/", "/no/such", "trash:///"])
+            self.xdo("type", "--delay", 30, target)
+            time.sleep(0.4)
+            self.xdo("key", rnd.choice(["Return", "Return", "Tab", "Escape"]))
 
     def churn(self):
         """Keeps changing files in Files/churn, as other programs would."""
@@ -826,6 +996,14 @@ class Run:
             win = self.rnd.choice(wins)
             if how == "plain":
                 self.activate(win, name, self.param(kind))
+            elif how == "input":
+                self.do_input(name)
+                # A dialog it opened (an error, a question) would keep the
+                # next action waiting: answered first.
+                for _ in range(10):
+                    time.sleep(0.2)
+                    if self.answer_dialogs():
+                        break
             else:
                 # The call returns once the dialog is closed (a modal one
                 # runs its own loop): closed from here meanwhile.
