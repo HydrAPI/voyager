@@ -538,46 +538,71 @@ fn record_failure(job: &ThumbJob) {
         return;
     }
     let mtime = job.mtime.to_string();
-    let _ = pb.savev(&out, "png", &[("tEXt::Thumb::URI", job.uri.as_str()), ("tEXt::Thumb::MTime", mtime.as_str()), ("tEXt::Software", "Arkha")]);
+    if let Err(e) = pb.savev(&out, "png", &[("tEXt::Thumb::URI", job.uri.as_str()), ("tEXt::Thumb::MTime", mtime.as_str()), ("tEXt::Software", "Arkha")]) {
+        glib::g_debug!("arkha", "thumbnail: couldn't note the failure in {}: {e}", out.display());
+    }
 }
 
 fn make_thumbnail(job: &ThumbJob) -> Option<String> {
-    let pb = match &job.custom {
-        // The command writes some image; it's then stored like any other
-        // thumbnail (scaled, with the Thumb::URI/MTime the cache needs).
-        Some(t) => {
-            let raw = job.out.with_extension(format!("arkha-{}.raw.png", std::process::id()));
-            let ok = thumbnailers::run(t, &job.src, &raw, 256);
-            let pb = if ok { Pixbuf::from_file_at_scale(&raw, 256, 256, true).ok() } else { None };
-            let _ = std::fs::remove_file(&raw);
-            pb?
-        }
-        None => {
-            let pb = Pixbuf::from_file_at_scale(&job.src, 256, 256, true).ok()?;
-            pb.apply_embedded_orientation().unwrap_or(pb)
-        }
-    };
+    // First: a thumbnailer writes its picture there too.
     if let Some(d) = job.out.parent() {
-        std::fs::create_dir_all(d).ok()?;
+        if let Err(e) = std::fs::create_dir_all(d) {
+            glib::g_debug!("arkha", "thumbnail: couldn't make {}: {e}", d.display());
+            return None;
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o700));
         }
     }
+    let pb = match &job.custom {
+        // The command writes some image; it's then stored like any other
+        // thumbnail (scaled, with the Thumb::URI/MTime the cache needs).
+        Some(t) => {
+            let raw = job.out.with_extension(format!("arkha-{}.raw.png", std::process::id()));
+            glib::g_debug!("arkha", "thumbnail: running “{}” for {}", t.name, job.uri);
+            let start = std::time::Instant::now();
+            let ran = thumbnailers::run(t, &job.src, &raw, 256);
+            let pb = ran
+                .map_err(|e| format!("“{}” failed after {:.1} s: {e}", t.name, start.elapsed().as_secs_f64()))
+                .and_then(|()| Pixbuf::from_file_at_scale(&raw, 256, 256, true).map_err(|e| format!("couldn't load what “{}” made: {e}", t.name)));
+            let _ = std::fs::remove_file(&raw);
+            match pb {
+                Ok(pb) => pb,
+                Err(e) => {
+                    glib::g_debug!("arkha", "thumbnail: {e} ({})", job.uri);
+                    return None;
+                }
+            }
+        }
+        None => match Pixbuf::from_file_at_scale(&job.src, 256, 256, true) {
+            Ok(pb) => pb.apply_embedded_orientation().unwrap_or(pb),
+            Err(e) => {
+                glib::g_debug!("arkha", "thumbnail: couldn't load the image: {e} ({})", job.uri);
+                return None;
+            }
+        },
+    };
     let tmp = job.out.with_extension(format!("arkha-{}.tmp", std::process::id()));
     let mtime = job.mtime.to_string();
-    pb.savev(
-        &tmp,
-        "png",
-        &[
-            ("tEXt::Thumb::URI", job.uri.as_str()),
-            ("tEXt::Thumb::MTime", mtime.as_str()),
-            ("tEXt::Software", "Arkha"),
-        ],
-    )
-    .ok()?;
-    std::fs::rename(&tmp, &job.out).ok()?;
+    let saved = pb
+        .savev(
+            &tmp,
+            "png",
+            &[
+                ("tEXt::Thumb::URI", job.uri.as_str()),
+                ("tEXt::Thumb::MTime", mtime.as_str()),
+                ("tEXt::Software", "Arkha"),
+            ],
+        )
+        .map_err(|e| e.to_string())
+        .and_then(|()| std::fs::rename(&tmp, &job.out).map_err(|e| e.to_string()));
+    if let Err(e) = saved {
+        glib::g_debug!("arkha", "thumbnail: couldn't save {}: {e} ({})", job.out.display(), job.uri);
+        return None;
+    }
+    glib::g_debug!("arkha", "thumbnail: made {} ({})", job.out.display(), job.uri);
     Some(job.out.to_string_lossy().to_string())
 }
 
@@ -597,6 +622,7 @@ pub fn request_thumbnail(uri: &str, path: &std::path::Path, mtime: i64, size: u6
     let custom = custom_for(ctype);
     // Big images are slow to decode; custom thumbnailers (videos…) decide themselves.
     if custom.is_none() && (!builtin_can(ctype) || size > 60 * 1024 * 1024) {
+        glib::g_debug!("arkha", "thumbnail: none for {ctype} of {size} bytes ({uri})");
         return;
     }
     let first = QUEUED.with(|q| q.borrow_mut().insert((uri.to_string(), mtime)));
@@ -609,8 +635,10 @@ pub fn request_thumbnail(uri: &str, path: &std::path::Path, mtime: i64, size: u6
         return;
     }
     if png_thumb_mtime(&fail_path_for(uri)) == Some(mtime.to_string()) {
+        glib::g_debug!("arkha", "thumbnail: failed before, not tried again until the file changes ({uri})");
         return;
     }
+    glib::g_debug!("arkha", "thumbnail: asked for {ctype} ({uri})");
     let q = makers();
     q.jobs.lock().unwrap().push(ThumbJob {
         uri: uri.to_string(),

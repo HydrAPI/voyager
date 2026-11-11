@@ -4456,6 +4456,22 @@ fn count_entries(path: &std::path::Path, hidden: bool) -> Option<u64> {
     )
 }
 
+/// A thumbnail debug message, once per file (rows are drawn over and over).
+fn debug_once(uri: &str, what: &str) {
+    thread_local! {
+        static TOLD: RefCell<std::collections::HashSet<String>> = RefCell::new(Default::default());
+    }
+    // Only kept while debug messages are shown (G_MESSAGES_DEBUG).
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let on = ON.get_or_init(|| std::env::var("G_MESSAGES_DEBUG").is_ok_and(|v| v.split([',', ' ']).any(|d| d == "all" || d == "arkha")));
+    if !on {
+        return;
+    }
+    if TOLD.with(|t| t.borrow_mut().insert(uri.to_string())) {
+        glib::g_debug!("arkha", "thumbnail: {what} ({uri})");
+    }
+}
+
 /// Asks for the thumbnail of a row being shown without one: made for what
 /// is seen, the latest first, as Nemo does, not for a whole big folder in
 /// the order it's listed.
@@ -4465,10 +4481,11 @@ fn request_row_thumbnail(m: &gtk::TreeModel, it: &gtk::TreeIter) {
     }
     let ctype = m.value(it, COL_CTYPE as i32);
     let ctype = value_str(&ctype);
+    let uri: String = m.gv(it, COL_URI as i32);
     if !icons::can_thumbnail(ctype) {
+        debug_once(&uri, &format!("no thumbnailer for {ctype}"));
         return;
     }
-    let uri: String = m.gv(it, COL_URI as i32);
     if let Some(path) = gio::File::for_uri(&uri).path() {
         icons::request_thumbnail(&uri, &path, m.gv(it, COL_MTIME as i32), m.gv(it, COL_SIZE as i32), ctype);
     }
@@ -4610,6 +4627,9 @@ fn row_pixbuf(m: &gtk::TreeModel, it: &gtk::TreeIter, size: i32) -> Option<Pixbu
 /// its icon, the thumbnail asked for if it may get one.
 fn icon_or_thumb(m: &gtk::TreeModel, it: &gtk::TreeIter, thumb: &str, size: i32) -> Option<Pixbuf> {
     let pb = if size < 32 {
+        if !m.gv::<bool>(it, COL_IS_DIR as i32) {
+            debug_once(&m.gv::<String>(it, COL_URI as i32), &format!("no thumbnails at {size} px icons"));
+        }
         None
     } else if !thumb.is_empty() {
         icons::thumb_pixbuf(thumb, size)

@@ -190,13 +190,14 @@ fn expand_with(command: &str, input: &Path, output: &Path, size: u32, q: &dyn Fn
 }
 
 /// Runs `t` for `input`, writing an image to `output`. Called on the
-/// thumbnail worker thread; gives up after TIMEOUT.
-pub fn run(t: &Thumbnailer, input: &Path, output: &Path, size: u32) -> bool {
+/// thumbnail worker thread; gives up after TIMEOUT. Err says why there's
+/// no image (with the end of what the command printed as errors).
+pub fn run(t: &Thumbnailer, input: &Path, output: &Path, size: u32) -> Result<(), String> {
     let mut command = if t.system {
         // A program and its arguments (split as GLib splits them).
-        let Ok(argv) = glib::shell_parse_argv(&t.command) else { return false };
+        let argv = glib::shell_parse_argv(&t.command).map_err(|e| format!("bad command: {e}"))?;
         let mut args = argv.iter().map(|a| expand_arg(&a.to_string_lossy(), input, output, size));
-        let Some(program) = args.next() else { return false };
+        let Some(program) = args.next() else { return Err("empty command".into()) };
         let mut c = std::process::Command::new(program);
         c.args(args);
         c
@@ -205,23 +206,39 @@ pub fn run(t: &Thumbnailer, input: &Path, output: &Path, size: u32) -> bool {
         c.arg("-c").arg(expand(&t.command, input, output, size));
         c
     };
-    let Ok(mut child) = command
+    let mut child = command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-    else {
-        return false;
-    };
+        .map_err(|e| format!("couldn't start it: {e}"))?;
+    // Read as it comes, so a chatty command can't fill the pipe and stall.
+    let errors = child.stderr.take().map(|mut e| {
+        std::thread::spawn(move || {
+            let mut text = vec![];
+            let _ = std::io::Read::read_to_end(&mut e, &mut text);
+            let text = String::from_utf8_lossy(&text);
+            let text = text.trim();
+            // The end says what went wrong.
+            let start = text.char_indices().rev().nth(500).map_or(0, |(i, _)| i);
+            text[start..].to_string()
+        })
+    });
+    let errors = move || errors.and_then(|t| t.join().ok()).filter(|t| !t.is_empty()).map(|t| format!(": {t}")).unwrap_or_default();
     let start = Instant::now();
     loop {
         match child.try_wait() {
-            Ok(Some(status)) => return status.success() && output.exists(),
+            Ok(Some(status)) if status.success() && output.exists() => return Ok(()),
+            Ok(Some(status)) if status.success() => return Err(format!("it wrote no image{}", errors())),
+            Ok(Some(status)) => return Err(format!("it ended with {status}{}", errors())),
             Ok(None) if start.elapsed() < TIMEOUT => std::thread::sleep(Duration::from_millis(50)),
-            _ => {
+            r => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return false;
+                return Err(match r {
+                    Err(e) => format!("couldn't wait for it: {e}"),
+                    _ => format!("stopped after {} s{}", TIMEOUT.as_secs(), errors()),
+                });
             }
         }
     }
@@ -287,7 +304,7 @@ mod tests {
         let out = dir.0.join("out.png");
         // `cp` gets the name as it is: no shell to split it or expand $HOME.
         let t = Thumbnailer { name: "cp".into(), types: "*".into(), command: "cp %i %o".into(), system: true };
-        assert!(run(&t, &input, &out, 128));
+        assert!(run(&t, &input, &out, 128).is_ok());
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "data");
     }
 
@@ -296,9 +313,11 @@ mod tests {
         let dir = crate::testutil::TestDir::new("thumbnailer");
         let out = dir.0.join("o.png");
         let ok = Thumbnailer { name: "ok".into(), types: "*".into(), command: "printf x > %o".into(), system: false };
-        assert!(run(&ok, Path::new("/dev/null"), &out, 128));
+        assert!(run(&ok, Path::new("/dev/null"), &out, 128).is_ok());
         let _ = std::fs::remove_file(&out);
-        let fails = Thumbnailer { name: "no".into(), types: "*".into(), command: "exit 1".into(), system: false };
-        assert!(!run(&fails, Path::new("/dev/null"), &out, 128));
+        let fails = Thumbnailer { name: "no".into(), types: "*".into(), command: "echo broken >&2; exit 1".into(), system: false };
+        assert_eq!(run(&fails, Path::new("/dev/null"), &out, 128), Err("it ended with exit status: 1: broken".into()));
+        let silent = Thumbnailer { name: "none".into(), types: "*".into(), command: "true".into(), system: false };
+        assert_eq!(run(&silent, Path::new("/dev/null"), &out, 128), Err("it wrote no image".into()));
     }
 }
