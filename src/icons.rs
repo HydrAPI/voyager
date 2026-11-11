@@ -232,7 +232,7 @@ fn start_loaders() -> Arc<LoadQueue> {
                     jobs = q.ready.wait(jobs).unwrap();
                 }
             };
-            let pixels = Pixbuf::from_file_at_scale(&path, size, size, true)
+            let pixels = load_at_scale(std::path::Path::new(&path), size)
                 .ok()
                 .map(|p| (p.read_pixel_bytes(), p.has_alpha(), p.width(), p.height(), p.rowstride()));
             if tx.send_blocking((path, size, pixels)).is_err() {
@@ -566,7 +566,7 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
             let ran = thumbnailers::run(t, &job.src, &raw, 256);
             let pb = ran
                 .map_err(|e| format!("“{}” failed after {:.1} s: {e}", t.name, start.elapsed().as_secs_f64()))
-                .and_then(|()| Pixbuf::from_file_at_scale(&raw, 256, 256, true).map_err(|e| format!("couldn't load what “{}” made: {e}", t.name)));
+                .and_then(|()| load_at_scale(&raw, 256).map_err(|e| format!("couldn't load what “{}” made: {e}", t.name)));
             let _ = std::fs::remove_file(&raw);
             match pb {
                 Ok(pb) => pb,
@@ -576,7 +576,7 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
                 }
             }
         }
-        None => match Pixbuf::from_file_at_scale(&job.src, 256, 256, true) {
+        None => match load_at_scale(&job.src, 256) {
             Ok(pb) => pb.apply_embedded_orientation().unwrap_or(pb),
             Err(e) => {
                 glib::g_debug!("arkha", "thumbnail: couldn't load the image: {e} ({})", job.uri);
@@ -604,6 +604,35 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
     }
     glib::g_debug!("arkha", "thumbnail: made {} ({})", job.out.display(), job.uri);
     Some(job.out.to_string_lossy().to_string())
+}
+
+/// A picture scaled to fit in `size` (as Pixbuf::from_file_at_scale). If
+/// gdk-pixbuf can't tell its format from its content, by the file name's
+/// extension: gdk-pixbuf 2.42 goes only by what the MIME database makes of
+/// the content, and a wrong rule there makes it give up. One such rule is an
+/// old DTS-HD one some programs left in users' MIME databases: any file with
+/// "dX %" in its first 18 KB, some PNG thumbnails too.
+pub fn load_at_scale(path: &std::path::Path, size: i32) -> Result<Pixbuf, glib::Error> {
+    match Pixbuf::from_file_at_scale(path, size, size, true) {
+        Err(e) if e.matches(gdk_pixbuf::PixbufError::UnknownType) => load_by_extension(path, size).ok_or(e),
+        r => r,
+    }
+}
+
+fn load_by_extension(path: &std::path::Path, size: i32) -> Option<Pixbuf> {
+    let ext = path.extension()?.to_str()?;
+    let format = Pixbuf::formats().into_iter().find(|f| f.extensions().iter().any(|e| e.eq_ignore_ascii_case(ext)))?;
+    let loader = gdk_pixbuf::PixbufLoader::with_type(format.name()?.as_str()).ok()?;
+    loader.connect_size_prepared(move |l, w, h| {
+        if w > 0 && h > 0 {
+            let scale = (size as f64 / w as f64).min(size as f64 / h as f64);
+            l.set_size(((w as f64 * scale).round() as i32).max(1), ((h as f64 * scale).round() as i32).max(1));
+        }
+    });
+    let data = std::fs::read(path).ok()?;
+    let loaded = loader.write(&data).and_then(|()| loader.close());
+    loaded.ok()?;
+    loader.pixbuf()
 }
 
 fn builtin_can(ctype: &str) -> bool {
@@ -705,6 +734,27 @@ fn png_thumb_mtime(path: &std::path::Path) -> Option<String> {
 mod tests {
     use super::*;
     use crate::testutil::TestDir;
+
+    #[test]
+    fn pictures_load_by_extension_too() {
+        let d = TestDir::new("loadext");
+        let pb = Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, 40, 20).unwrap();
+        pb.fill(0x336699ff);
+        let png = d.0.join("t.raw.png");
+        pb.savev(&png, "png", &[]).unwrap();
+        let fit = |p: Pixbuf| (p.width(), p.height());
+        assert_eq!(load_at_scale(&png, 10).map(fit).unwrap(), (10, 5));
+        // What's used when the content isn't recognized: scaled alike.
+        assert_eq!(load_by_extension(&png, 10).map(fit), Some((10, 5)));
+        assert_eq!(load_by_extension(&png, 80).map(fit), Some((80, 40)));
+        // No format for the name: nothing to fall back on.
+        let other = d.0.join("t.mystery");
+        std::fs::copy(&png, &other).unwrap();
+        assert_eq!(load_by_extension(&other, 10).map(fit), None);
+        let text = d.0.join("t2.png");
+        std::fs::write(&text, "not a picture").unwrap();
+        assert!(load_at_scale(&text, 10).is_err());
+    }
 
     #[test]
     fn thumbnail_caches_stay_within_their_memory() {
