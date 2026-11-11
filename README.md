@@ -22,7 +22,7 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
   - Files dragged out of an archive manager (Engrampa, Xarchiver, File Roller before its GTK 4 versions) into a folder, onto a folder or onto the path bar are extracted there (X11 only: the archive managers' XDS protocol needs X). File Roller 43 and later can't drag files out at all.
   - Duplicate, Make Link, Copy To…, Move To…
   - Move to Trash, Delete permanently, Restore from Trash, Empty Trash (also from a bar above the trash folder)
-  - Undo (Edit → Undo, Ctrl+Z) for the last 20 copies, moves and links: copies and links go to the trash, moved items go back where they were. After a merge only what was added is taken back, and a copy that replaced a file is left alone.
+  - Undo (Edit → Undo, Ctrl+Z) and Redo (Edit → Redo, Ctrl+Shift+Z or Ctrl+Y) for the last 20 operations, as in Caja: copies, moves and links (copies and links go to the trash, moved items go back where they were; after a merge only what was added is taken back, and a copy that replaced a file is left alone), moving to the trash (the items are found in the trash and restored), restoring from the trash, renames (Rename All's as one step), new folders and documents (to the trash; one named at once is one step), and permission, owner and group changes in Properties. Deleting, emptying the trash and Apply to Enclosed Items can't be undone. Anything new done clears Redo.
   - Conflict dialog (Skip / Keep Both / Replace or Merge, with "apply to all", or a new name of your own for the copy)
 - Inline rename (F2) that pre-selects the name without its extension.
 - **Bulk rename** (Rename All…, for several items): Case, Insert, Remove, Replace, Enumerate and Regex tabs with a live preview, as MATE's caja-rename extension does it, optionally working before or after the extension.
@@ -120,6 +120,3 @@ tools/soak.py --backend x11 --minutes 10 --heaptrack   # memory recorded by heap
 | `src/util.rs` | Formatting, naming, bookmarks, notifications, helpers |
 | `src/testutil.rs` | Test helpers: scratch folders, random inputs |
 
-## Not done yet (ideas)
-
-- Undo for trashing, deleting and renaming (copies, moves and links can be undone), and Redo

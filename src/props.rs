@@ -157,6 +157,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                 }
                 match file.set_display_name(&new, gio::Cancellable::NONE) {
                     Ok(nf) => {
+                        crate::ops::note_rename(&file, &nf);
                         *cur.borrow_mut() = nf;
                         d.set_title(&format!("{new} Properties"));
                     }
@@ -318,14 +319,17 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                 cb.connect_toggled(move |cb| {
                     cb.set_inconsistent(false);
                     let set = cb.is_active();
+                    let mut changed = vec![];
                     for (f, m) in files.iter().zip(modes.iter()) {
                         let new = if set { m.get() | bit } else { m.get() & !bit };
                         if let Err(e) = f.set_attribute_uint32("unix::mode", new & 0o7777, gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE) {
                             util::error_dialog(d.transient_for().as_ref(), "Could not change permissions", e.message());
                             break;
                         }
+                        changed.push((f.clone(), m.get(), new));
                         m.set(new);
                     }
+                    crate::ops::note_modes(changed);
                     update_octal();
                 });
                 cb
@@ -804,14 +808,22 @@ fn id_combo(dialog: &gtk::Dialog, files: &[gio::File], choices: &[(u32, String)]
     combo.set_sensitive(usable);
     let (files, d) = (files.to_vec(), dialog.clone());
     combo.connect_changed(move |c| {
+        use std::os::unix::fs::MetadataExt;
         let Some(id) = c.active_id().and_then(|i| i.parse::<u32>().ok()) else { return };
+        let ids = |p: &std::path::Path| std::fs::metadata(p).map(|m| (m.uid(), m.gid())).ok();
+        let mut changed = vec![];
         for f in &files {
             let Some(p) = f.path() else { continue };
+            let before = ids(&p);
             if let Err(e) = set(&p, id) {
                 util::error_dialog(d.transient_for().as_ref(), &format!("Could not change the {what}"), &format!("{}: {e}", util::display_name(f)));
                 break;
             }
+            if let (Some(b), Some(a)) = (before, ids(&p)) {
+                changed.push((f.clone(), b, a));
+            }
         }
+        crate::ops::note_chowns(changed);
         crate::window::refresh_everywhere(&files);
     });
     combo

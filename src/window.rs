@@ -358,9 +358,9 @@ pub struct AppWindow {
     last_opened: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     bookmarks_menu: gio::Menu,
     templates_menu: gio::Menu,
-    /// The Edit menu's Undo item, labelled with what it undoes.
+    /// The Edit menu's Undo and Redo items, labelled with what they'd do.
     undo_menu: gio::Menu,
-    undo_label: RefCell<Option<String>>,
+    undo_label: RefCell<Option<(Option<String>, Option<String>)>>,
     /// The folders in a folder (path, names), read for completing the
     /// location typed.
     completion_dir: RefCell<Option<(std::path::PathBuf, Vec<String>)>>,
@@ -697,8 +697,8 @@ impl AppWindow {
             bookmarks_menu,
             templates_menu,
             undo_menu: gio::Menu::new(),
-            // Not a label update_undo() would give: the first call sets it.
-            undo_label: RefCell::new(Some(String::new())),
+            // Not labels update_undo() would give: the first call sets them.
+            undo_label: RefCell::new(None),
             completion_dir: RefCell::new(None),
             completing: Cell::new(false),
             _bookmark_monitor: RefCell::new(None),
@@ -783,6 +783,7 @@ impl AppWindow {
 
         let edit = gio::Menu::new();
         self.undo_menu.append(Some("_Undo"), Some("win.undo"));
+        self.undo_menu.append(Some("_Redo"), Some("win.redo"));
         edit.append_section(None, &self.undo_menu);
         edit.append_section(None, &section(&[("Cu_t", "win.cut"), ("_Copy", "win.copy"), ("_Paste", "win.paste"), ("Paste _Into Folder", "win.paste-into")]));
         edit.append_section(None, &section(&[("Select _All", "win.select-all"), ("Select I_tems Matching…", "win.select-pattern"), ("_Invert Selection", "win.invert-selection")]));
@@ -1145,16 +1146,18 @@ impl AppWindow {
             .and_then(|a| a.downcast::<gio::SimpleAction>().ok())
     }
 
-    /// Labels Edit → Undo with what it would undo, greyed out with nothing.
+    /// Labels Edit → Undo and Redo with what they'd do, greyed out with nothing.
     fn update_undo(&self) {
-        let label = ops::undo_label();
-        if *self.undo_label.borrow() == label {
+        let labels = (ops::undo_label(), ops::redo_label());
+        if self.undo_label.borrow().as_ref() == Some(&labels) {
             return;
         }
         self.undo_menu.remove_all();
-        self.undo_menu.append(Some(label.as_deref().unwrap_or("_Undo")), Some("win.undo"));
-        self.set_enabled("undo", label.is_some());
-        *self.undo_label.borrow_mut() = label;
+        self.undo_menu.append(Some(labels.0.as_deref().unwrap_or("_Undo")), Some("win.undo"));
+        self.undo_menu.append(Some(labels.1.as_deref().unwrap_or("_Redo")), Some("win.redo"));
+        self.set_enabled("undo", labels.0.is_some());
+        self.set_enabled("redo", labels.1.is_some());
+        *self.undo_label.borrow_mut() = Some(labels);
     }
 
     fn set_enabled(&self, name: &str, on: bool) {
@@ -1202,6 +1205,11 @@ impl AppWindow {
         self.add("copy", |w| w.copy_selection(false));
         self.add("undo", |w| {
             if let Err(why) = ops::undo(Some(w.window.clone().upcast())) {
+                w.flash_status(&why);
+            }
+        });
+        self.add("redo", |w| {
+            if let Err(why) = ops::redo(Some(w.window.clone().upcast())) {
                 w.flash_status(&why);
             }
         });
@@ -1532,8 +1540,9 @@ impl AppWindow {
                 // where it cancels renaming (as a shortcut it would move the
                 // focus away, which renames).
                 let is_escape = key == gdk::keys::constants::Escape;
-                // Ctrl+Z in a text field never undoes a file operation.
-                let is_undo = ev.state().contains(gdk::ModifierType::CONTROL_MASK) && matches!(key.to_lower(), gdk::keys::constants::z);
+                // Ctrl+Z (and Redo's Ctrl+Shift+Z, Ctrl+Y) in a text field
+                // never undoes or redoes a file operation.
+                let is_undo = ev.state().contains(gdk::ModifierType::CONTROL_MASK) && matches!(key.to_lower(), gdk::keys::constants::z | gdk::keys::constants::y);
                 if is_undo {
                     win.propagate_key_event(ev);
                     return glib::Propagation::Stop;
@@ -3090,6 +3099,7 @@ impl AppWindow {
         let f = dir.child(&name);
         match f.make_directory(gio::Cancellable::NONE) {
             Ok(()) => {
+                ops::note_created(&f, true, None);
                 p.add_file_now(&f);
                 p.rename_later(f.uri().to_string());
             }
@@ -3116,6 +3126,7 @@ impl AppWindow {
         };
         match res {
             Ok(f) => {
+                ops::note_created(&f, false, template);
                 p.add_file_now(&f);
                 p.rename_later(f.uri().to_string());
             }
@@ -3142,6 +3153,7 @@ impl AppWindow {
         }
         match f.set_display_name(new_name, gio::Cancellable::NONE) {
             Ok(nf) => {
+                ops::note_rename(&f, &nf);
                 pane.refresh_file(&f);
                 pane.add_file_now(&nf);
                 pane.select_uris(&[nf.uri().to_string()]);

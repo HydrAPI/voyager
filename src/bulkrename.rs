@@ -591,18 +591,23 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                     return;
                 }
             }
-            // 3. Rename, in list order.
+            // 3. Rename, in list order (one step for Edit → Undo).
             let mut failed = vec![];
+            let mut done = vec![];
             for (i, n) in &changed {
                 let (folder, old) = {
                     let e = &entries.borrow()[*i];
                     (e.folder.clone(), e.old.clone())
                 };
                 match std::fs::rename(folder.join(&old), folder.join(n)) {
-                    Ok(()) => entries.borrow_mut()[*i].old = n.clone(),
+                    Ok(()) => {
+                        done.push((gio::File::for_path(folder.join(&old)).uri().to_string(), gio::File::for_path(folder.join(n)).uri().to_string()));
+                        entries.borrow_mut()[*i].old = n.clone();
+                    }
                     Err(_) => failed.push(format!("{old} -> {n}")),
                 }
             }
+            crate::ops::note_renames(done);
             if !failed.is_empty() {
                 message(&d, gtk::MessageType::Error, gtk::ButtonsType::Close, "Rename error", &format!("There were errors while renaming the following:\n\n{}", failed.join("\n")));
             }

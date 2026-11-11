@@ -74,7 +74,7 @@ ACTIONS = [
     ("select-all", None, 5, "plain"), ("invert-selection", None, 3, "plain"),
     ("copy", None, 4, "plain"), ("cut", None, 3, "plain"), ("paste", None, 4, "plain"), ("paste-into", None, 1, "plain"),
     # Undoes the last copy, move or link, whatever happened to it since.
-    ("undo", None, 3, "plain"),
+    ("undo", None, 3, "plain"), ("redo", None, 2, "plain"),
     ("duplicate", None, 2, "plain"), ("make-link", None, 1, "plain"), ("copy-to-pane", None, 1, "plain"),
     ("move-to-pane", None, 1, "plain"), ("new-folder", None, 2, "plain"), ("new-file", None, 2, "plain"),
     ("new-from-template", "template", 1, "plain"), ("restore", None, 1, "plain"),

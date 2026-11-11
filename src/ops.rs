@@ -890,6 +890,8 @@ impl Worker {
                         }
                         match f.trash(Some(&self.cancel)) {
                             Ok(()) => {
+                                // For Undo: brought back out of the trash.
+                                self.undo.push(Moved { src: u.clone(), dst: String::new(), replaced: false });
                                 self.done_items += 1;
                                 self.progress(&format!("Trashing “{}”", base_name(&f)), false);
                                 break;
@@ -1291,15 +1293,20 @@ fn next_id() -> u64 {
 /// Copies and moves wait their turn while other operations run or wait
 /// (their row has a Start Now button); everything else starts right away.
 pub fn run(parent: Option<gtk::Window>, job: Job, on_done: impl Fn(Vec<String>) + 'static) {
+    run_with(parent, job, Record::New, on_done);
+}
+
+/// run, with where its result goes for Undo and Redo.
+fn run_with(parent: Option<gtk::Window>, job: Job, record: Record, on_done: impl Fn(Vec<String>) + 'static) {
     let queueable = matches!(job, Job::Transfer { kind: Kind::Copy | Kind::Move, .. });
     if queueable && is_busy() {
-        enqueue(parent, job, Box::new(on_done));
+        enqueue(parent, job, record, Box::new(on_done));
     } else {
-        start(parent, job, Box::new(on_done), false);
+        start(parent, job, record, Box::new(on_done), false);
     }
 }
 
-fn enqueue(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)>) {
+fn enqueue(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn Fn(Vec<String>)>) {
     let id = next_id();
     let op = Rc::new(Op {
         id,
@@ -1315,7 +1322,7 @@ fn enqueue(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String
     QUEUE.with(|q| {
         q.borrow_mut().push_back(Waiting {
             id,
-            start: Box::new(move || start(parent, job, on_done, true)),
+            start: Box::new(move || start(parent, job, record, on_done, true)),
             _hold: hold,
         })
     });
@@ -1358,9 +1365,9 @@ fn bold_label(text: &str) -> gtk::Label {
 
 /// `show_now`: list the operation at once (a job leaving the queue) instead
 /// of only once it has taken a moment.
-fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)>, show_now: bool) {
+fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn Fn(Vec<String>)>, show_now: bool) {
     let (tx, rx) = async_channel::unbounded::<Msg>();
-    let undo_kind = undoable(&job);
+    let shape = shape_of(&job);
     let op = Rc::new(Op {
         id: next_id(),
         title: title_for(&job),
@@ -1419,6 +1426,7 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
 
     glib::MainContext::default().spawn_local(async move {
         let parent = parent;
+        let mut record = record;
         let _hold = hold;
         while let Ok(msg) = rx.recv().await {
             match msg {
@@ -1438,9 +1446,21 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
                     let c = error_dialog(p.as_ref(), &title, &detail, offer_delete).await;
                     let _ = reply.send(c);
                 }
-                Msg::Done(created, undo) => {
-                    if let Some(kind) = undo_kind.filter(|_| !undo.is_empty()) {
-                        push_undo(UndoStep { kind, items: undo });
+                Msg::Done(created, done) => {
+                    let did = !done.is_empty();
+                    match std::mem::replace(&mut record, Record::Redo) {
+                        Record::New => {
+                            if let Some(a) = action_of(shape, done) {
+                                push_new(a);
+                            }
+                        }
+                        Record::Undo(a) if did => push(&REDO, a),
+                        Record::Undo(_) => {}
+                        Record::Redo => {
+                            if let Some(a) = action_of(shape, done) {
+                                push(&UNDO, a);
+                            }
+                        }
                     }
                     RUNNING.with(|r| r.set(r.get().saturating_sub(1)));
                     finished.set(true);
@@ -1459,35 +1479,89 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
 }
 
 // ---------------------------------------------------------------------------
-// Undo
+// Undo and redo
 
-/// A finished copy, move or link that Edit → Undo can take back.
-struct UndoStep {
-    kind: Kind,
-    items: Vec<Moved>,
+/// Something done that Edit → Undo can take back and Redo do again, as
+/// in Caja.
+#[derive(Clone, Debug)]
+enum Action {
+    /// A copy, move or link: what went where.
+    Transfer { kind: Kind, items: Vec<Moved> },
+    /// Items moved to the trash (their URIs then), at about `since` (Unix
+    /// time): undone by finding them in the trash.
+    Trash { uris: Vec<String>, since: i64 },
+    /// Items restored from the trash to `uris`; once undone (trashed
+    /// again), found in the trash from `since` on to redo it.
+    Restore { uris: Vec<String>, since: i64 },
+    /// Renames (old URI, new URI), in the order done.
+    Rename { items: Vec<(String, String)> },
+    /// A new folder, empty document or one from a template.
+    Create { uri: String, folder: bool, template: Option<String> },
+    /// Permissions changed: (URI, mode before, mode after).
+    Mode { items: Vec<(String, u32, u32)> },
+    /// Owner or group changed: (URI, (uid, gid) before, after).
+    Chown { items: Vec<(String, Ids, Ids)> },
+}
+
+/// A file's owner and group: (uid, gid).
+pub type Ids = (u32, u32);
+
+/// What a job's result goes to: a new Undo step (and the Redo list
+/// forgotten), the Redo list (`Undo`: the action just undone), or an Undo
+/// step without forgetting Redo (`Redo`).
+enum Record {
+    New,
+    Undo(Action),
+    Redo,
+}
+
+/// The kind of action a job is, as far as Undo goes (see action_of).
+#[derive(Clone, Copy)]
+enum Shape {
+    Transfer(Kind),
+    Restore,
+    Trash(i64),
+    Other,
+}
+
+fn shape_of(job: &Job) -> Shape {
+    match job {
+        Job::Transfer { kind: Kind::Move, items } if !items.is_empty() && items.iter().all(|i| i.src.starts_with("trash:")) => Shape::Restore,
+        Job::Transfer { kind, items } if items.iter().all(|i| !i.src.starts_with("trash:")) => Shape::Transfer(*kind),
+        Job::Trash(_) => Shape::Trash(now() - 1),
+        _ => Shape::Other,
+    }
+}
+
+fn now() -> i64 {
+    glib::DateTime::now_local().map_or(0, |d| d.to_unix())
+}
+
+/// The action a finished job did, from what its worker noted.
+fn action_of(shape: Shape, done: Vec<Moved>) -> Option<Action> {
+    if done.is_empty() {
+        return None;
+    }
+    Some(match shape {
+        Shape::Transfer(kind) => Action::Transfer { kind, items: done },
+        Shape::Restore => Action::Restore { uris: done.into_iter().map(|m| m.dst).collect(), since: 0 },
+        Shape::Trash(since) => Action::Trash { uris: done.into_iter().map(|m| m.src).collect(), since },
+        Shape::Other => return None,
+    })
 }
 
 /// How many operations back Undo goes.
 const UNDO_STEPS: usize = 20;
 
 thread_local! {
-    static UNDO: RefCell<Vec<UndoStep>> = const { RefCell::new(Vec::new()) };
+    static UNDO: RefCell<Vec<Action>> = const { RefCell::new(Vec::new()) };
+    static REDO: RefCell<Vec<Action>> = const { RefCell::new(Vec::new()) };
 }
 
-/// The kind of `job` if Undo can take it back: copies, moves and links,
-/// but not restoring from the trash (or an undo itself: both give target
-/// names), nor anything out of the trash (moves can't put it back).
-fn undoable(job: &Job) -> Option<Kind> {
-    match job {
-        Job::Transfer { kind, items } if items.iter().all(|i| i.name.is_none() && !i.src.starts_with("trash:")) => Some(*kind),
-        _ => None,
-    }
-}
-
-fn push_undo(step: UndoStep) {
-    UNDO.with(|u| {
+fn push(list: &'static std::thread::LocalKey<RefCell<Vec<Action>>>, a: Action) {
+    list.with(|u| {
         let mut u = u.borrow_mut();
-        u.push(step);
+        u.push(a);
         if u.len() > UNDO_STEPS {
             u.remove(0);
         }
@@ -1495,23 +1569,98 @@ fn push_undo(step: UndoStep) {
     changed();
 }
 
+/// Something new done: a step to undo, and nothing to redo any more.
+fn push_new(a: Action) {
+    REDO.with(|r| r.borrow_mut().clear());
+    push(&UNDO, a);
+}
+
+/// Notes a rename done outside a job (the views, Properties).
+pub fn note_rename(from: &gio::File, to: &gio::File) {
+    if from.equal(to) {
+        return;
+    }
+    // A new item named right away (New Folder, then typing its name): one
+    // step, "Creation of Folder “Photos”".
+    let (from_uri, to_uri) = (from.uri().to_string(), to.uri().to_string());
+    let merged = UNDO.with(|u| match u.borrow_mut().last_mut() {
+        Some(Action::Create { uri, .. }) if *uri == from_uri => {
+            *uri = to_uri.clone();
+            true
+        }
+        _ => false,
+    });
+    if merged {
+        REDO.with(|r| r.borrow_mut().clear());
+        changed();
+    } else {
+        push_new(Action::Rename { items: vec![(from_uri, to_uri)] });
+    }
+}
+
+/// Notes renames done together (Rename All), as one step.
+pub fn note_renames(items: Vec<(String, String)>) {
+    if !items.is_empty() {
+        push_new(Action::Rename { items });
+    }
+}
+
+/// Notes a new folder or document (`template`: the file it's a copy of).
+pub fn note_created(f: &gio::File, folder: bool, template: Option<String>) {
+    push_new(Action::Create { uri: f.uri().to_string(), folder, template });
+}
+
+/// Notes permissions changed: (file, mode before, mode after).
+pub fn note_modes(items: Vec<(gio::File, u32, u32)>) {
+    let items: Vec<(String, u32, u32)> = items.into_iter().filter(|(_, a, b)| a != b).map(|(f, a, b)| (f.uri().to_string(), a, b)).collect();
+    if !items.is_empty() {
+        push_new(Action::Mode { items });
+    }
+}
+
+/// Notes owners or groups changed: (file, (uid, gid) before, after).
+pub fn note_chowns(items: Vec<(gio::File, Ids, Ids)>) {
+    let items: Vec<(String, Ids, Ids)> = items.into_iter().filter(|(_, a, b)| a != b).map(|(f, a, b)| (f.uri().to_string(), a, b)).collect();
+    if !items.is_empty() {
+        push_new(Action::Chown { items });
+    }
+}
+
+/// "Copy of “a.txt”", "Move to Trash of 3 Items": what Undo and Redo say
+/// they'd take back or do again (underscores doubled for the menu).
+fn action_text(a: &Action) -> String {
+    let name = |uri: &str| format!("“{}”", base_name(&gio::File::for_uri(uri)).replace('_', "__"));
+    let what = |uris: Vec<&str>| match uris.as_slice() {
+        [one] => name(one),
+        many => format!("{} Items", many.len()),
+    };
+    match a {
+        Action::Transfer { kind, items } => {
+            let verb = match kind {
+                Kind::Copy => "Copy",
+                Kind::Move => "Move",
+                Kind::Link => "Link",
+            };
+            format!("{verb} of {}", what(items.iter().map(|m| m.dst.as_str()).collect()))
+        }
+        Action::Trash { uris, .. } => format!("Move to Trash of {}", what(uris.iter().map(String::as_str).collect())),
+        Action::Restore { uris, .. } => format!("Restore of {}", what(uris.iter().map(String::as_str).collect())),
+        Action::Rename { items } => format!("Rename of {}", what(items.iter().map(|(_, to)| to.as_str()).collect())),
+        Action::Create { uri, folder, .. } => format!("Creation of {}{}", if *folder { "Folder " } else { "" }, name(uri)),
+        Action::Mode { items } => format!("Change of Permissions of {}", what(items.iter().map(|i| i.0.as_str()).collect())),
+        Action::Chown { items } => format!("Change of Owner or Group of {}", what(items.iter().map(|i| i.0.as_str()).collect())),
+    }
+}
+
 /// The Edit menu's label for Undo ("_Undo Copy of “a.txt”"), or None if
-/// there's nothing to undo. Underscores are doubled for the menu.
+/// there's nothing to undo.
 pub fn undo_label() -> Option<String> {
-    UNDO.with(|u| {
-        let u = u.borrow();
-        let step = u.last()?;
-        let verb = match step.kind {
-            Kind::Copy => "Copy",
-            Kind::Move => "Move",
-            Kind::Link => "Link",
-        };
-        let what = match step.items.as_slice() {
-            [one] => format!("“{}”", base_name(&gio::File::for_uri(&one.dst)).replace('_', "__")),
-            many => format!("{} Items", many.len()),
-        };
-        Some(format!("_Undo {verb} of {what}"))
-    })
+    UNDO.with(|u| u.borrow().last().map(|a| format!("_Undo {}", action_text(a))))
+}
+
+/// The same for Redo.
+pub fn redo_label() -> Option<String> {
+    REDO.with(|u| u.borrow().last().map(|a| format!("_Redo {}", action_text(a))))
 }
 
 /// Whether `uri` may still be there (only local files are checked: asking
@@ -1520,22 +1669,101 @@ fn may_exist(uri: &str) -> bool {
     gio::File::for_uri(uri).path().is_none_or(|p| p.symlink_metadata().is_ok())
 }
 
-/// Takes back the last copy (its copies go to the trash, none that
-/// replaced something), move (moved back) or link (the links go to the
-/// trash). Err: why there was nothing to do.
+/// Takes back the last thing done. Err: why there was nothing to do.
 pub fn undo(parent: Option<gtk::Window>) -> Result<(), String> {
-    let Some(step) = UNDO.with(|u| u.borrow_mut().pop()) else {
+    let Some(a) = UNDO.with(|u| u.borrow_mut().pop()) else {
         return Err("There is nothing to undo.".into());
     };
     changed();
-    run(parent, undo_job(step)?, |_| {});
+    perform(parent, a, true)
+}
+
+/// Does again the last thing undone. Err: why there was nothing to do.
+pub fn redo(parent: Option<gtk::Window>) -> Result<(), String> {
+    let Some(a) = REDO.with(|u| u.borrow_mut().pop()) else {
+        return Err("There is nothing to redo.".into());
+    };
+    changed();
+    perform(parent, a, false)
+}
+
+/// Undoes (`back`) or redoes `a`: through a job where files go somewhere,
+/// at once otherwise.
+fn perform(parent: Option<gtk::Window>, a: Action, back: bool) -> Result<(), String> {
+    let record = |a: Action| if back { Record::Undo(a) } else { Record::Redo };
+    match (back, a.clone()) {
+        (true, Action::Transfer { kind, items }) => run_with(parent, undo_transfer(kind, items)?, record(a), |_| {}),
+        (false, Action::Transfer { kind, items }) => run_with(parent, redo_transfer(kind, items)?, Record::Redo, |_| {}),
+        (true, Action::Trash { uris, since }) | (false, Action::Restore { uris, since }) => {
+            let job = restore_job(&uris, since)?;
+            run_with(parent, job, record(a), |_| {})
+        }
+        (false, Action::Trash { uris, .. }) | (true, Action::Restore { uris, .. }) => {
+            let uris: Vec<String> = uris.into_iter().filter(|u| may_exist(u)).collect();
+            if uris.is_empty() {
+                return Err("Nothing to do: the items are gone.".into());
+            }
+            // Undoing a restore: found in the trash from now on to redo it.
+            let a = match a {
+                Action::Restore { uris, .. } => Action::Restore { uris, since: now() - 1 },
+                other => other,
+            };
+            run_with(parent, Job::Trash(uris), if back { Record::Undo(a) } else { Record::Redo }, |_| {})
+        }
+        (true, Action::Create { uri, .. }) => {
+            if !may_exist(&uri) {
+                return Err("Nothing to undo: the item is gone.".into());
+            }
+            run_with(parent, Job::Trash(vec![uri]), record(a), |_| {})
+        }
+        (false, Action::Create { uri, folder, template }) => {
+            let f = gio::File::for_uri(&uri);
+            let made = if folder {
+                f.make_directory(gio::Cancellable::NONE)
+            } else if let Some(t) = &template {
+                gio::File::for_path(t).copy(&f, gio::FileCopyFlags::NONE, gio::Cancellable::NONE, None)
+            } else {
+                f.create(gio::FileCreateFlags::NONE, gio::Cancellable::NONE).map(|_| ())
+            };
+            made.map_err(|e| e.message().to_string())?;
+            push(&UNDO, a);
+        }
+        (_, Action::Rename { items }) => {
+            // Back in the opposite order: "a → b, b → c" undone is "c → b, b → a".
+            let steps: Vec<(String, String)> = if back { items.iter().rev().map(|(f, t)| (t.clone(), f.clone())).collect() } else { items.clone() };
+            for (from, to) in &steps {
+                let (from, to) = (gio::File::for_uri(from), gio::File::for_uri(to));
+                if to.query_exists(gio::Cancellable::NONE) {
+                    return Err(format!("“{}” is already used.", util::display_name(&to)));
+                }
+                from.set_display_name(&base_name(&to), gio::Cancellable::NONE).map_err(|e| e.message().to_string())?;
+            }
+            push(if back { &REDO } else { &UNDO }, a);
+        }
+        (_, Action::Mode { items }) => {
+            for (uri, before, after) in &items {
+                let mode = if back { before } else { after };
+                gio::File::for_uri(uri).set_attribute_uint32("unix::mode", mode & 0o7777, gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE).map_err(|e| e.message().to_string())?;
+            }
+            push(if back { &REDO } else { &UNDO }, a);
+        }
+        (_, Action::Chown { items }) => {
+            for (uri, before, after) in &items {
+                let (uid, gid) = if back { before } else { after };
+                let path = gio::File::for_uri(uri).path().ok_or("Only local files can change owner or group.")?;
+                std::os::unix::fs::chown(path, Some(*uid), Some(*gid)).map_err(|e| e.to_string())?;
+            }
+            push(if back { &REDO } else { &UNDO }, a);
+        }
+    }
     Ok(())
 }
 
-/// The job that takes back `step`.
-fn undo_job(step: UndoStep) -> Result<Job, String> {
-    let items: Vec<Moved> = step.items.into_iter().filter(|m| may_exist(&m.dst)).collect();
-    Ok(match step.kind {
+/// The job that takes back a copy (its copies go to the trash, none that
+/// replaced something), move (moved back) or link (the links trashed).
+fn undo_transfer(kind: Kind, items: Vec<Moved>) -> Result<Job, String> {
+    let items: Vec<Moved> = items.into_iter().filter(|m| may_exist(&m.dst)).collect();
+    Ok(match kind {
         Kind::Copy | Kind::Link => {
             let uris: Vec<String> = items.into_iter().filter(|m| !m.replaced).map(|m| m.dst).collect();
             if uris.is_empty() {
@@ -1548,8 +1776,7 @@ fn undo_job(step: UndoStep) -> Result<Job, String> {
                 return Err("Nothing to undo: the moved items are gone.".into());
             }
             // A target name makes the job recreate a missing folder (one
-            // emptied by moving into a folder of the same name), and keeps
-            // the undo itself off the Undo list.
+            // emptied by moving into a folder of the same name).
             let items = items
                 .into_iter()
                 .map(|m| {
@@ -1564,6 +1791,75 @@ fn undo_job(step: UndoStep) -> Result<Job, String> {
             Job::Transfer { kind: Kind::Move, items }
         }
     })
+}
+
+/// The job that does a copy, move or link again: from the same items to
+/// the same places (under the same names for a move).
+fn redo_transfer(kind: Kind, items: Vec<Moved>) -> Result<Job, String> {
+    let items: Vec<Item> = items
+        .into_iter()
+        .filter(|m| may_exist(&m.src))
+        .map(|m| {
+            let dst = gio::File::for_uri(&m.dst);
+            Item {
+                src: m.src,
+                dest_dir: dst.parent().map(|p| p.uri().to_string()).unwrap_or_default(),
+                name: (kind == Kind::Move).then(|| base_name(&dst)),
+            }
+        })
+        .collect();
+    if items.is_empty() {
+        return Err("Nothing to redo: the items are gone.".into());
+    }
+    Ok(Job::Transfer { kind, items })
+}
+
+/// The job that brings `uris` back out of the trash: each the newest item
+/// there from that place, trashed from `since` on.
+fn restore_job(uris: &[String], since: i64) -> Result<Job, String> {
+    let paths: Vec<String> = uris.iter().filter_map(|u| gio::File::for_uri(u).path().map(|p| p.to_string_lossy().to_string())).collect();
+    let found = find_in_trash(&paths, since);
+    if found.is_empty() {
+        return Err("Nothing to do: the items are no longer in the Trash.".into());
+    }
+    let items = found
+        .into_iter()
+        .map(|(trash_uri, orig)| {
+            let o = gio::File::for_path(&orig);
+            Item { src: trash_uri, dest_dir: o.parent().map(|p| p.uri().to_string()).unwrap_or_default(), name: Some(base_name(&o)) }
+        })
+        .collect();
+    Ok(Job::Transfer { kind: Kind::Move, items })
+}
+
+/// The trash's items (trash URI, original path) for `paths`: for each the
+/// newest put there from that path, from `since` (Unix time) on.
+fn find_in_trash(paths: &[String], since: i64) -> Vec<(String, String)> {
+    let trash = gio::File::for_uri("trash:///");
+    let Ok(en) = trash.enumerate_children("standard::name,trash::orig-path,trash::deletion-date", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE) else {
+        return vec![];
+    };
+    let mut best: Vec<(String, String, i64)> = vec![];
+    while let Ok(Some(info)) = en.next_file(gio::Cancellable::NONE) {
+        let Some(orig) = info.attribute_byte_string("trash::orig-path").map(|p| p.to_string()) else { continue };
+        if !paths.contains(&orig) {
+            continue;
+        }
+        let when = info
+            .attribute_string("trash::deletion-date")
+            .and_then(|d| glib::DateTime::from_iso8601(&d, Some(&glib::TimeZone::local())).ok())
+            .map_or(0, |d| d.to_unix());
+        if when < since {
+            continue;
+        }
+        let uri = trash.child(info.name()).uri().to_string();
+        match best.iter_mut().find(|(_, o, _)| *o == orig) {
+            Some(b) if b.2 < when => *b = (uri, orig, when),
+            Some(_) => {}
+            None => best.push((uri, orig, when)),
+        }
+    }
+    best.into_iter().map(|(u, o, _)| (u, o)).collect()
 }
 
 /// Tells the desktop that the file operations are done, as Caja does,
@@ -2003,7 +2299,7 @@ mod tests {
         let (_, undo) = run_job_undo(job, &[]);
         assert_eq!(noted(&undo, &s.0), [("dst/d".to_string(), false), ("dst/f".to_string(), false)]);
         // Undoing trashes just those two.
-        let Ok(Job::Trash(uris)) = undo_job(UndoStep { kind: Kind::Copy, items: undo }) else { panic!() };
+        let Ok(Job::Trash(uris)) = undo_transfer(Kind::Copy, undo) else { panic!() };
         assert_eq!(uris, [uri(&s.0.join("dst/d")), uri(&s.0.join("dst/f"))]);
     }
 
@@ -2014,7 +2310,7 @@ mod tests {
         let (_, undo) = run_job_undo(transfer(Kind::Copy, &src, &dst), &[Resolution::Replace, Resolution::Replace]);
         // Not the merged folder itself; a replaced file is noted as such.
         assert_eq!(noted(&undo, &s.0), [("dst/d/a".to_string(), true), ("dst/d/b".to_string(), false), ("dst/d/sub".to_string(), false)]);
-        let Ok(Job::Trash(uris)) = undo_job(UndoStep { kind: Kind::Copy, items: undo }) else { panic!() };
+        let Ok(Job::Trash(uris)) = undo_transfer(Kind::Copy, undo) else { panic!() };
         let mut uris = uris;
         uris.sort();
         assert_eq!(uris, [uri(&dst.join("d/b")), uri(&dst.join("d/sub"))], "the replaced a and the old x stay");
@@ -2027,7 +2323,7 @@ mod tests {
         fs::create_dir_all(s.0.join("dst")).unwrap();
         let (_, undo) = run_job_undo(transfer(Kind::Copy, &s.0.join("src/f"), &s.0.join("dst")), &[]);
         fs::remove_file(s.0.join("dst/f")).unwrap();
-        assert!(undo_job(UndoStep { kind: Kind::Copy, items: undo }).is_err());
+        assert!(undo_transfer(Kind::Copy, undo).is_err());
     }
 
     #[test]
@@ -2037,8 +2333,7 @@ mod tests {
         fs::create_dir_all(s.0.join("dst")).unwrap();
         let (_, undo) = run_job_undo(transfer(Kind::Move, &s.0.join("src/d"), &s.0.join("dst")), &[]);
         assert_eq!(noted(&undo, &s.0), [("dst/d".to_string(), false)]);
-        let job = undo_job(UndoStep { kind: Kind::Move, items: undo }).unwrap();
-        assert_eq!(undoable(&job), None, "an undo isn't undone");
+        let job = undo_transfer(Kind::Move, undo).unwrap();
         let (_, undo) = run_job_undo(job, &[]);
         assert!(undo.len() == 1);
         assert_eq!(read(&s.0.join("src/d/sub/c")), "c");
@@ -2052,7 +2347,7 @@ mod tests {
         let (_, undo) = run_job_undo(transfer(Kind::Move, &src, &dst), &[Resolution::Replace, Resolution::Replace]);
         assert_eq!(noted(&undo, dst_root), [("dst/d/a".to_string(), true), ("dst/d/b".to_string(), false), ("dst/d/sub".to_string(), false)]);
         assert!(!src.exists());
-        let job = undo_job(UndoStep { kind: Kind::Move, items: undo }).unwrap();
+        let job = undo_transfer(Kind::Move, undo).unwrap();
         let (_, asked) = run_job(job, &[]);
         assert!(asked.is_empty(), "{asked:?}");
         assert_eq!(read(&src.join("a")), "new a");
@@ -2101,12 +2396,87 @@ mod tests {
     }
 
     #[test]
-    fn restores_and_trash_moves_are_not_undoable() {
+    fn what_a_finished_job_did() {
         let item = |src: &str, name: Option<&str>| Item { src: src.into(), dest_dir: "file:///tmp".into(), name: name.map(String::from) };
-        assert_eq!(undoable(&Job::Transfer { kind: Kind::Copy, items: vec![item("file:///a", None)] }), Some(Kind::Copy));
-        assert_eq!(undoable(&Job::Transfer { kind: Kind::Move, items: vec![item("trash:///a", None)] }), None);
-        assert_eq!(undoable(&Job::Transfer { kind: Kind::Move, items: vec![item("trash:///a", Some("a"))] }), None);
-        assert_eq!(undoable(&Job::Trash(vec!["file:///a".into()])), None);
+        let moved = |src: &str, dst: &str| Moved { src: src.into(), dst: dst.into(), replaced: false };
+        let copy = Job::Transfer { kind: Kind::Copy, items: vec![item("file:///a", None)] };
+        assert!(matches!(action_of(shape_of(&copy), vec![moved("file:///a", "file:///tmp/a")]), Some(Action::Transfer { kind: Kind::Copy, .. })));
+        // Nothing done: nothing to undo.
+        assert!(action_of(shape_of(&copy), vec![]).is_none());
+        let restore = Job::Transfer { kind: Kind::Move, items: vec![item("trash:///a", Some("a"))] };
+        match action_of(shape_of(&restore), vec![moved("trash:///a", "file:///tmp/a")]) {
+            Some(Action::Restore { uris, .. }) => assert_eq!(uris, ["file:///tmp/a"]),
+            other => panic!("{other:?}"),
+        }
+        let trash = Job::Trash(vec!["file:///a".into()]);
+        match action_of(shape_of(&trash), vec![moved("file:///a", "")]) {
+            Some(Action::Trash { uris, since }) => {
+                assert_eq!(uris, ["file:///a"]);
+                assert!(since > 0);
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(action_of(shape_of(&Job::Delete(vec!["file:///a".into()])), vec![moved("file:///a", "")]).is_none());
+        assert!(action_of(shape_of(&Job::EmptyTrash), vec![moved("file:///a", "")]).is_none());
+    }
+
+    #[test]
+    fn redoing_a_transfer() {
+        let s = home_scratch("redo");
+        write(&s.0.join("a.txt"), "a");
+        let moved = vec![Moved { src: uri(&s.0.join("a.txt")), dst: uri(&s.0.join("dst/b.txt")), replaced: false }];
+        let Ok(Job::Transfer { kind: Kind::Move, items }) = redo_transfer(Kind::Move, moved.clone()) else { panic!() };
+        assert_eq!((items[0].dest_dir.as_str(), items[0].name.as_deref()), (uri(&s.0.join("dst")).as_str(), Some("b.txt")));
+        let Ok(Job::Transfer { kind: Kind::Copy, items }) = redo_transfer(Kind::Copy, moved.clone()) else { panic!() };
+        assert_eq!(items[0].name, None);
+        // A source that's gone: nothing to redo.
+        fs::remove_file(s.0.join("a.txt")).unwrap();
+        assert!(redo_transfer(Kind::Copy, moved).is_err());
+    }
+
+    #[test]
+    fn undo_and_redo_labels() {
+        let a = Action::Transfer { kind: Kind::Copy, items: vec![Moved { src: "file:///a".into(), dst: "file:///b/my_file".into(), replaced: false }] };
+        assert_eq!(action_text(&a), "Copy of “my__file”");
+        let t = Action::Trash { uris: vec!["file:///a".into(), "file:///b".into()], since: 0 };
+        assert_eq!(action_text(&t), "Move to Trash of 2 Items");
+        let c = Action::Create { uri: "file:///x/New".into(), folder: true, template: None };
+        assert_eq!(action_text(&c), "Creation of Folder “New”");
+        let r = Action::Rename { items: vec![("file:///x/a".into(), "file:///x/b".into())] };
+        assert_eq!(action_text(&r), "Rename of “b”");
+    }
+
+    #[test]
+    fn undo_and_redo_renames_modes_and_new_folders() {
+        use std::os::unix::fs::PermissionsExt;
+        let s = home_scratch("undoredo");
+        write(&s.0.join("a"), "1");
+        write(&s.0.join("b"), "2");
+        // A chain: b → c, then a → b. Undone in reverse, redone in order.
+        let (a, b, c) = (uri(&s.0.join("a")), uri(&s.0.join("b")), uri(&s.0.join("c")));
+        fs::rename(s.0.join("b"), s.0.join("c")).unwrap();
+        fs::rename(s.0.join("a"), s.0.join("b")).unwrap();
+        let chain = Action::Rename { items: vec![(b.clone(), c.clone()), (a.clone(), b.clone())] };
+        perform(None, chain.clone(), true).unwrap();
+        assert_eq!((read(&s.0.join("a")), read(&s.0.join("b"))), ("1".to_string(), "2".to_string()));
+        perform(None, chain, false).unwrap();
+        assert_eq!((read(&s.0.join("b")), read(&s.0.join("c"))), ("1".to_string(), "2".to_string()));
+        // Permissions back and forth.
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o7777;
+        fs::set_permissions(s.0.join("b"), fs::Permissions::from_mode(0o600)).unwrap();
+        let m = Action::Mode { items: vec![(uri(&s.0.join("b")), 0o644, 0o600)] };
+        perform(None, m.clone(), true).unwrap();
+        assert_eq!(mode(&s.0.join("b")), 0o644);
+        perform(None, m, false).unwrap();
+        assert_eq!(mode(&s.0.join("b")), 0o600);
+        // A new folder made again.
+        let f = Action::Create { uri: uri(&s.0.join("New Folder")), folder: true, template: None };
+        perform(None, f, false).unwrap();
+        assert!(s.0.join("New Folder").is_dir());
+        // A rename onto a name in use is refused, nothing changed.
+        let clash = Action::Rename { items: vec![(uri(&s.0.join("x")), uri(&s.0.join("c")))] };
+        assert!(perform(None, clash, false).is_err());
+        assert_eq!(read(&s.0.join("c")), "2");
     }
 
     fn home_scratch(name: &str) -> TestDir {
