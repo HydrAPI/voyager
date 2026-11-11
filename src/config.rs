@@ -51,7 +51,9 @@ pub struct Settings {
     /// focus: passing over it on the way elsewhere doesn't count.
     pub focus_follows_mouse_delay: i32,
     /// New tabs go at the end of the tab bar (else right after the current one).
-    pub tabs_at_end: bool,
+    /// Where new tabs go: "in-order" (as Firefox puts them), "after" (right
+    /// after the current tab) or "end".
+    pub new_tabs: String,
     /// Button groups at the right end of the location bar.
     pub show_zoom_buttons: bool,
     pub show_view_buttons: bool,
@@ -229,7 +231,7 @@ impl Default for Settings {
             action_shell: "sh".into(),
             focus_follows_mouse: false,
             focus_follows_mouse_delay: 300,
-            tabs_at_end: true,
+            new_tabs: "in-order".into(),
             show_zoom_buttons: true,
             show_view_buttons: true,
             show_split_button: true,
@@ -376,7 +378,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     st!(action_shell);
     b!(focus_follows_mouse);
     i!(focus_follows_mouse_delay);
-    b!(tabs_at_end);
+    st!(new_tabs);
     b!(show_zoom_buttons);
     b!(show_view_buttons);
     b!(show_split_button);
@@ -554,7 +556,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_string(g, "action_shell", &s.action_shell);
     kf.set_boolean(g, "focus_follows_mouse", s.focus_follows_mouse);
     kf.set_integer(g, "focus_follows_mouse_delay", s.focus_follows_mouse_delay);
-    kf.set_boolean(g, "tabs_at_end", s.tabs_at_end);
+    kf.set_string(g, "new_tabs", &s.new_tabs);
     kf.set_boolean(g, "show_zoom_buttons", s.show_zoom_buttons);
     kf.set_boolean(g, "show_view_buttons", s.show_view_buttons);
     kf.set_boolean(g, "show_split_button", s.show_split_button);

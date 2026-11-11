@@ -139,6 +139,23 @@ fn notebook_of(page: &gtk::Widget) -> Option<gtk::Notebook> {
     page.parent()?.downcast().ok()
 }
 
+/// Where a new tab goes in its tab bar (None: at the end), with new tabs
+/// going `mode`. `from_current`: opened from the current tab (`current`);
+/// `last_opened`: the last tab opened from it since it was chosen.
+///
+/// "in-order" is Firefox's way: a tab opened from the current one goes
+/// right after it, and each next one after the one before, so they stay in
+/// the order opened; once another tab is chosen, it starts over from that
+/// one. Other new tabs (Ctrl+T) go to the end.
+fn tab_index(mode: &str, from_current: bool, current: Option<u32>, last_opened: Option<u32>) -> Option<u32> {
+    match mode {
+        "end" => None,
+        "after" => current.map(|c| c + 1),
+        _ if from_current => current.map(|c| last_opened.filter(|&l| l > c).unwrap_or(c) + 1),
+        _ => None,
+    }
+}
+
 fn owner_of(pane: &Rc<Pane>) -> Option<Rc<AppWindow>> {
     all_windows().into_iter().find(|w| w.panes.borrow().iter().any(|p| Rc::ptr_eq(p, pane)))
 }
@@ -211,6 +228,9 @@ pub struct AppWindow {
     panes: RefCell<Vec<Rc<Pane>>>,
     /// Recently closed tabs, most recent last, for Reopen Closed Tab.
     closed_tabs: RefCell<Vec<ClosedTab>>,
+    /// The last tab opened from the current one since it was chosen (see
+    /// tab_index): the next one opened from it goes after this one.
+    last_opened: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     bookmarks_menu: gio::Menu,
     templates_menu: gio::Menu,
     /// The Edit menu's Undo item, labelled with what it undoes.
@@ -548,6 +568,7 @@ impl AppWindow {
             spinner,
             panes: RefCell::new(vec![]),
             closed_tabs: RefCell::new(vec![]),
+            last_opened: RefCell::new(None),
             bookmarks_menu,
             templates_menu,
             undo_menu: gio::Menu::new(),
@@ -588,7 +609,7 @@ impl AppWindow {
         let locs: Vec<gio::File> = if locations.is_empty() && home_if_empty { vec![util::home_file()] } else { locations.to_vec() };
         // Opened in the given order: when tabs go after the current one,
         // switch to each as it's added (the first is shown below).
-        let after_current = !s.tabs_at_end;
+        let after_current = s.new_tabs == "after";
         for l in &locs {
             this.add_tab(l, after_current);
         }
@@ -1483,7 +1504,7 @@ impl AppWindow {
                         // Like a browser: a middle-clicked place opens in the
                         // background and the current tab stays.
                         crate::sidebar::OpenIn::Tab => {
-                            s.add_tab(&f, false);
+                            s.open_tab(&f, false);
                         }
                         crate::sidebar::OpenIn::Window => {
                             if let Some(app) = s.window.application() {
@@ -1736,7 +1757,20 @@ impl AppWindow {
 
     // ================================================================ tabs
 
+    /// A new tab (Ctrl+T and the like); see open_tab for one opened from
+    /// the current tab.
     pub fn add_tab(self: &Rc<Self>, file: &gio::File, switch: bool) -> Rc<Pane> {
+        self.insert_tab(file, switch, false)
+    }
+
+    /// A tab opened from the current one (a folder or path crumb
+    /// middle-clicked, Open in New Tab): placed as Firefox places a link
+    /// opened in a new tab, if new tabs go "in-order".
+    pub fn open_tab(self: &Rc<Self>, file: &gio::File, switch: bool) -> Rc<Pane> {
+        self.insert_tab(file, switch, true)
+    }
+
+    fn insert_tab(self: &Rc<Self>, file: &gio::File, switch: bool, from_current: bool) -> Rc<Pane> {
         let pane = Pane::new(file);
         // Tabs can move between windows, so these handlers look up the window
         // that holds the tab now instead of remembering this one.
@@ -1819,13 +1853,18 @@ impl AppWindow {
         ev_box.show_all();
         self.panes.borrow_mut().push(pane.clone());
         let nb = self.active();
-        // At the end of the tab bar (the default), or right after the
-        // current tab.
-        let after = if config::with(|s| s.tabs_at_end) { None } else { self.current_pane().and_then(|c| nb.page_num(&c.root)) };
-        let idx = match after {
-            Some(i) => nb.insert_page(&pane.root, Some(&ev_box), Some(i + 1)),
+        let current = self.current_pane().and_then(|c| nb.page_num(&c.root));
+        // Only if it's still in this tab bar (tabs can be dragged away).
+        let last_opened = self.last_opened.borrow().as_ref().and_then(|w| w.upgrade()).and_then(|w| nb.page_num(&w));
+        let at = config::with(|s| tab_index(&s.new_tabs, from_current, current, last_opened));
+        let idx = match at {
+            Some(i) => nb.insert_page(&pane.root, Some(&ev_box), Some(i)),
             None => nb.append_page(&pane.root, Some(&ev_box)),
         };
+        if from_current {
+            // Choosing a tab (this one too, if switched to below) starts over.
+            *self.last_opened.borrow_mut() = Some(pane.root.upcast_ref::<gtk::Widget>().downgrade());
+        }
         self.set_tab_options(pane.root.upcast_ref());
         pane.navigate_initial();
         if switch {
@@ -1846,6 +1885,9 @@ impl AppWindow {
 
     /// Makes `nb` the pane the toolbar, menus and shortcuts act on.
     fn set_active(self: &Rc<Self>, nb: &gtk::Notebook) {
+        if *self.active_nb.borrow() != *nb {
+            self.last_opened.borrow_mut().take();
+        }
         *self.active_nb.borrow_mut() = nb.clone();
         self.update_pane_dimming();
         if let Some(p) = self.current_pane() {
@@ -1934,6 +1976,8 @@ impl AppWindow {
             let w = w.clone();
             nb.connect_switch_page(move |nb, page, _| {
                 let Some(s) = w.upgrade() else { return };
+                // Tabs opened from now on go after the chosen one.
+                s.last_opened.borrow_mut().take();
                 if *nb != s.active() {
                     // Switching tabs in the other pane makes it the active one.
                     if s.split_on() {
@@ -2245,7 +2289,7 @@ impl AppWindow {
             Event::Activate => self.open_selection(OpenMode::Normal),
             Event::Context { event, on_item } => self.context_menu(pane, event, on_item),
             Event::OpenNewTab(f) => {
-                self.add_tab(&f, false);
+                self.open_tab(&f, false);
             }
             Event::OpenFile(r) => {
                 // As when opening it normally: files in the trash show their
@@ -2468,7 +2512,7 @@ impl AppWindow {
                     let (x, y) = ev.position();
                     let inside = x >= 0.0 && y >= 0.0 && x < b.allocated_width() as f64 && y < b.allocated_height() as f64;
                     if let (true, Some(s)) = (inside, w.upgrade()) {
-                        s.add_tab(&target, false);
+                        s.open_tab(&target, false);
                     }
                     glib::Propagation::Stop
                 });
@@ -2745,7 +2789,7 @@ impl AppWindow {
                     p.navigate(&f);
                 }
                 _ => {
-                    self.add_tab(&f, false);
+                    self.open_tab(&f, false);
                 }
             }
         }
@@ -3590,14 +3634,22 @@ impl AppWindow {
         let single = setting_check("_Single click to open items", None, s.single_click, |s, v| s.single_click = v, |_| for_all_panes(|p| p.apply_click_policy()));
         indent(&b, single.upcast_ref());
         head(&b, "Tabs");
-        let at_end = setting_check(
-            "Add new tabs at the _end",
-            Some("Like a browser: new tabs go to the end of the tab bar. Turned off, they open right after the current tab."),
-            s.tabs_at_end,
-            |s, v| s.tabs_at_end = v,
-            |_| {},
-        );
-        indent(&b, at_end.upcast_ref());
+        let tabs = gtk::ComboBoxText::new();
+        for (id, name) in [("in-order", "After the current tab, in order"), ("after", "Right after the current tab"), ("end", "At the end")] {
+            tabs.append(Some(id), name);
+        }
+        tabs.set_active_id(Some(&s.new_tabs));
+        tabs.set_tooltip_text(Some(
+            "After the current tab, in order: a folder opened in a new tab goes right after the current tab, and the next \
+             ones after it, in the order opened, until you choose another tab; Ctrl+T adds a tab at the end.\n\
+             Right after the current tab: each new tab goes right next to it, the newest first.",
+        ));
+        tabs.connect_changed(|c| {
+            if let Some(id) = c.active_id() {
+                config::update(|s| s.new_tabs = id.to_string());
+            }
+        });
+        option(&b, "New tabs go:", tabs.upcast_ref());
         head(&b, "Split View");
         let ffm = check("_Focus the pane under the mouse pointer");
         ffm.set_tooltip_text(Some("With two panes open (F3), moving the pointer over a pane makes it the active one, without clicking (Shift+F3 switches this)"));
@@ -3633,7 +3685,7 @@ impl AppWindow {
         head(&b, "Scrolling");
         let auto = setting_check(
             "_Middle-click on empty space (or an item in the list view) to autoscroll",
-            Some("Like Firefox: a marker appears where you clicked and the view scrolls towards the pointer, faster the further away it is. Click, press a key or use the wheel to stop (after dragging with the button held, letting go stops it). In the list view this works on files and folders too, if the list can scroll; otherwise, or with Shift, a middle-click opens them there (a folder in a new tab)."),
+            Some("A marker appears where you clicked and the view scrolls towards the pointer, faster the further away it is. Click, press a key or use the wheel to stop (after dragging with the button held, letting go stops it). In the list view this works on files and folders too, if the list can scroll; otherwise, or with Shift, a middle-click opens them there (a folder in a new tab)."),
             s.autoscroll,
             |s, v| s.autoscroll = v,
             |_| {},
@@ -5285,6 +5337,70 @@ fn parse_location(text: &str, base: Option<gio::File>) -> gio::File {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Tabs as a list of names: opens `name` from the current tab (or as a
+    /// new tab), as AppWindow::insert_tab places it.
+    struct Tabs {
+        mode: &'static str,
+        tabs: Vec<&'static str>,
+        current: usize,
+        last_opened: Option<&'static str>,
+    }
+
+    impl Tabs {
+        fn open(&mut self, name: &'static str, from_current: bool) {
+            let last = self.last_opened.and_then(|l| self.tabs.iter().position(|t| *t == l)).map(|i| i as u32);
+            match tab_index(self.mode, from_current, Some(self.current as u32), last) {
+                Some(i) => self.tabs.insert(i as usize, name),
+                None => self.tabs.push(name),
+            }
+            if from_current {
+                self.last_opened = Some(name);
+            }
+        }
+        fn choose(&mut self, name: &str) {
+            self.current = self.tabs.iter().position(|t| *t == name).unwrap();
+            self.last_opened = None;
+        }
+    }
+
+    #[test]
+    fn tabs_open_where_firefox_puts_them() {
+        let mut t = Tabs { mode: "in-order", tabs: vec!["a"], current: 0, last_opened: None };
+        t.open("b", true);
+        t.open("c", true);
+        t.open("d", true);
+        assert_eq!(t.tabs, ["a", "b", "c", "d"]);
+        // Ctrl+T: at the end; the next opened from "a" still follows "d".
+        t.open("new", false);
+        t.open("e", true);
+        assert_eq!(t.tabs, ["a", "b", "c", "d", "e", "new"]);
+        // Another tab chosen: right after it, then after that one.
+        t.choose("b");
+        t.open("b1", true);
+        t.open("b2", true);
+        assert_eq!(t.tabs, ["a", "b", "b1", "b2", "c", "d", "e", "new"]);
+        // Back to "a": starts over right after it.
+        t.choose("a");
+        t.open("a1", true);
+        assert_eq!(t.tabs[..3], ["a", "a1", "b"]);
+    }
+
+    #[test]
+    fn tabs_open_after_the_current_one_or_at_the_end() {
+        let mut t = Tabs { mode: "after", tabs: vec!["a", "z"], current: 0, last_opened: None };
+        t.open("b", true);
+        t.open("c", true);
+        t.open("new", false);
+        assert_eq!(t.tabs, ["a", "new", "c", "b", "z"]);
+        let mut t = Tabs { mode: "end", tabs: vec!["a", "z"], current: 0, last_opened: None };
+        t.open("b", true);
+        t.open("new", false);
+        assert_eq!(t.tabs, ["a", "z", "b", "new"]);
+        // No current tab: at the end.
+        assert_eq!(tab_index("in-order", true, None, None), None);
+        assert_eq!(tab_index("after", false, None, None), None);
+    }
 
     #[test]
     fn location_completion() {
