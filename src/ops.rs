@@ -107,6 +107,20 @@ struct Worker {
     /// Set from the progress window's pause button.
     paused: Arc<AtomicBool>,
     clock: Clock,
+    moves: MoveCount,
+}
+
+/// A move's items, for counting it in bytes once any of it has to be
+/// copied (to another file system, or between datasets behind a network
+/// share): one total for the whole move, not one for each item.
+#[derive(Default)]
+struct MoveCount {
+    srcs: Vec<gio::File>,
+    /// The item being moved.
+    at: usize,
+    /// The items' sizes, counted from the first one that had to be copied
+    /// (those before it are 0).
+    sizes: Option<Vec<u64>>,
 }
 
 /// How long a job has been at work, as Caja's job timer: time paused or
@@ -360,6 +374,37 @@ impl Worker {
     }
 
     /// Count bytes and items below `f` (not following symlinks).
+    /// What a file copy is called: part of a move is copied too.
+    fn copy_verb(&self) -> &'static str {
+        if self.verb == "Moving" {
+            "Moving"
+        } else {
+            "Copying"
+        }
+    }
+
+    /// From the first item of a move that has to be copied on: count the
+    /// bytes of it and the items after it, and show the move's progress in
+    /// them from now on.
+    fn count_move_bytes(&mut self) {
+        if self.moves.sizes.is_some() {
+            return;
+        }
+        let at = self.moves.at.min(self.moves.srcs.len());
+        let mut sizes = vec![0; at];
+        for f in &self.moves.srcs[at..] {
+            let (mut b, mut n) = (0, 0);
+            self.scan(f, &mut b, &mut n);
+            sizes.push(b);
+        }
+        self.total_bytes = sizes.iter().sum();
+        self.done_bytes = 0;
+        self.by_bytes = true;
+        self.moves.sizes = Some(sizes);
+        let name = self.moves.srcs.get(at).map(base_name).unwrap_or_default();
+        self.progress(&format!("{} “{name}”", self.verb), true);
+    }
+
     fn scan(&self, f: &gio::File, bytes: &mut u64, items: &mut u64) {
         if self.cancelled() {
             return;
@@ -546,7 +591,7 @@ impl Worker {
             let total = self.total_bytes;
             let tx = self.tx.clone();
             let mut last = Instant::now();
-            let label = format!("Copying “{name}”");
+            let label = format!("{} “{name}”", self.copy_verb());
             let (paused, cancel, clock) = (self.paused.clone(), self.cancel.clone(), self.clock.clone());
             let mut cb = |cur: i64, _tot: i64| {
                 // Pausing in the middle of a big file stops the copy here.
@@ -608,7 +653,7 @@ impl Worker {
                     if record {
                         self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
                     }
-                    self.progress(&format!("Copying “{name}”"), false);
+                    self.progress(&format!("{} “{name}”", self.copy_verb()), false);
                     return Ok(());
                 }
                 Err(e) if e.matches(gio::IOErrorEnum::Exists) => {
@@ -721,17 +766,10 @@ impl Worker {
                         || e.matches(gio::IOErrorEnum::WouldMerge) =>
                 {
                     // Different filesystem: copy, then delete the source.
-                    let (mut b, mut n) = (0, 0);
-                    self.scan(src, &mut b, &mut n);
-                    let saved = (self.by_bytes, self.total_bytes, self.done_bytes);
-                    self.by_bytes = true;
-                    self.total_bytes = b;
-                    self.done_bytes = 0;
+                    self.count_move_bytes();
                     let before = self.skipped;
                     let overwrite = flags.contains(gio::FileCopyFlags::OVERWRITE);
-                    let r = self.copy_rec(src, &dst, overwrite, created, true);
-                    (self.by_bytes, self.total_bytes, self.done_bytes) = saved;
-                    r?;
+                    self.copy_rec(src, &dst, overwrite, created, true)?;
                     if self.skipped == before {
                         self.delete_rec(src, false)?;
                     }
@@ -766,8 +804,12 @@ impl Worker {
                 } else {
                     self.total_items = items.len() as u64;
                 }
+                if kind == Kind::Move {
+                    self.moves.srcs = items.iter().map(|it| gio::File::for_uri(&it.src)).collect();
+                }
                 self.progress("Preparing…", true);
-                for it in items {
+                for (at, it) in items.into_iter().enumerate() {
+                    self.moves.at = at;
                     let src = gio::File::for_uri(&it.src);
                     let dest_dir = gio::File::for_uri(&it.dest_dir);
                     let src_is_dir = kind_of(&src) == Some(gio::FileType::Directory);
@@ -825,6 +867,11 @@ impl Worker {
                     };
                     if let Some(c) = c {
                         created.push(c);
+                    }
+                    // Counted in bytes: this item is done, whether it was
+                    // copied, renamed or skipped (in part).
+                    if let Some(sizes) = &self.moves.sizes {
+                        self.done_bytes = sizes.iter().take(at + 1).sum();
                     }
                     if r.is_err() {
                         break;
@@ -1346,6 +1393,7 @@ fn start(parent: Option<gtk::Window>, job: Job, on_done: Box<dyn Fn(Vec<String>)
                 verb: "",
                 paused,
                 clock: Clock::new(),
+                moves: MoveCount::default(),
             };
             let created = w.run(job);
             let _ = tx.send_blocking(Msg::Done(created, std::mem::take(&mut w.undo)));
@@ -1875,6 +1923,12 @@ mod tests {
 
     /// run_job with answers that can carry a name typed for Keep Both.
     fn run_job_answered(job: Job, answers: Vec<(Resolution, Option<String>)>, paused: Arc<AtomicBool>, cancel: gio::Cancellable) -> (Vec<String>, Vec<String>, Vec<Moved>) {
+        let (created, asked, undo, _) = run_job_watched(job, answers, paused, cancel);
+        (created, asked, undo)
+    }
+
+    /// run_job_answered, also giving each progress report (fraction, text).
+    fn run_job_watched(job: Job, answers: Vec<(Resolution, Option<String>)>, paused: Arc<AtomicBool>, cancel: gio::Cancellable) -> (Vec<String>, Vec<String>, Vec<Moved>, Vec<(f64, String)>) {
         let (tx, rx) = async_channel::unbounded::<Msg>();
         let mut w = Worker {
             tx,
@@ -1894,9 +1948,10 @@ mod tests {
             verb: "",
             paused,
             clock: Clock::new(),
+            moves: MoveCount::default(),
         };
         let ui = std::thread::spawn(move || {
-            let mut asked = vec![];
+            let (mut asked, mut progress) = (vec![], vec![]);
             let mut answers = answers.into_iter();
             while let Ok(m) = rx.recv_blocking() {
                 match m {
@@ -1909,15 +1964,17 @@ mod tests {
                         asked.push(format!("error:{title}"));
                         let _ = reply.send(ErrChoice::Skip);
                     }
+                    Msg::Progress { detail, fraction } => progress.push((fraction, detail)),
                     _ => {}
                 }
             }
-            asked
+            (asked, progress)
         });
         let created = w.run(job);
         let undo = std::mem::take(&mut w.undo);
         drop(w);
-        (created, ui.join().unwrap(), undo)
+        let (asked, progress) = ui.join().unwrap();
+        (created, asked, undo, progress)
     }
 
     /// (dst relative to `root`, replaced) for each noted item, sorted.
@@ -2140,6 +2197,29 @@ mod tests {
         assert_eq!(read(&s.0.join("d/sub/c")), "c");
         assert!(!src.exists());
         assert_eq!(created, [uri(&s.0.join("d"))]);
+    }
+
+    #[test]
+    fn move_cross_fs_counts_all_items_in_bytes() {
+        // One item moves by renaming, two have to be copied: one byte total
+        // for those two, not one for each.
+        let s = home_scratch("xmovebytes");
+        let t = scratch("/dev/shm", "xmovebytes");
+        write(&s.0.join("here/a"), &"a".repeat(1000));
+        write(&t.0.join("b"), &"b".repeat(3000));
+        write(&t.0.join("c/inner"), &"c".repeat(5000));
+        let dst = s.0.join("dst");
+        fs::create_dir_all(&dst).unwrap();
+        let items = [s.0.join("here/a"), t.0.join("b"), t.0.join("c")].iter().map(|p| Item { src: uri(p), dest_dir: uri(&dst), name: None }).collect();
+        let (_, asked, _, progress) = run_job_watched(Job::Transfer { kind: Kind::Move, items }, vec![], Arc::new(AtomicBool::new(false)), gio::Cancellable::new());
+        assert!(asked.is_empty(), "{asked:?}");
+        assert_eq!(read(&dst.join("c/inner")).len(), 5000);
+        assert!(!t.0.join("b").exists() && !t.0.join("c").exists());
+        let in_bytes: Vec<&(f64, String)> = progress.iter().filter(|(_, d)| !d.contains("items")).collect();
+        assert!(!in_bytes.is_empty(), "{progress:?}");
+        let total = format!(" of {}", util::format_size(8000));
+        assert!(in_bytes.iter().all(|(_, d)| d.contains(&total) && d.starts_with("Moving")), "{progress:?}");
+        assert!(progress.windows(2).all(|w| w[1].0 >= w[0].0), "{progress:?}");
     }
 
     #[test]
