@@ -66,15 +66,9 @@ pub fn load() -> Vec<Thumbnailer> {
     if kf.load_from_file(path(), glib::KeyFileFlags::NONE).is_err() {
         return defaults();
     }
-    let mut groups: Vec<(u32, String)> = kf
-        .groups()
-        .iter()
-        .filter_map(|g| Some((g.strip_prefix("Thumbnailer ")?.parse().ok()?, g.to_string())))
-        .collect();
-    groups.sort();
-    groups
+    crate::util::numbered_groups(&kf, "Thumbnailer ")
         .into_iter()
-        .filter_map(|(_, g)| {
+        .filter_map(|g| {
             let s = |k: &str| kf.string(&g, k).map(|v| v.to_string()).unwrap_or_default();
             let t = Thumbnailer { name: s("name"), types: s("types"), command: s("command"), system: false };
             (!t.types.trim().is_empty() && !t.command.trim().is_empty()).then_some(t)
@@ -166,27 +160,13 @@ fn expand_arg(arg: &str, input: &Path, output: &Path, size: u32) -> String {
 fn expand_with(command: &str, input: &Path, output: &Path, size: u32, q: &dyn Fn(&str) -> String) -> String {
     let path = |p: &Path| q(&p.to_string_lossy());
     let uri = || q(gio::prelude::FileExt::uri(&gio::File::for_path(input)).as_str());
-    let mut out = String::new();
-    let mut chars = command.chars();
-    while let Some(c) = chars.next() {
-        if c != '%' {
-            out.push(c);
-            continue;
-        }
-        match chars.next() {
-            Some('i') => out.push_str(&path(input)),
-            Some('u') => out.push_str(&uri()),
-            Some('o') => out.push_str(&path(output)),
-            Some('s') => out.push_str(&size.to_string()),
-            Some('%') => out.push('%'),
-            Some(other) => {
-                out.push('%');
-                out.push(other);
-            }
-            None => out.push('%'),
-        }
-    }
-    out
+    crate::util::expand_placeholders(command, |c| match c {
+        'i' => Some(path(input)),
+        'u' => Some(uri()),
+        'o' => Some(path(output)),
+        's' => Some(size.to_string()),
+        _ => None,
+    })
 }
 
 /// Runs `t` for `input`, writing an image to `output`. Called on the

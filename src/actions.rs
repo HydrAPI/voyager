@@ -160,15 +160,9 @@ pub fn load() -> Vec<CustomAction> {
     if kf.load_from_file(path(), glib::KeyFileFlags::NONE).is_err() {
         return vec![];
     }
-    let mut groups: Vec<(u32, String)> = kf
-        .groups()
-        .iter()
-        .filter_map(|g| Some((g.strip_prefix("Action ")?.parse().ok()?, g.to_string())))
-        .collect();
-    groups.sort();
-    groups
+    crate::util::numbered_groups(&kf, "Action ")
         .into_iter()
-        .filter_map(|(_, g)| {
+        .filter_map(|g| {
             let s = |k: &str| kf.string(&g, k).map(|v| v.to_string()).unwrap_or_default();
             let b = |k: &str| kf.boolean(&g, k).unwrap_or(false);
             // One written by hand may have none.
@@ -285,28 +279,14 @@ pub fn expand(command: &str, sel: &[PathBuf], dir: &Path) -> String {
     let name = |p: &PathBuf| q(Path::new(p.file_name().unwrap_or(p.as_os_str())));
     let dir_only = [dir.to_path_buf()];
     let paths = if sel.is_empty() { &dir_only[..] } else { sel };
-    let mut out = String::new();
-    let mut chars = command.chars();
-    while let Some(c) = chars.next() {
-        if c != '%' {
-            out.push(c);
-            continue;
-        }
-        match chars.next() {
-            Some('f') => out.push_str(&q(&paths[0])),
-            Some('F') => out.push_str(&paths.iter().map(|p| q(p)).collect::<Vec<_>>().join(" ")),
-            Some('n') => out.push_str(&name(&paths[0])),
-            Some('N') => out.push_str(&paths.iter().map(name).collect::<Vec<_>>().join(" ")),
-            Some('d') => out.push_str(&q(dir)),
-            Some('%') => out.push('%'),
-            Some(other) => {
-                out.push('%');
-                out.push(other);
-            }
-            None => out.push('%'),
-        }
-    }
-    out
+    crate::util::expand_placeholders(command, |c| match c {
+        'f' => Some(q(&paths[0])),
+        'F' => Some(paths.iter().map(|p| q(p)).collect::<Vec<_>>().join(" ")),
+        'n' => Some(name(&paths[0])),
+        'N' => Some(paths.iter().map(name).collect::<Vec<_>>().join(" ")),
+        'd' => Some(q(dir)),
+        _ => None,
+    })
 }
 
 #[cfg(test)]

@@ -682,6 +682,39 @@ pub fn is_editable_focused(win: &gtk::Window) -> bool {
         .unwrap_or(false)
 }
 
+/// A key file's groups named `prefix` and a number ("Action 2"), in the
+/// numbers' order: the items of a list saved one group each.
+pub fn numbered_groups(kf: &glib::KeyFile, prefix: &str) -> Vec<String> {
+    let mut groups: Vec<(u32, String)> = kf.groups().iter().filter_map(|g| Some((g.strip_prefix(prefix)?.parse().ok()?, g.to_string()))).collect();
+    groups.sort();
+    groups.into_iter().map(|(_, g)| g).collect()
+}
+
+/// `command` with each %x replaced by what `value` gives for x: "%%" is a
+/// % sign, and a %x it has nothing for stays as it is.
+pub fn expand_placeholders(command: &str, value: impl Fn(char) -> Option<String>) -> String {
+    let mut out = String::new();
+    let mut chars = command.chars();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('%') => out.push('%'),
+            Some(x) => match value(x) {
+                Some(v) => out.push_str(&v),
+                None => {
+                    out.push('%');
+                    out.push(x);
+                }
+            },
+            None => out.push('%'),
+        }
+    }
+    out
+}
+
 /// Whether a preview set to `mode` ("always", "local", "never", as Caja's
 /// Preview settings) is shown for `file`. Local files are those with a
 /// path of their own, network shares mounted by the system included; GVfs
@@ -698,6 +731,20 @@ pub fn preview_on(mode: &str, file: &gio::File) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numbered_groups_in_order() {
+        let kf = glib::KeyFile::new();
+        kf.load_from_data("[Action 10]\n[Other]\n[Action 2]\n[Action x]\n[Action 0]\n", glib::KeyFileFlags::NONE).unwrap();
+        assert_eq!(numbered_groups(&kf, "Action "), ["Action 0", "Action 2", "Action 10"]);
+    }
+
+    #[test]
+    fn placeholders_expanded() {
+        let v = |c| (c == 'a').then(|| "A".to_string());
+        assert_eq!(expand_placeholders("x %a %% %b 100%", v), "x A % %b 100%");
+        assert_eq!(expand_placeholders("%%a%a", v), "%aA");
+    }
     use crate::testutil::TestDir;
 
     fn glob(p: &str, s: &str) -> bool {
