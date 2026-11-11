@@ -2854,8 +2854,19 @@ impl Pane {
                 prev = c.clone();
             }
         }
+        // GTK keeps a column it hides as the cursor's column (the one
+        // clicked last), and at the next cursor change its accessibility
+        // fails an assertion looking for it among the shown ones
+        // (get_column_number). Taken out and put back, the cursor has none.
+        let focus = self.tree_view.cursor().1;
         for (id, c) in &self.detail_cols {
             if !shown.contains(id) {
+                if focus.as_ref() == Some(c) {
+                    if let Some(at) = self.tree_view.columns().iter().position(|x| x == c) {
+                        self.tree_view.remove_column(c);
+                        self.tree_view.insert_column(c, at as i32);
+                    }
+                }
                 c.set_visible(false);
             }
         }
