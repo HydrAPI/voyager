@@ -41,7 +41,8 @@ pub const COL_TRASHED: u32 = 20;
 const ATTRS: &str = "standard::name,standard::display-name,standard::type,standard::icon,\
 standard::size,standard::content-type,standard::is-hidden,standard::is-backup,\
 standard::is-symlink,standard::symlink-target,time::modified,access::can-read,\
-thumbnail::path,thumbnail::is-valid,trash::orig-path,trash::deletion-date";
+thumbnail::path,thumbnail::is-valid,trash::orig-path,trash::deletion-date,\
+metadata::emblems,metadata::annotation,metadata::custom-icon,metadata::custom-icon-name";
 
 /// Typed getter for tree model cells, and the rows of a list.
 pub trait ModelGet {
@@ -2426,9 +2427,15 @@ impl Pane {
 
     fn set_thumb(&self, uri: &str, path: &str) {
         let it = self.index.borrow().get(uri).cloned();
-        if let Some(it) = it {
+        // Not over a custom icon.
+        if let Some(it) = it.filter(|it| !self.store.gv::<Option<gio::Icon>>(it, COL_ICON as i32).is_some_and(|i| icons::is_custom(&i))) {
             self.store.set(&it, &[(COL_THUMB, &path)]);
         }
+    }
+
+    /// Whether the item `uri` is shown here.
+    pub fn shows(&self, uri: &str) -> bool {
+        self.index.borrow().contains_key(uri)
     }
 
     fn on_monitor(self: &Rc<Self>, f: &gio::File, other: Option<&gio::File>, ev: gio::FileMonitorEvent) {
@@ -2721,23 +2728,21 @@ impl Pane {
         let size = info.size().max(0) as u64;
         let mtime = info.attribute_uint64("time::modified") as i64;
         let hidden = util::info_is_hidden(info) || util::info_is_backup(info);
-        let mut icon = info.icon();
         let unreadable = info.has_attribute("access::can-read") && !info.boolean("access::can-read");
-        if let Some(base) = icon.clone() {
-            let mut emblem = None;
-            if util::info_is_symlink(info) {
-                emblem = Some("emblem-symbolic-link");
-            } else if unreadable {
-                emblem = Some("emblem-unreadable");
-            }
-            if let Some(e) = emblem {
-                let em = gio::Emblem::new(&gio::ThemedIcon::new(e));
-                icon = Some(gio::EmblemedIcon::new(&base, Some(&em)).upcast());
-            }
-        }
+        let automatic: &[&str] = if util::info_is_symlink(info) {
+            &["emblem-symbolic-link"]
+        } else if unreadable {
+            &["emblem-unreadable"]
+        } else {
+            &[]
+        };
+        // Its custom icon if it has one, and the emblems given to it.
+        let icon = icons::item_icon(info, automatic);
+        let custom = icon.as_ref().is_some_and(icons::is_custom);
         let mut thumb = String::new();
         // Missing ones are asked for once the item is shown (see row_pixbuf).
-        if config::with(|s| s.thumbnails) && !is_dir && icons::can_thumbnail(&ctype) && child.path().is_some() {
+        // A custom icon goes before a thumbnail, as in Caja.
+        if !custom && config::with(|s| s.thumbnails) && !is_dir && icons::can_thumbnail(&ctype) && child.path().is_some() {
             thumb = icons::existing_thumbnail(info, &uri, mtime).unwrap_or_default();
         }
         let orig = info
@@ -4783,6 +4788,9 @@ fn request_row_thumbnail(m: &gtk::TreeModel, it: &gtk::TreeIter) {
     let ctype = m.value(it, COL_CTYPE as i32);
     let ctype = value_str(&ctype);
     let uri: String = m.gv(it, COL_URI as i32);
+    if m.gv::<Option<gio::Icon>>(it, COL_ICON as i32).is_some_and(|i| icons::is_custom(&i)) {
+        return;
+    }
     if !icons::can_thumbnail(ctype) {
         debug_once(&uri, &format!("no thumbnailer for {ctype}"));
         return;

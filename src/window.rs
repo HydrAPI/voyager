@@ -273,6 +273,18 @@ fn show_chosen_columns() {
     });
 }
 
+/// Reads `files` again wherever they're shown (their metadata changed:
+/// GVfs doesn't tell folder monitors about that).
+pub fn refresh_everywhere(files: &[gio::File]) {
+    for_all_panes(|p| {
+        for f in files {
+            if p.shows(&f.uri()) {
+                p.refresh_file(f);
+            }
+        }
+    });
+}
+
 fn for_all_panes(f: impl Fn(&Rc<Pane>)) {
     for w in all_windows() {
         for p in w.panes.borrow().iter() {

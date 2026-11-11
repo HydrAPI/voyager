@@ -338,7 +338,8 @@ impl Column {
         let folder = self.folder.clone();
         let show_hidden = self.show_hidden;
         glib::MainContext::default().spawn_local(async move {
-            let attrs = "standard::name,standard::display-name,standard::type,standard::icon,standard::is-hidden,standard::is-backup";
+            let attrs = "standard::name,standard::display-name,standard::type,standard::icon,standard::is-hidden,standard::is-backup,\
+                         metadata::emblems,metadata::annotation,metadata::custom-icon,metadata::custom-icon-name";
             let Ok(en) = folder.enumerate_children_future(attrs, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT).await else { return };
             let mut rows = vec![];
             loop {
@@ -353,7 +354,7 @@ impl Column {
                     let name = info.display_name().to_string();
                     let is_dir = matches!(info.file_type(), gio::FileType::Directory | gio::FileType::Mountable);
                     let uri = folder.child(info.name()).uri().to_string();
-                    let icon = info.icon().unwrap_or_else(|| gio::ThemedIcon::new("text-x-generic").upcast());
+                    let icon = crate::icons::item_icon(&info, &[]).unwrap_or_else(|| gio::ThemedIcon::new("text-x-generic").upcast());
                     rows.push((icon, name, uri, is_dir));
                 }
             }

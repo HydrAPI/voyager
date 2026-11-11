@@ -1,4 +1,6 @@
-//! File / folder properties dialog (Basic, Permissions, Open With, Media Info).
+//! File / folder properties dialog (Basic, Emblems, Permissions, Open With,
+//! Notes, Media Info), as Caja's. Emblems, notes and a custom icon are GVfs
+//! metadata, as Caja keeps them, so the two share them.
 
 use gio::prelude::*;
 use gtk::prelude::*;
@@ -98,7 +100,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     nb.set_border_width(6);
     dialog.content_area().pack_start(&nb, true, true, 0);
 
-    let attrs = "standard::*,time::*,unix::*,owner::*,access::*,id::filesystem,filesystem::*,selinux::context";
+    let attrs = "standard::*,time::*,unix::*,owner::*,access::*,id::filesystem,filesystem::*,selinux::context,metadata::*";
     // Keep files and infos paired up, dropping files that vanished.
     let (files, infos): (Vec<gio::File>, Vec<gio::FileInfo>) = files
         .into_iter()
@@ -121,10 +123,20 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
 
     let head = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     let img = gtk::Image::new();
-    if let Some(pb) = icons::icon_pixbuf(infos[0].icon().as_ref(), 64) {
+    if let Some(pb) = icons::icon_pixbuf(icons::item_icon(&infos[0], &[]).as_ref(), 64) {
         img.set_from_pixbuf(Some(&pb));
     }
-    head.pack_start(&img, false, false, 0);
+    // A click on the icon picks another one, as in Caja.
+    let icon_button = gtk::Button::new();
+    icon_button.set_relief(gtk::ReliefStyle::None);
+    icon_button.set_valign(gtk::Align::Center);
+    icon_button.set_tooltip_text(Some("Choose another icon"));
+    icon_button.add(&img);
+    {
+        let (files, d, img) = (files.clone(), dialog.clone(), img.clone());
+        icon_button.connect_clicked(move |_| choose_icon(&d, &files, &img));
+    }
+    head.pack_start(&icon_button, false, false, 0);
 
     if files.len() == 1 {
         let f = files[0].clone();
@@ -237,26 +249,34 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     }
     nb.append_page(&grid, Some(&gtk::Label::new(Some("Basic"))));
 
+    // -------------------------------------------------------------- Emblems
+    nb.append_page(&emblems_page(&dialog, &files, &infos), Some(&gtk::Label::new(Some("Emblems"))));
+
     // ---------------------------------------------------------- Permissions
     if infos.iter().all(|i| i.has_attribute("unix::mode")) {
         let pg = gtk::Grid::new();
         pg.set_row_spacing(8);
         pg.set_column_spacing(12);
         pg.set_border_width(12);
-        let info = &infos[0];
         let mut r = 0;
-        let owner = info.attribute_string("owner::user").map(|s| s.to_string()).unwrap_or_default();
-        let group = info.attribute_string("owner::group").map(|s| s.to_string()).unwrap_or_default();
-        if files.len() == 1 {
-            row(&pg, r, "Owner:", value_label(&owner).upcast_ref());
-            r += 1;
-            row(&pg, r, "Group:", value_label(&group).upcast_ref());
-            r += 1;
-        }
         // Every file keeps its own mode; a checkbox only flips its one bit in each.
         let modes: Rc<Vec<Cell<u32>>> = Rc::new(infos.iter().map(|i| Cell::new(i.attribute_uint32("unix::mode"))).collect());
         let my_uid = unsafe { libc_getuid() };
         let can_change = infos.iter().all(|i| i.attribute_uint32("unix::uid") == my_uid || my_uid == 0);
+        let native = files.iter().all(|f| f.path().is_some());
+        // The owner and group, as Caja has them: the owner can only be
+        // changed by root, the group by the owner, to one of their groups.
+        let owner = owner_combo(&dialog, &files, &infos, my_uid == 0 && native);
+        let group = group_combo(&dialog, &files, &infos, can_change && native, my_uid == 0);
+        for (key, combo) in [("Owner:", &owner), ("Group:", &group)] {
+            let l = gtk::Label::new(Some(key));
+            l.set_xalign(1.0);
+            l.style_context().add_class("dim-label");
+            pg.attach(&l, 0, r, 1, 1);
+            // Over the permission columns, not widening the first.
+            pg.attach(combo, 1, r, 3, 1);
+            r += 1;
+        }
         let headers = ["", "Read", "Write", "Execute"];
         for (c, h) in headers.iter().enumerate() {
             let l = gtk::Label::new(Some(h));
@@ -349,7 +369,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             r += 1;
             let apply = gtk::Button::with_label("Apply to Enclosed Items…");
             apply.set_halign(gtk::Align::Start);
-            apply.set_tooltip_text(Some("Give the folders inside these permissions, and the files inside the same read and write permissions"));
+            apply.set_tooltip_text(Some("Give the folders inside these permissions and this group, and the files inside the same read and write permissions and group"));
             let done = value_label("");
             done.style_context().add_class("dim-label");
             let grid = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -374,7 +394,11 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                     gtk::ButtonsType::None,
                     "Apply these permissions to everything inside?",
                 );
-                ask.set_secondary_text(Some("Every folder inside gets the same permissions, every file the same read and write permissions. This can't be undone."));
+                ask.set_secondary_text(Some(if my_uid == 0 {
+                    "Every folder inside gets the same permissions, owner and group, every file the same read and write permissions, owner and group. This can't be undone."
+                } else {
+                    "Every folder inside gets the same permissions and group, every file the same read and write permissions and group. This can't be undone."
+                }));
                 ask.add_button("_Cancel", gtk::ResponseType::Cancel);
                 ask.add_button("_Apply", gtk::ResponseType::Accept);
                 let ok = ask.run() == gtk::ResponseType::Accept;
@@ -386,7 +410,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                 done.set_text("Applying…");
                 let (b, done) = (b.clone(), done.clone());
                 glib::MainContext::default().spawn_local(async move {
-                    let (changed, failed) = gio::spawn_blocking(move || apply_enclosed(&dirs)).await.unwrap_or((0, 0));
+                    let (changed, failed) = gio::spawn_blocking(move || apply_enclosed(&dirs, my_uid == 0)).await.unwrap_or((0, 0));
                     b.set_sensitive(true);
                     let items = |n: usize| if n == 1 { "1 item".to_string() } else { format!("{n} items") };
                     done.set_text(&match failed {
@@ -444,6 +468,11 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             ob.pack_start(&set_btn, false, false, 0);
             nb.append_page(&ob, Some(&gtk::Label::new(Some("Open With"))));
         }
+    }
+
+    // ---------------------------------------------------------------- Notes
+    if files.len() == 1 {
+        nb.append_page(&notes_page(&dialog, &files[0], &infos[0]), Some(&gtk::Label::new(Some("Notes"))));
     }
 
     // ----------------------------------------------------------- Media Info
@@ -652,11 +681,17 @@ fn disk_usage(f: &gio::File) -> Option<gtk::Widget> {
 
 /// Applies each folder's mode to everything inside it: subfolders get it
 /// whole, files its read and write bits beside their own execute bits.
-/// Links are left alone. (changed, failed).
-fn apply_enclosed(dirs: &[(std::path::PathBuf, u32)]) -> (usize, usize) {
-    use std::os::unix::fs::PermissionsExt;
+/// Its group too, and (`owner`: as root) its owner. Links are left alone.
+/// (changed, failed).
+fn apply_enclosed(dirs: &[(std::path::PathBuf, u32)], owner: bool) -> (usize, usize) {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     let (mut changed, mut failed) = (0, 0);
     for (dir, mode) in dirs {
+        let Ok(top) = std::fs::metadata(dir) else {
+            failed += 1;
+            continue;
+        };
+        let (uid, gid) = (top.uid(), top.gid());
         let mut stack = vec![dir.clone()];
         while let Some(d) = stack.pop() {
             let Ok(rd) = std::fs::read_dir(&d) else {
@@ -669,24 +704,346 @@ fn apply_enclosed(dirs: &[(std::path::PathBuf, u32)]) -> (usize, usize) {
                 if md.file_type().is_symlink() {
                     continue;
                 }
-                let old = md.permissions().mode() & 0o7777;
+                // First the owner and group: changing them can clear set-ID bits.
+                let new_uid = Some(uid).filter(|u| owner && *u != md.uid());
+                let new_gid = Some(gid).filter(|g| *g != md.gid());
+                let mut did = false;
+                if new_uid.is_some() || new_gid.is_some() {
+                    match std::os::unix::fs::chown(&p, new_uid, new_gid) {
+                        Ok(()) => did = true,
+                        Err(_) => failed += 1,
+                    }
+                }
+                let old = std::fs::symlink_metadata(&p).map_or(md.permissions().mode(), |m| m.permissions().mode()) & 0o7777;
                 let new = if md.is_dir() {
                     stack.push(p.clone());
                     *mode
                 } else {
                     (old & 0o7111) | (*mode & 0o666)
                 };
-                if new == old {
-                    continue;
+                if new != old {
+                    match std::fs::set_permissions(&p, std::fs::Permissions::from_mode(new)) {
+                        Ok(()) => did = true,
+                        Err(_) => failed += 1,
+                    }
                 }
-                match std::fs::set_permissions(&p, std::fs::Permissions::from_mode(new)) {
-                    Ok(()) => changed += 1,
-                    Err(_) => failed += 1,
+                if did {
+                    changed += 1;
                 }
             }
         }
     }
     (changed, failed)
+}
+
+/// The icon at the top of the Basic page, clicked: a picture for the items'
+/// icon, or (Revert) their own again. Kept as metadata::custom-icon, as Caja does.
+fn choose_icon(dialog: &gtk::Dialog, files: &[gio::File], img: &gtk::Image) {
+    let has_custom = |f: &gio::File| {
+        f.query_info("metadata::custom-icon,metadata::custom-icon-name", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+            .is_ok_and(|i| i.attribute_string("metadata::custom-icon").is_some_and(|u| !u.is_empty()) || i.attribute_string("metadata::custom-icon-name").is_some_and(|n| !n.is_empty()))
+    };
+    let chooser = gtk::FileChooserDialog::new(Some("Select Custom Icon"), Some(dialog), gtk::FileChooserAction::Open);
+    if files.iter().any(has_custom) {
+        chooser.add_button("_Revert", gtk::ResponseType::Other(1));
+    }
+    chooser.add_button("_Cancel", gtk::ResponseType::Cancel);
+    chooser.add_button("_Open", gtk::ResponseType::Accept);
+    chooser.set_default_response(gtk::ResponseType::Accept);
+    let filter = gtk::FileFilter::new();
+    filter.set_name(Some("Images"));
+    filter.add_pixbuf_formats();
+    chooser.add_filter(filter);
+    let pictures = glib::user_special_dir(glib::UserDirectory::Pictures).filter(|p| p.is_dir()).unwrap_or_else(glib::home_dir);
+    let _ = chooser.set_current_folder(pictures);
+    // A preview of the picture under the cursor.
+    let preview = gtk::Image::new();
+    chooser.set_preview_widget(&preview);
+    chooser.connect_update_preview(move |c| {
+        let pb = c.preview_filename().and_then(|p| icons::load_at_scale(&p, 128).ok());
+        preview.set_from_pixbuf(pb.as_ref());
+        c.set_preview_widget_active(pb.is_some());
+    });
+    let response = chooser.run();
+    let picked = chooser.uri();
+    chooser.close();
+    let result = match response {
+        gtk::ResponseType::Accept => {
+            let Some(uri) = picked else { return };
+            files.iter().try_for_each(|f| {
+                util::set_metadata(f, "custom-icon-name", util::Meta::Unset).ok();
+                util::set_metadata(f, "custom-icon", util::Meta::Text(&uri))
+            })
+        }
+        gtk::ResponseType::Other(1) => files.iter().try_for_each(|f| {
+            util::set_metadata(f, "custom-icon-name", util::Meta::Unset).ok();
+            util::set_metadata(f, "custom-icon", util::Meta::Unset)
+        }),
+        _ => return,
+    };
+    if let Err(e) = result {
+        util::error_dialog(Some(dialog.upcast_ref()), "Could not change the icon", e.message());
+    }
+    let info = files[0].query_info("standard::icon,metadata::*", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE).ok();
+    if let Some(pb) = info.and_then(|i| icons::icon_pixbuf(icons::item_icon(&i, &[]).as_ref(), 64)) {
+        img.set_from_pixbuf(Some(&pb));
+    }
+    crate::window::refresh_everywhere(files);
+}
+
+/// A combo box of names by number (users or groups), the items' own
+/// selected if they share it; picking one calls `set` for each file.
+fn id_combo(dialog: &gtk::Dialog, files: &[gio::File], choices: &[(u32, String)], current: Option<u32>, usable: bool, what: &'static str, set: fn(&std::path::Path, u32) -> std::io::Result<()>) -> gtk::ComboBoxText {
+    let combo = gtk::ComboBoxText::new();
+    for (id, name) in choices {
+        combo.append(Some(&id.to_string()), name);
+    }
+    if let Some(c) = current {
+        combo.set_active_id(Some(&c.to_string()));
+    }
+    combo.set_sensitive(usable);
+    let (files, d) = (files.to_vec(), dialog.clone());
+    combo.connect_changed(move |c| {
+        let Some(id) = c.active_id().and_then(|i| i.parse::<u32>().ok()) else { return };
+        for f in &files {
+            let Some(p) = f.path() else { continue };
+            if let Err(e) = set(&p, id) {
+                util::error_dialog(d.transient_for().as_ref(), &format!("Could not change the {what}"), &format!("{}: {e}", util::display_name(f)));
+                break;
+            }
+        }
+        crate::window::refresh_everywhere(&files);
+    });
+    combo
+}
+
+/// The items' owner, changeable only by root (as in Caja).
+fn owner_combo(dialog: &gtk::Dialog, files: &[gio::File], infos: &[gio::FileInfo], usable: bool) -> gtk::ComboBoxText {
+    let uids: Vec<u32> = infos.iter().map(|i| i.attribute_uint32("unix::uid")).collect();
+    let mut users = all_users();
+    for (uid, info) in uids.iter().zip(infos) {
+        if !users.iter().any(|(u, _)| u == uid) {
+            users.push((*uid, info.attribute_string("owner::user").map_or_else(|| uid.to_string(), |n| n.to_string())));
+        }
+    }
+    let current = Some(uids[0]).filter(|u| uids.iter().all(|x| x == u));
+    let combo = id_combo(dialog, files, &users, current, usable, "owner", |p, uid| std::os::unix::fs::chown(p, Some(uid), None));
+    if !usable {
+        combo.set_tooltip_text(Some("Only the administrator (root) can give an item to someone else"));
+    }
+    combo
+}
+
+/// The items' group: the owner can choose one of their own groups; root
+/// any group.
+fn group_combo(dialog: &gtk::Dialog, files: &[gio::File], infos: &[gio::FileInfo], usable: bool, root: bool) -> gtk::ComboBoxText {
+    let gids: Vec<u32> = infos.iter().map(|i| i.attribute_uint32("unix::gid")).collect();
+    let mut groups: Vec<(u32, String)> = if root { all_groups() } else { all_groups().into_iter().filter(|(g, _)| my_groups().contains(g)).collect() };
+    for (gid, info) in gids.iter().zip(infos) {
+        if !groups.iter().any(|(g, _)| g == gid) {
+            groups.push((*gid, info.attribute_string("owner::group").map_or_else(|| gid.to_string(), |n| n.to_string())));
+        }
+    }
+    groups.sort_by(|a, b| a.1.cmp(&b.1));
+    let current = Some(gids[0]).filter(|g| gids.iter().all(|x| x == g));
+    let combo = id_combo(dialog, files, &groups, current, usable, "group", |p, gid| std::os::unix::fs::chown(p, None, Some(gid)));
+    if !usable {
+        combo.set_tooltip_text(Some("Only the owner can change the group"));
+    }
+    combo
+}
+
+/// Every user (uid, "name" or "name – Full Name"), by name.
+fn all_users() -> Vec<(u32, String)> {
+    let mut out = vec![];
+    // SAFETY: getpwent's results are copied out before the next call; on the
+    // main thread only (nothing else here uses the passwd database).
+    unsafe {
+        libc::setpwent();
+        loop {
+            let pw = libc::getpwent();
+            if pw.is_null() {
+                break;
+            }
+            let name = std::ffi::CStr::from_ptr((*pw).pw_name).to_string_lossy().to_string();
+            let gecos = if (*pw).pw_gecos.is_null() { String::new() } else { std::ffi::CStr::from_ptr((*pw).pw_gecos).to_string_lossy().to_string() };
+            let full = gecos.split(',').next().unwrap_or("").trim().to_string();
+            let label = if full.is_empty() || full == name { name } else { format!("{name} – {full}") };
+            if !out.iter().any(|(u, _)| *u == (*pw).pw_uid) {
+                out.push(((*pw).pw_uid, label));
+            }
+        }
+        libc::endpwent();
+    }
+    out.sort_by(|a, b| a.1.cmp(&b.1));
+    out
+}
+
+/// Every group (gid, name).
+fn all_groups() -> Vec<(u32, String)> {
+    let mut out = vec![];
+    // SAFETY: as in all_users.
+    unsafe {
+        libc::setgrent();
+        loop {
+            let gr = libc::getgrent();
+            if gr.is_null() {
+                break;
+            }
+            if !out.iter().any(|(g, _)| *g == (*gr).gr_gid) {
+                out.push(((*gr).gr_gid, std::ffi::CStr::from_ptr((*gr).gr_name).to_string_lossy().to_string()));
+            }
+        }
+        libc::endgrent();
+    }
+    out
+}
+
+/// The groups this process (the user) is in.
+fn my_groups() -> Vec<u32> {
+    // SAFETY: the buffer is as long as getgroups is told.
+    unsafe {
+        let n = libc::getgroups(0, std::ptr::null_mut());
+        let mut v = vec![0 as libc::gid_t; n.max(0) as usize];
+        let n = libc::getgroups(v.len() as i32, v.as_mut_ptr());
+        v.truncate(n.max(0) as usize);
+        v.push(libc::getegid());
+        v
+    }
+}
+
+/// Emblems: the icon theme's, each with a check box for the items, as in
+/// Caja; kept as their keywords in metadata::emblems ("important" for
+/// emblem-important).
+fn emblems_page(dialog: &gtk::Dialog, files: &[gio::File], infos: &[gio::FileInfo]) -> gtk::Widget {
+    let keywords: Rc<Vec<std::cell::RefCell<Vec<String>>>> = Rc::new(
+        infos
+            .iter()
+            .map(|i| std::cell::RefCell::new(if i.has_attribute("metadata::emblems") { i.attribute_stringv("metadata::emblems").iter().map(|k| k.to_string()).filter(|k| !k.is_empty()).collect() } else { vec![] }))
+            .collect(),
+    );
+    // The theme's, and any the items have that it doesn't list there
+    // (another theme's, or Caja's own), so they can be taken off.
+    let mut emblems = icons::available_emblems();
+    for k in keywords.iter().flat_map(|k| k.borrow().clone()) {
+        let icon = format!("emblem-{k}");
+        if !emblems.iter().any(|(i, _)| *i == icon) {
+            let title = icons::emblem_title(&icon);
+            emblems.push((icon, title));
+        }
+    }
+    if emblems.is_empty() {
+        let l = value_label("The icon theme has no emblems.");
+        l.set_margin_start(12);
+        l.set_margin_top(12);
+        return l.upcast();
+    }
+    let flow = gtk::FlowBox::new();
+    flow.set_selection_mode(gtk::SelectionMode::None);
+    flow.set_max_children_per_line(3);
+    flow.set_min_children_per_line(2);
+    flow.set_homogeneous(true);
+    flow.set_valign(gtk::Align::Start);
+    flow.set_border_width(12);
+    flow.set_row_spacing(4);
+    flow.set_column_spacing(12);
+    let files = Rc::new(files.to_vec());
+    for (icon, title) in emblems {
+        let keyword = icon.strip_prefix("emblem-").unwrap_or(&icon).to_string();
+        let cb = gtk::CheckButton::new();
+        let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let image = gtk::Image::from_icon_name(Some(&icon), gtk::IconSize::LargeToolbar);
+        content.add(&image);
+        content.add(&gtk::Label::new(Some(&title)));
+        cb.add(&content);
+        let with = keywords.iter().filter(|k| k.borrow().contains(&keyword)).count();
+        cb.set_active(with == keywords.len());
+        cb.set_inconsistent(with != 0 && with != keywords.len());
+        let (keywords, files, d) = (keywords.clone(), files.clone(), dialog.clone());
+        cb.connect_toggled(move |cb| {
+            cb.set_inconsistent(false);
+            let on = cb.is_active();
+            for (f, k) in files.iter().zip(keywords.iter()) {
+                let mut k = k.borrow_mut();
+                k.retain(|x| *x != keyword);
+                if on {
+                    k.push(keyword.clone());
+                }
+                let r = if k.is_empty() { util::set_metadata(f, "emblems", util::Meta::Unset) } else { util::set_metadata(f, "emblems", util::Meta::List(&k)) };
+                if let Err(e) = r {
+                    util::error_dialog(d.transient_for().as_ref(), "Could not change the emblems", e.message());
+                    break;
+                }
+            }
+            crate::window::refresh_everywhere(&files);
+        });
+        flow.add(&cb);
+    }
+    let sw = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
+    sw.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    sw.set_min_content_height(320);
+    sw.add(&flow);
+    sw.upcast()
+}
+
+/// Notes: a note kept with the item (metadata::annotation, as in Caja),
+/// saved as it's typed. Items with one get the note emblem.
+fn notes_page(dialog: &gtk::Dialog, file: &gio::File, info: &gio::FileInfo) -> gtk::Widget {
+    let view = gtk::TextView::new();
+    view.set_wrap_mode(gtk::WrapMode::WordChar);
+    view.set_left_margin(6);
+    view.set_right_margin(6);
+    view.set_top_margin(6);
+    let buffer = view.buffer().expect("a text view has a buffer");
+    buffer.set_text(&info.attribute_string("metadata::annotation").map(|n| n.to_string()).unwrap_or_default());
+    let saved = Rc::new(std::cell::RefCell::new(buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).map(|t| t.to_string()).unwrap_or_default()));
+    let save = {
+        let (file, buffer, saved, d) = (file.clone(), buffer.clone(), saved.clone(), dialog.clone());
+        Rc::new(move || {
+            let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).map(|t| t.to_string()).unwrap_or_default();
+            if *saved.borrow() == text {
+                return;
+            }
+            let r = if text.trim().is_empty() { util::set_metadata(&file, "annotation", util::Meta::Unset) } else { util::set_metadata(&file, "annotation", util::Meta::Text(&text)) };
+            match r {
+                Ok(()) => {
+                    *saved.borrow_mut() = text;
+                    crate::window::refresh_everywhere(std::slice::from_ref(&file));
+                }
+                Err(e) => util::error_dialog(d.transient_for().as_ref(), "Could not save the note", e.message()),
+            }
+        })
+    };
+    // Saved a moment after typing stops, and when the window closes.
+    let pending: Rc<std::cell::Cell<Option<glib::SourceId>>> = Rc::default();
+    {
+        let (save, pending) = (save.clone(), pending.clone());
+        buffer.connect_changed(move |_| {
+            if let Some(id) = pending.take() {
+                id.remove();
+            }
+            let (save, p) = (save.clone(), pending.clone());
+            pending.set(Some(glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || {
+                p.take();
+                save();
+            })));
+        });
+    }
+    dialog.connect_destroy(move |_| {
+        if let Some(id) = pending.take() {
+            id.remove();
+        }
+        save();
+    });
+    let sw = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
+    sw.set_shadow_type(gtk::ShadowType::In);
+    sw.set_min_content_height(260);
+    sw.add(&view);
+    let page = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    page.set_border_width(12);
+    page.pack_start(&value_label("A note about this item, kept with it (Caja shows it too):"), false, false, 0);
+    page.pack_start(&sw, true, true, 0);
+    page.upcast()
 }
 
 fn group_digits(n: u64) -> String {
@@ -729,6 +1086,33 @@ mod tests {
     }
 
     #[test]
+    fn users_and_groups() {
+        let me = unsafe { super::libc_getuid() };
+        assert!(super::all_users().iter().any(|(u, _)| *u == me));
+        let mine = super::my_groups();
+        assert!(mine.contains(&unsafe { libc::getegid() }));
+        let all = super::all_groups();
+        assert!(mine.iter().all(|g| all.iter().any(|(x, _)| x == g) || *g == unsafe { libc::getegid() }));
+    }
+
+    #[test]
+    fn apply_enclosed_group() {
+        use std::os::unix::fs::MetadataExt;
+        // Needs a second group of the user's to change to.
+        let egid = unsafe { libc::getegid() };
+        let Some(other) = super::my_groups().into_iter().find(|g| *g != egid) else { return };
+        let t = crate::testutil::TestDir::new("props-enclosed-group");
+        let f = t.file("top/sub/a.txt", "a");
+        let top = t.0.join("top");
+        std::os::unix::fs::chown(&top, None, Some(other)).unwrap();
+        let (changed, failed) = super::apply_enclosed(&[(top.clone(), 0o755)], false);
+        assert_eq!(failed, 0);
+        assert!(changed >= 2);
+        assert_eq!(std::fs::metadata(&f).unwrap().gid(), other);
+        assert_eq!(std::fs::metadata(top.join("sub")).unwrap().gid(), other);
+    }
+
+    #[test]
     fn apply_enclosed_modes() {
         use std::os::unix::fs::PermissionsExt;
         let t = crate::testutil::TestDir::new("props-enclosed");
@@ -744,7 +1128,7 @@ mod tests {
         set(&g, 0o644);
         set(&sub, 0o700);
         std::os::unix::fs::symlink(&f, t.0.join("top/link")).unwrap();
-        let (changed, failed) = super::apply_enclosed(&[(t.0.join("top"), 0o750)]);
+        let (changed, failed) = super::apply_enclosed(&[(t.0.join("top"), 0o750)], false);
         assert_eq!(failed, 0);
         assert_eq!(mode(&sub), 0o750);
         assert_eq!(mode(&f), 0o640);

@@ -109,6 +109,82 @@ fn icon_key(icon: &gio::Icon) -> String {
     }
 }
 
+/// The emblems the user can't choose (Caja adds them by itself).
+const AUTOMATIC_EMBLEMS: &[&str] = &["emblem-trash", "emblem-symbolic-link", "emblem-noread", "emblem-nowrite", "emblem-note", "emblem-shared", "emblem-unreadable"];
+
+/// The emblems of the icon theme a user can give files, as Caja offers
+/// them: (icon name, name to show), in that order.
+pub fn available_emblems() -> Vec<(String, String)> {
+    let Some(theme) = gtk::IconTheme::default() else { return vec![] };
+    let mut out: Vec<(String, String)> = theme
+        .list_icons(Some("Emblems"))
+        .into_iter()
+        .map(|n| n.to_string())
+        .filter(|n| n.starts_with("emblem-") && !n.ends_with("-symbolic") && !AUTOMATIC_EMBLEMS.contains(&n.as_str()))
+        .map(|n| {
+            let name = emblem_title(&n);
+            (n, name)
+        })
+        .collect();
+    out.sort_by_key(|a| a.1.to_lowercase());
+    out.dedup_by(|a, b| a.0 == b.0);
+    out
+}
+
+/// "emblem-important" → "Important".
+pub fn emblem_title(icon: &str) -> String {
+    let words = icon.strip_prefix("emblem-").unwrap_or(icon).replace(['-', '_'], " ");
+    let mut c = words.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
+/// Marks icons made from a custom icon (see item_icon): no thumbnail
+/// replaces them, as in Caja.
+fn custom_quark() -> glib::Quark {
+    glib::Quark::from_str("arkha-custom-icon")
+}
+
+pub fn is_custom(icon: &gio::Icon) -> bool {
+    // SAFETY: only ever set (in item_icon) with this type.
+    unsafe { icon.qdata::<bool>(custom_quark()).is_some() }
+}
+
+/// A file's icon as the views show it: its custom icon if it has one
+/// (metadata::custom-icon, a picture; or metadata::custom-icon-name), else
+/// its own, with the emblems the user gave it (metadata::emblems, Caja's
+/// keywords: "important" for emblem-important), a note's emblem if it has
+/// one, and `automatic` ones (a link's, say) first.
+pub fn item_icon(info: &gio::FileInfo, automatic: &[&str]) -> Option<gio::Icon> {
+    let custom: Option<gio::Icon> = info
+        .attribute_string("metadata::custom-icon")
+        .filter(|u| !u.is_empty())
+        .map(|u| gio::FileIcon::new(&if u.contains("://") { gio::File::for_uri(&u) } else { gio::File::for_path(u.as_str()) }).upcast())
+        .or_else(|| info.attribute_string("metadata::custom-icon-name").filter(|n| !n.is_empty()).map(|n| gio::ThemedIcon::new(&n).upcast()));
+    let is_custom = custom.is_some();
+    let base = custom.or_else(|| info.icon())?;
+    let mut emblems: Vec<String> = automatic.iter().map(|e| e.to_string()).collect();
+    if info.attribute_string("metadata::annotation").is_some_and(|n| !n.is_empty()) {
+        emblems.push("emblem-note".into());
+    }
+    if info.has_attribute("metadata::emblems") {
+        emblems.extend(info.attribute_stringv("metadata::emblems").iter().filter(|k| !k.is_empty()).map(|k| format!("emblem-{k}")));
+    }
+    let icon = if emblems.is_empty() {
+        base
+    } else {
+        let em = gio::EmblemedIcon::new(&base, None::<&gio::Emblem>);
+        for e in &emblems {
+            em.add_emblem(&gio::Emblem::new(&gio::ThemedIcon::new(e)));
+        }
+        em.upcast()
+    };
+    if is_custom {
+        // SAFETY: read back as this type only (is_custom).
+        unsafe { icon.set_qdata(custom_quark(), true) };
+    }
+    Some(icon)
+}
+
 pub fn icon_pixbuf(icon: Option<&gio::Icon>, size: i32) -> Option<Pixbuf> {
     // Asked for every item drawn, at every step of scrolling: kept on the
     // icon too, which saves naming it and two lookups.
@@ -734,6 +810,46 @@ fn png_thumb_mtime(path: &std::path::Path) -> Option<String> {
 mod tests {
     use super::*;
     use crate::testutil::TestDir;
+
+    #[test]
+    fn icons_with_custom_pictures_and_emblems() {
+        let info = gio::FileInfo::new();
+        info.set_icon(&gio::ThemedIcon::new("text-x-generic"));
+        // Nothing given: the file's own icon, not marked custom.
+        let plain = item_icon(&info, &[]).unwrap();
+        assert!(!is_custom(&plain));
+        assert_eq!(IconExt::to_string(&plain).unwrap().as_str(), IconExt::to_string(&gio::ThemedIcon::new("text-x-generic")).unwrap().as_str());
+        // Emblems as Caja keeps them, a note's, and a link's first.
+        info.set_attribute_stringv("metadata::emblems", ["important", "", "favorite"].as_slice());
+        info.set_attribute_string("metadata::annotation", "remember");
+        let with = item_icon(&info, &["emblem-symbolic-link"]).unwrap();
+        let em = with.downcast_ref::<gio::EmblemedIcon>().expect("emblemed");
+        let names: Vec<String> = em.emblems().iter().map(|e| IconExt::to_string(&e.icon()).unwrap().to_string()).collect();
+        assert_eq!(names.len(), 4, "{names:?}");
+        for n in ["emblem-symbolic-link", "emblem-note", "emblem-important", "emblem-favorite"] {
+            assert!(names.iter().any(|x| x.contains(n)), "{n} in {names:?}");
+        }
+        assert!(!is_custom(&with));
+        // A custom picture goes first, and is marked (no thumbnail over it).
+        info.set_attribute_string("metadata::custom-icon", "file:///pictures/logo.png");
+        let custom = item_icon(&info, &[]).unwrap();
+        assert!(is_custom(&custom));
+        let base = custom.downcast_ref::<gio::EmblemedIcon>().unwrap().icon();
+        assert!(base.downcast_ref::<gio::FileIcon>().is_some_and(|f| f.file().uri() == "file:///pictures/logo.png"));
+        // A theme icon's name works too.
+        let named = gio::FileInfo::new();
+        named.set_icon(&gio::ThemedIcon::new("folder"));
+        named.set_attribute_string("metadata::custom-icon-name", "folder-music");
+        let n = item_icon(&named, &[]).unwrap();
+        assert!(is_custom(&n) && IconExt::to_string(&n).unwrap().contains("folder-music"));
+    }
+
+    #[test]
+    fn emblem_titles() {
+        assert_eq!(emblem_title("emblem-important"), "Important");
+        assert_eq!(emblem_title("emblem-new_file-x"), "New file x");
+        assert_eq!(emblem_title("odd"), "Odd");
+    }
 
     #[test]
     fn pictures_load_by_extension_too() {
