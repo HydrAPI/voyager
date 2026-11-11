@@ -9,7 +9,7 @@ responses and growing memory.
 
 Nothing of the user's is used or even visible: the run is in a bubblewrap
 sandbox where the whole system is read-only, /home, /mnt, /media and
-/run/user are empty, the home folder (with generated files) is a 512 MiB
+/run/user are empty, the home folder (with generated files) is a 1 GiB
 tmpfs, and only target/soak/<run>/ (logs, report) is written. It gets its
 own D-Bus session (so its own GVfs, Trash and settings daemons), its own
 network namespace and a headless display: Xvfb for X11, and for Wayland
@@ -226,7 +226,7 @@ def build():
 # Inside the sandbox (see outer).
 HOME = "/home/soak"
 RUN_DIR = "/tmp/soak-run"
-HOME_SIZE = 512 << 20
+HOME_SIZE = 1 << 30
 
 
 def outer(args):
