@@ -92,7 +92,16 @@ pub struct Settings {
     pub path_as_text: bool,
     pub confirm_trash: bool,
     pub single_click: bool,
-    pub thumbnails: bool,
+    /// Previews, as Caja has them, each "always", "local" (local files
+    /// only: not GVfs places such as network shares) or "never" (see
+    /// util::preview_on): thumbnails, a text file's first lines in its icon,
+    /// and how many items a folder has.
+    pub show_thumbnails: String,
+    pub text_in_icons: String,
+    pub count_items: String,
+    /// Images bigger than this (bytes) get no thumbnail (other files'
+    /// thumbnailers decide for themselves), as in Caja.
+    pub thumbnail_limit: u64,
     /// Side pane entries the user hid, by URI (or "label:Name" for unmounted drives).
     pub hidden_places: Vec<String>,
     /// The Computer entries' order in the side pane, by the same keys
@@ -258,7 +267,10 @@ impl Default for Settings {
             path_as_text: false,
             confirm_trash: true,
             single_click: false,
-            thumbnails: true,
+            show_thumbnails: "local".into(),
+            text_in_icons: "local".into(),
+            count_items: "local".into(),
+            thumbnail_limit: 10 << 20,
             hidden_places: vec![],
             places_order: vec![],
             hidden_menu_items: vec![],
@@ -443,7 +455,16 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     }
     b!(confirm_trash);
     b!(single_click);
-    b!(thumbnails);
+    for (key, field) in [("show_thumbnails", &mut s.show_thumbnails), ("text_in_icons", &mut s.text_in_icons), ("count_items", &mut s.count_items)] {
+        if let Ok(v) = kf.string(g, key) {
+            if ["always", "local", "never"].contains(&v.as_str()) {
+                *field = v.to_string();
+            }
+        }
+    }
+    if let Ok(v) = kf.uint64(g, "thumbnail_limit") {
+        s.thumbnail_limit = v;
+    }
     i!(sidebar_row_height);
     b!(per_folder);
     b!(striped_rows);
@@ -589,7 +610,10 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_boolean(g, "path_as_text", s.path_as_text);
     kf.set_boolean(g, "confirm_trash", s.confirm_trash);
     kf.set_boolean(g, "single_click", s.single_click);
-    kf.set_boolean(g, "thumbnails", s.thumbnails);
+    kf.set_string(g, "show_thumbnails", &s.show_thumbnails);
+    kf.set_string(g, "text_in_icons", &s.text_in_icons);
+    kf.set_string(g, "count_items", &s.count_items);
+    kf.set_uint64(g, "thumbnail_limit", s.thumbnail_limit);
     kf.set_integer(g, "sidebar_row_height", s.sidebar_row_height);
     kf.set_boolean(g, "per_folder", s.per_folder);
     kf.set_boolean(g, "striped_rows", s.striped_rows);
@@ -698,6 +722,7 @@ mod tests {
                 ("list_levels", _) => list(&def.list_levels[1..]),
                 ("compact_levels", _) => list(&def.compact_levels[1..]),
                 ("sidebar_collapsed", _) => "devices;".into(),
+                ("show_thumbnails" | "text_in_icons" | "count_items", _) => "never".into(),
                 _ if v.parse::<i32>().is_ok() => (v.parse::<i32>().unwrap() + 8).to_string(),
                 _ if v.starts_with('[') => {
                     let mut items: Vec<String> = kf.string_list("General", k).unwrap().iter().map(|x| x.to_string()).collect();
@@ -738,6 +763,24 @@ mod tests {
         set_string_list(&kf, "G", "k", &odd);
         let back: Vec<String> = kf.string_list("G", "k").unwrap().iter().map(|x| x.to_string()).collect();
         assert_eq!(back, odd);
+    }
+
+    #[test]
+    fn preview_settings() {
+        let kf = glib::KeyFile::new();
+        kf.set_value("General", "show_thumbnails", "never");
+        kf.set_value("General", "text_in_icons", "bogus");
+        kf.set_value("General", "thumbnail_limit", "1048576");
+        let s = from_keyfile(&kf);
+        assert_eq!((s.show_thumbnails.as_str(), s.text_in_icons.as_str(), s.count_items.as_str(), s.thumbnail_limit), ("never", "local", "local", 1 << 20));
+        let d = Settings::default();
+        let back = from_keyfile(&to_keyfile(&d));
+        assert_eq!((back.show_thumbnails, back.thumbnail_limit), ("local".to_string(), 10 << 20));
+        assert!(crate::util::preview_on("local", &gio::File::for_path("/home/x")));
+        assert!(crate::util::preview_on("local", &gio::File::for_uri("trash:///x")));
+        assert!(!crate::util::preview_on("local", &gio::File::for_uri("sftp://host/x")));
+        assert!(crate::util::preview_on("always", &gio::File::for_uri("sftp://host/x")));
+        assert!(!crate::util::preview_on("never", &gio::File::for_path("/home/x")));
     }
 
     #[test]

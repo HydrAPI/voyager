@@ -14,6 +14,7 @@ mod fm1;
 mod folders;
 mod icons;
 mod keys;
+mod metadata;
 mod ops;
 mod pane;
 mod props;

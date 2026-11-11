@@ -41,8 +41,8 @@ pub const COL_TRASHED: u32 = 20;
 const ATTRS: &str = "standard::name,standard::display-name,standard::type,standard::icon,\
 standard::size,standard::content-type,standard::is-hidden,standard::is-backup,\
 standard::is-symlink,standard::symlink-target,time::modified,access::can-read,\
-thumbnail::path,thumbnail::is-valid,trash::orig-path,trash::deletion-date,\
-metadata::emblems,metadata::annotation,metadata::custom-icon,metadata::custom-icon-name";
+thumbnail::path,thumbnail::is-valid,trash::orig-path,trash::deletion-date";
+
 
 /// Typed getter for tree model cells, and the rows of a list.
 pub trait ModelGet {
@@ -479,6 +479,11 @@ pub struct Pane {
     /// Whether the folder shown is the Trash (when each item was trashed
     /// goes in the model there).
     in_trash: Cell<bool>,
+    /// The metadata of the items that have some (see read_metadata), put
+    /// in whenever an item is read again.
+    meta: RefCell<HashMap<String, crate::metadata::Meta>>,
+    /// Items arrived whose metadata is to be read (see on_monitor).
+    meta_pending: RefCell<Vec<gio::File>>,
     sort_cols: Vec<(u32, gtk::TreeViewColumn)>,
     /// The list view's columns with what they show ("name" or a detail)
     /// and whether they show an icon too (for fitting them to their contents).
@@ -1021,6 +1026,8 @@ impl Pane {
             added_cols: Cell::new(0),
             extra_attrs: RefCell::new(String::new()),
             in_trash: Cell::new(false),
+            meta: RefCell::new(HashMap::new()),
+            meta_pending: RefCell::new(vec![]),
             sort_cols,
             fit_cols,
             info_bar,
@@ -1098,7 +1105,22 @@ impl Pane {
             // measure all its items again.
             let w = Rc::downgrade(&pane);
             let pending: Rc<RefCell<Vec<(String, String)>>> = Rc::default();
+            let redraw_pending = Rc::new(Cell::new(false));
             let id = icons::on_thumbnail_ready(move |uri, path| {
+                // A text file's start read (for its icon): drawn again, once
+                // for all read together.
+                if path.is_empty() {
+                    if !redraw_pending.replace(true) {
+                        let (w, pending) = (w.clone(), redraw_pending.clone());
+                        glib::timeout_add_local_once(Duration::from_millis(100), move || {
+                            pending.set(false);
+                            if let Some(p) = w.upgrade() {
+                                p.icon_view.queue_draw();
+                            }
+                        });
+                    }
+                    return;
+                }
                 let first = pending.borrow().is_empty();
                 pending.borrow_mut().push((uri.to_string(), path.to_string()));
                 if first {
@@ -1929,6 +1951,12 @@ impl Pane {
         self.current.borrow().clone()
     }
 
+    /// Whether a folder's items are counted (Preferences → Previews), and
+    /// can be: it needs a path.
+    fn counts_items(&self, f: &gio::File) -> bool {
+        f.path().is_some() && config::with(|s| util::preview_on(&s.count_items, f))
+    }
+
     pub fn is_trash(&self) -> bool {
         self.current().uri().starts_with("trash:")
     }
@@ -2294,6 +2322,7 @@ impl Pane {
             self.start_rename(&uri);
         }
         self.count_dir_items(gen);
+        self.read_metadata(gen);
         // free space
         let w = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
@@ -2343,7 +2372,8 @@ impl Pane {
         for it in store.rows() {
             if store.gv::<bool>(&it, COL_IS_DIR as i32) {
                 let uri: String = store.gv(&it, COL_URI as i32);
-                if let Some(p) = gio::File::for_uri(&uri).path() {
+                let f = gio::File::for_uri(&uri);
+                if let Some(p) = f.path().filter(|_| self.counts_items(&f)) {
                     dirs.push((uri, p));
                 }
             }
@@ -2441,7 +2471,26 @@ impl Pane {
     fn on_monitor(self: &Rc<Self>, f: &gio::File, other: Option<&gio::File>, ev: gio::FileMonitorEvent) {
         use gio::FileMonitorEvent as E;
         match ev {
-            E::Created | E::MovedIn | E::ChangesDoneHint | E::AttributeChanged => self.refresh_file(f),
+            E::Created | E::MovedIn => {
+                self.refresh_file(f);
+                // A copy brings its metadata along: asked for all those
+                // arriving together at once.
+                let first = {
+                    let mut q = self.meta_pending.borrow_mut();
+                    q.push(f.clone());
+                    q.len() == 1
+                };
+                if first {
+                    let w = Rc::downgrade(self);
+                    glib::timeout_add_local_once(Duration::from_millis(500), move || {
+                        if let Some(p) = w.upgrade() {
+                            let files = p.meta_pending.take();
+                            p.refresh_metadata(&files);
+                        }
+                    });
+                }
+            }
+            E::ChangesDoneHint | E::AttributeChanged => self.refresh_file(f),
             E::Deleted | E::MovedOut => self.remove_uri(&f.uri()),
             E::Renamed => {
                 self.remove_uri(&f.uri());
@@ -2664,7 +2713,7 @@ impl Pane {
                 .filter(|(_, i)| i.file_type() == gio::FileType::Directory)
                 .filter_map(|(parent, i)| {
                     let f = parent.child(i.name());
-                    Some((f.uri().to_string(), f.path()?))
+                    Some((f.uri().to_string(), f.path().filter(|_| self.counts_items(&f))?))
                 })
                 .collect();
             self.count_dirs(self.gen.get(), dirs);
@@ -2736,13 +2785,15 @@ impl Pane {
         } else {
             &[]
         };
-        // Its custom icon if it has one, and the emblems given to it.
-        let icon = icons::item_icon(info, automatic);
+        // Its custom icon if it has one, and the emblems given to it (read
+        // in the background, see read_metadata).
+        let merged = self.meta.borrow().get(&uri).map(|m| m.applied_to(info));
+        let icon = icons::item_icon(merged.as_ref().unwrap_or(info), automatic);
         let custom = icon.as_ref().is_some_and(icons::is_custom);
         let mut thumb = String::new();
         // Missing ones are asked for once the item is shown (see row_pixbuf).
         // A custom icon goes before a thumbnail, as in Caja.
-        if !custom && config::with(|s| s.thumbnails) && !is_dir && icons::can_thumbnail(&ctype) && child.path().is_some() {
+        if !custom && !is_dir && icons::can_thumbnail(&ctype) && child.path().is_some() && config::with(|s| util::preview_on(&s.show_thumbnails, &child)) {
             thumb = icons::existing_thumbnail(info, &uri, mtime).unwrap_or_default();
         }
         let orig = info
@@ -2754,7 +2805,10 @@ impl Pane {
                     .unwrap_or_default()
             })
             .unwrap_or_default();
-        let (size_val, size_text) = if is_dir { (0u64, String::new()) } else { (size, util::format_size(size)) };
+        // A folder's number of items is filled in once counted (see
+        // count_dirs); "—" where it isn't counted (Preferences → Previews).
+        let counted = is_dir && self.counts_items(&child);
+        let (size_val, size_text) = if is_dir { (0u64, if counted { String::new() } else { "—".to_string() }) } else { (size, util::format_size(size)) };
         let tdesc = if util::info_is_symlink(info) && !is_dir {
             format!("Link ({})", type_description(&ctype, false))
         } else {
@@ -2848,7 +2902,7 @@ impl Pane {
                 self.index.borrow_mut().insert(uri.clone(), it);
             }
         }
-        if update_counts && is_dir {
+        if update_counts && counted {
             if let Some(p) = child.path() {
                 self.count_dirs(self.gen.get(), vec![(uri, p)]);
             }
@@ -3404,6 +3458,55 @@ impl Pane {
         format!("{ATTRS}{}", self.extra_attrs.borrow())
     }
 
+    /// Reads the folder's metadata (emblems, notes, custom icons) by
+    /// metadata.rs's own thread, after the folder is shown, and reads
+    /// again the items that have some, which shows it (add_info merges it).
+    fn read_metadata(self: &Rc<Self>, gen: u64) {
+        let w = Rc::downgrade(self);
+        crate::metadata::read_folder(&self.current(), move |found| {
+            let Some(p) = w.upgrade() else { return };
+            if p.gen.get() != gen {
+                return;
+            }
+            p.take_metadata(found);
+        });
+    }
+
+    /// The metadata of these items read again (Properties changed it, or
+    /// they're new: a copy brings its own).
+    pub fn refresh_metadata(self: &Rc<Self>, files: &[gio::File]) {
+        let w = Rc::downgrade(self);
+        let gen = self.gen.get();
+        crate::metadata::read_items(files.iter().map(|f| f.uri().to_string()).collect(), move |found| {
+            let Some(p) = w.upgrade() else { return };
+            if p.gen.get() == gen {
+                p.take_metadata(found);
+            }
+        });
+    }
+
+    /// Keeps items' metadata, and reads again those whose changed.
+    fn take_metadata(self: &Rc<Self>, found: Vec<(String, crate::metadata::Meta)>) {
+        for (uri, m) in found {
+            if !self.shows(&uri) {
+                continue;
+            }
+            let changed = {
+                let mut meta = self.meta.borrow_mut();
+                let old = meta.get(&uri).cloned().unwrap_or_default();
+                if m.is_empty() {
+                    meta.remove(&uri);
+                } else {
+                    meta.insert(uri.clone(), m.clone());
+                }
+                old != m
+            };
+            if changed {
+                self.refresh_file(&gio::File::for_uri(&uri));
+            }
+        }
+    }
+
     /// What the chosen details need read besides ATTRS: the list's columns,
     /// the icon captions and the sort order (nothing with the defaults).
     fn wanted_attrs(&self) -> String {
@@ -3417,8 +3520,10 @@ impl Pane {
         crate::details::attributes(&ids)
     }
 
-    /// Before reading a folder: read what the chosen details need.
+    /// Before reading a folder: read what the chosen details need (and its
+    /// metadata again, after it's shown).
     fn read_attrs_wanted(&self) {
+        self.meta.borrow_mut().clear();
         *self.extra_attrs.borrow_mut() = self.wanted_attrs();
         self.in_trash.set(self.is_trash());
     }
@@ -4782,7 +4887,7 @@ fn debug_once(uri: &str, what: &str) {
 /// is seen, the latest first, as Nemo does, not for a whole big folder in
 /// the order it's listed.
 fn request_row_thumbnail(m: &gtk::TreeModel, it: &gtk::TreeIter) {
-    if m.gv::<bool>(it, COL_IS_DIR as i32) || !config::with(|s| s.thumbnails) {
+    if m.gv::<bool>(it, COL_IS_DIR as i32) || config::with(|s| s.show_thumbnails == "never") {
         return;
     }
     let ctype = m.value(it, COL_CTYPE as i32);
@@ -4795,7 +4900,8 @@ fn request_row_thumbnail(m: &gtk::TreeModel, it: &gtk::TreeIter) {
         debug_once(&uri, &format!("no thumbnailer for {ctype}"));
         return;
     }
-    if let Some(path) = gio::File::for_uri(&uri).path() {
+    let f = gio::File::for_uri(&uri);
+    if let Some(path) = f.path().filter(|_| config::with(|s| util::preview_on(&s.show_thumbnails, &f))) {
         icons::request_thumbnail(&uri, &path, m.gv(it, COL_MTIME as i32), m.gv(it, COL_SIZE as i32), ctype);
     }
 }
@@ -4946,9 +5052,30 @@ fn icon_or_thumb(m: &gtk::TreeModel, it: &gtk::TreeIter, thumb: &str, size: i32)
     };
     let pb = pb.or_else(|| {
         let icon: Option<gio::Icon> = m.gv(it, COL_ICON as i32);
-        icons::icon_pixbuf(icon.as_ref(), size)
+        let base = icons::icon_pixbuf(icon.as_ref(), size);
+        // A text file's first lines in its icon, from 64 px on (smaller,
+        // the text couldn't be read; and the usual size costs what it did).
+        if size >= 64 && thumb.is_empty() && !icon.as_ref().is_some_and(icons::is_custom) {
+            if let Some(t) = icon.as_ref().and_then(|i| text_in_icon(m, it, i, size)) {
+                return Some(t);
+            }
+        }
+        base
     });
     pb.map(|p| dim_if_cut(m, it, p))
+}
+
+/// A text file's icon with its first lines (Preferences → Previews), if
+/// it's one and they're read.
+fn text_in_icon(m: &gtk::TreeModel, it: &gtk::TreeIter, icon: &gio::Icon, size: i32) -> Option<Pixbuf> {
+    let ctype = m.value(it, COL_CTYPE as i32);
+    if !icons::is_text(value_str(&ctype)) || config::with(|s| s.text_in_icons == "never") {
+        return None;
+    }
+    let uri: String = m.gv(it, COL_URI as i32);
+    let f = gio::File::for_uri(&uri);
+    let path = f.path().filter(|_| config::with(|s| util::preview_on(&s.text_in_icons, &f)))?;
+    icons::text_icon(&uri, &path, m.gv(it, COL_MTIME as i32), size, icon)
 }
 
 

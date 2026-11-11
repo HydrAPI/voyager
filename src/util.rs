@@ -951,3 +951,16 @@ pub fn set_metadata(file: &gio::File, key: &str, value: Meta) -> Result<(), glib
         Err(unsafe { from_glib_full(error) })
     }
 }
+
+/// Whether a preview set to `mode` ("always", "local", "never", as Caja's
+/// Preview settings) is shown for `file`. Local files are those with a
+/// path of their own, network shares mounted by the system included; GVfs
+/// places (smb://, sftp://, a phone) aren't.
+pub fn preview_on(mode: &str, file: &gio::File) -> bool {
+    match mode {
+        "always" => true,
+        "never" => false,
+        // The trash is local too, as in Caja.
+        _ => file.is_native() || file.has_uri_scheme("trash"),
+    }
+}

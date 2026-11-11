@@ -338,8 +338,9 @@ impl Column {
         let folder = self.folder.clone();
         let show_hidden = self.show_hidden;
         glib::MainContext::default().spawn_local(async move {
-            let attrs = "standard::name,standard::display-name,standard::type,standard::icon,standard::is-hidden,standard::is-backup,\
-                         metadata::emblems,metadata::annotation,metadata::custom-icon,metadata::custom-icon-name";
+            // No metadata (emblems, custom icons): reading it can wait on
+            // GVfs's metadata service (see metadata.rs).
+            let attrs = "standard::name,standard::display-name,standard::type,standard::icon,standard::is-hidden,standard::is-backup";
             let Ok(en) = folder.enumerate_children_future(attrs, gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT).await else { return };
             let mut rows = vec![];
             loop {

@@ -277,10 +277,9 @@ fn show_chosen_columns() {
 /// GVfs doesn't tell folder monitors about that).
 pub fn refresh_everywhere(files: &[gio::File]) {
     for_all_panes(|p| {
-        for f in files {
-            if p.shows(&f.uri()) {
-                p.refresh_file(f);
-            }
+        let shown: Vec<gio::File> = files.iter().filter(|f| p.shows(&f.uri())).cloned().collect();
+        if !shown.is_empty() {
+            p.refresh_metadata(&shown);
         }
     });
 }
@@ -4011,20 +4010,51 @@ impl AppWindow {
         indent(&lc, column_chooser().upcast_ref());
         add_page("columns", "List Columns", "view-list-symbolic", &lc);
 
-        // Previews: thumbnails and the Media Info tab
+        // Previews, as Caja's: text in icons, thumbnails, item counts (each
+        // always, for local files only, or never), the Media Info tab.
         let pv = page();
-        head(&pv, "Thumbnails");
-        let th = setting_check(
-            "Show thumb_nails",
-            Some("Images get thumbnails built in; other file types through the custom thumbnailers below, or the ones installed on the system"),
-            s.thumbnails,
-            |s, v| s.thumbnails = v,
-            |_| for_all_panes(|p| p.reload()),
-        );
-        indent(&pv, th.upcast_ref());
+        let tradeoff = |b: &gtk::Box, label: &str, tip: &str, current: &str, set: fn(&mut config::Settings, String)| {
+            let c = gtk::ComboBoxText::new();
+            for (id, name) in [("always", "Always"), ("local", "Local files only"), ("never", "Never")] {
+                c.append(Some(id), name);
+            }
+            c.set_active_id(Some(current));
+            c.set_tooltip_text(Some(tip));
+            c.connect_changed(move |c| {
+                if let Some(id) = c.active_id() {
+                    config::update(|s| set(s, id.to_string()));
+                    for_all_panes(|p| p.reload());
+                }
+            });
+            option(b, label, c.upcast_ref());
+        };
+        let local_tip = "Local files: those on this computer's drives, network shares the system mounts included; not places opened through GVfs (smb://, sftp://, phones), which can be slow";
+        head(&pv, "Text Files");
+        tradeoff(&pv, "Show text in icons:", &format!("At bigger icon sizes a text file's icon shows its first lines. {local_tip}"), &s.text_in_icons, |s, v| s.text_in_icons = v);
+        head(&pv, "Other Previewable Files");
+        tradeoff(&pv, "Show thumbnails:", &format!("Images get thumbnails built in; other file types through the custom thumbnailers below, or the ones installed on the system. {local_tip}"), &s.show_thumbnails, |s, v| s.show_thumbnails = v);
+        let limit = gtk::ComboBoxText::new();
+        for (bytes, name) in [(100u64 << 10, "100 KB"), (500 << 10, "500 KB"), (1 << 20, "1 MB"), (3 << 20, "3 MB"), (5 << 20, "5 MB"), (10 << 20, "10 MB"), (100 << 20, "100 MB"), (1 << 30, "1 GB"), (2 << 30, "2 GB"), (4 << 30, "4 GB")] {
+            limit.append(Some(&bytes.to_string()), name);
+        }
+        if !limit.set_active_id(Some(&s.thumbnail_limit.to_string())) {
+            // A value set by hand in arkha.conf.
+            limit.append(Some(&s.thumbnail_limit.to_string()), &util::format_size(s.thumbnail_limit));
+            limit.set_active_id(Some(&s.thumbnail_limit.to_string()));
+        }
+        limit.set_tooltip_text(Some("Bigger images get no thumbnail: decoding them takes long. Other files' thumbnailers decide for themselves."));
+        limit.connect_changed(|c| {
+            if let Some(bytes) = c.active_id().and_then(|id| id.parse::<u64>().ok()) {
+                config::update(|s| s.thumbnail_limit = bytes);
+                for_all_panes(|p| p.reload());
+            }
+        });
+        option(&pv, "Only for files smaller than:", limit.upcast_ref());
         let thumbs = thumbnailers_editor(d.upcast_ref());
         thumbs.set_margin_start(40);
         pv.add(&thumbs);
+        head(&pv, "Folders");
+        tradeoff(&pv, "Count number of items:", &format!("A folder's size is how many items it has. {local_tip}"), &s.count_items, |s, v| s.count_items = v);
         head(&pv, "Media Info");
         let mi = setting_check(
             "Show a _Media Info tab in file properties",

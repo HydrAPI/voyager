@@ -7,6 +7,7 @@ use gtk::prelude::*;
 use std::cell::Cell;
 use std::rc::Rc;
 
+use crate::metadata::Meta;
 use crate::{config, icons, util};
 
 fn row(grid: &gtk::Grid, r: i32, key: &str, val: &gtk::Widget) {
@@ -94,13 +95,16 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         gtk::DialogFlags::DESTROY_WITH_PARENT,
         &[("_Close", gtk::ResponseType::Close)],
     );
-    dialog.set_default_size(460, -1);
+    // Wide enough for the Emblems page's columns, which fill in later (see fill).
+    dialog.set_default_size(620, -1);
     dialog.connect_response(|d, _| d.close());
     let nb = gtk::Notebook::new();
     nb.set_border_width(6);
     dialog.content_area().pack_start(&nb, true, true, 0);
 
-    let attrs = "standard::*,time::*,unix::*,owner::*,access::*,id::filesystem,filesystem::*,selinux::context,metadata::*";
+    // Not the metadata (emblems, notes, a custom icon): metadata.rs reads
+    // it, and the pages that show it are filled when it comes.
+    let attrs = "standard::*,time::*,unix::*,owner::*,access::*,id::filesystem,filesystem::*,selinux::context";
     // Keep files and infos paired up, dropping files that vanished.
     let (files, infos): (Vec<gio::File>, Vec<gio::FileInfo>) = files
         .into_iter()
@@ -126,6 +130,8 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     if let Some(pb) = icons::icon_pixbuf(icons::item_icon(&infos[0], &[]).as_ref(), 64) {
         img.set_from_pixbuf(Some(&pb));
     }
+    // Each item's metadata, once read.
+    let metas: Rc<std::cell::RefCell<Option<Vec<Meta>>>> = Rc::default();
     // A click on the icon picks another one, as in Caja.
     let icon_button = gtk::Button::new();
     icon_button.set_relief(gtk::ReliefStyle::None);
@@ -133,8 +139,8 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     icon_button.set_tooltip_text(Some("Choose another icon"));
     icon_button.add(&img);
     {
-        let (files, d, img) = (files.clone(), dialog.clone(), img.clone());
-        icon_button.connect_clicked(move |_| choose_icon(&d, &files, &img));
+        let (files, d, img, metas, info) = (files.clone(), dialog.clone(), img.clone(), metas.clone(), infos[0].clone());
+        icon_button.connect_clicked(move |_| choose_icon(&d, &files, &img, &metas, &info));
     }
     head.pack_start(&icon_button, false, false, 0);
 
@@ -251,7 +257,9 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     nb.append_page(&grid, Some(&gtk::Label::new(Some("Basic"))));
 
     // -------------------------------------------------------------- Emblems
-    nb.append_page(&emblems_page(&dialog, &files, &infos), Some(&gtk::Label::new(Some("Emblems"))));
+    let emblems_slot = reading_page();
+    nb.append_page(&emblems_slot, Some(&gtk::Label::new(Some("Emblems"))));
+    let notes_slot = reading_page();
 
     // ---------------------------------------------------------- Permissions
     if infos.iter().all(|i| i.has_attribute("unix::mode")) {
@@ -476,7 +484,20 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
 
     // ---------------------------------------------------------------- Notes
     if files.len() == 1 {
-        nb.append_page(&notes_page(&dialog, &files[0], &infos[0]), Some(&gtk::Label::new(Some("Notes"))));
+        nb.append_page(&notes_slot, Some(&gtk::Label::new(Some("Notes"))));
+    }
+    // The metadata read in the background; then the pages that show it.
+    {
+        let (d, files, img, info, metas) = (dialog.clone(), files.clone(), img.clone(), infos[0].clone(), metas.clone());
+        crate::metadata::read_items(files.iter().map(|f| f.uri().to_string()).collect(), move |found| {
+            let found: Vec<Meta> = found.into_iter().map(|(_, m)| m).collect();
+            fill(&emblems_slot, &emblems_page(&d, &files, found.iter().map(|m| m.emblems.clone()).collect()));
+            fill(&notes_slot, &notes_page(&d, &files[0], &found.first().map(|m| m.note.clone()).unwrap_or_default()));
+            if let Some(pb) = found.first().and_then(|m| icons::icon_pixbuf(icons::item_icon(&m.applied_to(&info), &[]).as_ref(), 64)) {
+                img.set_from_pixbuf(Some(&pb));
+            }
+            *metas.borrow_mut() = Some(found);
+        });
     }
 
     // ----------------------------------------------------------- Media Info
@@ -740,15 +761,41 @@ fn apply_enclosed(dirs: &[(std::path::PathBuf, u32)], owner: bool) -> (usize, us
     (changed, failed)
 }
 
+/// A page saying its contents are being read (see fill).
+fn reading_page() -> gtk::Box {
+    let b = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let l = value_label("Reading…");
+    l.set_margin_start(12);
+    l.set_margin_top(12);
+    b.pack_start(&l, false, false, 0);
+    b
+}
+
+/// A page's contents, in place of "Reading…".
+fn fill(page: &gtk::Box, content: &gtk::Widget) {
+    for c in page.children() {
+        page.remove(&c);
+    }
+    page.pack_start(content, true, true, 0);
+    page.show_all();
+}
+
+/// Error messages from writing metadata, if any, shown over the window.
+fn report(dialog: &gtk::Dialog, title: &'static str) -> impl FnOnce(Vec<String>) + 'static {
+    let parent = dialog.transient_for();
+    move |errors| {
+        if !errors.is_empty() {
+            util::error_dialog(parent.as_ref(), title, &errors.join("\n"));
+        }
+    }
+}
+
 /// The icon at the top of the Basic page, clicked: a picture for the items'
 /// icon, or (Revert) their own again. Kept as metadata::custom-icon, as Caja does.
-fn choose_icon(dialog: &gtk::Dialog, files: &[gio::File], img: &gtk::Image) {
-    let has_custom = |f: &gio::File| {
-        f.query_info("metadata::custom-icon,metadata::custom-icon-name", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
-            .is_ok_and(|i| i.attribute_string("metadata::custom-icon").is_some_and(|u| !u.is_empty()) || i.attribute_string("metadata::custom-icon-name").is_some_and(|n| !n.is_empty()))
-    };
+fn choose_icon(dialog: &gtk::Dialog, files: &[gio::File], img: &gtk::Image, metas: &Rc<std::cell::RefCell<Option<Vec<Meta>>>>, info: &gio::FileInfo) {
+    let has_custom = metas.borrow().as_ref().is_some_and(|m| m.iter().any(|m| !m.icon.is_empty() || !m.icon_name.is_empty()));
     let chooser = gtk::FileChooserDialog::new(Some("Select Custom Icon"), Some(dialog), gtk::FileChooserAction::Open);
-    if files.iter().any(has_custom) {
+    if has_custom {
         chooser.add_button("_Revert", gtk::ResponseType::Other(1));
     }
     chooser.add_button("_Cancel", gtk::ResponseType::Cancel);
@@ -771,25 +818,30 @@ fn choose_icon(dialog: &gtk::Dialog, files: &[gio::File], img: &gtk::Image) {
     let response = chooser.run();
     let picked = chooser.uri();
     chooser.close();
-    let result = match response {
-        gtk::ResponseType::Accept => {
-            let Some(uri) = picked else { return };
-            files.iter().try_for_each(|f| {
-                util::set_metadata(f, "custom-icon-name", util::Meta::Unset).ok();
-                util::set_metadata(f, "custom-icon", util::Meta::Text(&uri))
-            })
-        }
-        gtk::ResponseType::Other(1) => files.iter().try_for_each(|f| {
-            util::set_metadata(f, "custom-icon-name", util::Meta::Unset).ok();
-            util::set_metadata(f, "custom-icon", util::Meta::Unset)
-        }),
+    use crate::metadata::Value;
+    let icon = match response {
+        gtk::ResponseType::Accept => match picked {
+            Some(uri) => uri.to_string(),
+            None => return,
+        },
+        gtk::ResponseType::Other(1) => String::new(),
         _ => return,
     };
-    if let Err(e) = result {
-        util::error_dialog(Some(dialog.upcast_ref()), "Could not change the icon", e.message());
+    let value = if icon.is_empty() { Value::Unset } else { Value::Text(icon.clone()) };
+    let writes = files
+        .iter()
+        .flat_map(|f| [(f.uri().to_string(), "custom-icon-name".to_string(), Value::Unset), (f.uri().to_string(), "custom-icon".to_string(), value.clone())])
+        .collect();
+    crate::metadata::write(writes, report(dialog, "Could not change the icon"));
+    // Shown here at once; the views read it again once it's written.
+    if let Some(ms) = metas.borrow_mut().as_mut() {
+        for m in ms.iter_mut() {
+            m.icon = icon.clone();
+            m.icon_name.clear();
+        }
     }
-    let info = files[0].query_info("standard::icon,metadata::*", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE).ok();
-    if let Some(pb) = info.and_then(|i| icons::icon_pixbuf(icons::item_icon(&i, &[]).as_ref(), 64)) {
+    let m = metas.borrow().as_ref().and_then(|m| m.first().cloned()).unwrap_or_default();
+    if let Some(pb) = icons::icon_pixbuf(icons::item_icon(&m.applied_to(info), &[]).as_ref(), 64) {
         img.set_from_pixbuf(Some(&pb));
     }
     crate::window::refresh_everywhere(files);
@@ -927,13 +979,8 @@ fn my_groups() -> Vec<u32> {
 /// Emblems: the icon theme's, each with a check box for the items, as in
 /// Caja; kept as their keywords in metadata::emblems ("important" for
 /// emblem-important).
-fn emblems_page(dialog: &gtk::Dialog, files: &[gio::File], infos: &[gio::FileInfo]) -> gtk::Widget {
-    let keywords: Rc<Vec<std::cell::RefCell<Vec<String>>>> = Rc::new(
-        infos
-            .iter()
-            .map(|i| std::cell::RefCell::new(if i.has_attribute("metadata::emblems") { i.attribute_stringv("metadata::emblems").iter().map(|k| k.to_string()).filter(|k| !k.is_empty()).collect() } else { vec![] }))
-            .collect(),
-    );
+fn emblems_page(dialog: &gtk::Dialog, files: &[gio::File], keywords: Vec<Vec<String>>) -> gtk::Widget {
+    let keywords: Rc<Vec<std::cell::RefCell<Vec<String>>>> = Rc::new(keywords.into_iter().map(std::cell::RefCell::new).collect());
     // The theme's, and any the items have that it doesn't list there
     // (another theme's, or Caja's own), so they can be taken off.
     let mut emblems = icons::available_emblems();
@@ -973,20 +1020,19 @@ fn emblems_page(dialog: &gtk::Dialog, files: &[gio::File], infos: &[gio::FileInf
         cb.set_inconsistent(with != 0 && with != keywords.len());
         let (keywords, files, d) = (keywords.clone(), files.clone(), dialog.clone());
         cb.connect_toggled(move |cb| {
+            use crate::metadata::Value;
             cb.set_inconsistent(false);
             let on = cb.is_active();
+            let mut writes = vec![];
             for (f, k) in files.iter().zip(keywords.iter()) {
                 let mut k = k.borrow_mut();
                 k.retain(|x| *x != keyword);
                 if on {
                     k.push(keyword.clone());
                 }
-                let r = if k.is_empty() { util::set_metadata(f, "emblems", util::Meta::Unset) } else { util::set_metadata(f, "emblems", util::Meta::List(&k)) };
-                if let Err(e) = r {
-                    util::error_dialog(d.transient_for().as_ref(), "Could not change the emblems", e.message());
-                    break;
-                }
+                writes.push((f.uri().to_string(), "emblems".to_string(), if k.is_empty() { Value::Unset } else { Value::List(k.clone()) }));
             }
+            crate::metadata::write(writes, report(&d, "Could not change the emblems"));
             crate::window::refresh_everywhere(&files);
         });
         flow.add(&cb);
@@ -1000,14 +1046,14 @@ fn emblems_page(dialog: &gtk::Dialog, files: &[gio::File], infos: &[gio::FileInf
 
 /// Notes: a note kept with the item (metadata::annotation, as in Caja),
 /// saved as it's typed. Items with one get the note emblem.
-fn notes_page(dialog: &gtk::Dialog, file: &gio::File, info: &gio::FileInfo) -> gtk::Widget {
+fn notes_page(dialog: &gtk::Dialog, file: &gio::File, note: &str) -> gtk::Widget {
     let view = gtk::TextView::new();
     view.set_wrap_mode(gtk::WrapMode::WordChar);
     view.set_left_margin(6);
     view.set_right_margin(6);
     view.set_top_margin(6);
     let buffer = view.buffer().expect("a text view has a buffer");
-    buffer.set_text(&info.attribute_string("metadata::annotation").map(|n| n.to_string()).unwrap_or_default());
+    buffer.set_text(note);
     let saved = Rc::new(std::cell::RefCell::new(buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).map(|t| t.to_string()).unwrap_or_default()));
     let save = {
         let (file, buffer, saved, d) = (file.clone(), buffer.clone(), saved.clone(), dialog.clone());
@@ -1016,14 +1062,11 @@ fn notes_page(dialog: &gtk::Dialog, file: &gio::File, info: &gio::FileInfo) -> g
             if *saved.borrow() == text {
                 return;
             }
-            let r = if text.trim().is_empty() { util::set_metadata(&file, "annotation", util::Meta::Unset) } else { util::set_metadata(&file, "annotation", util::Meta::Text(&text)) };
-            match r {
-                Ok(()) => {
-                    *saved.borrow_mut() = text;
-                    crate::window::refresh_everywhere(std::slice::from_ref(&file));
-                }
-                Err(e) => util::error_dialog(d.transient_for().as_ref(), "Could not save the note", e.message()),
-            }
+            use crate::metadata::Value;
+            let value = if text.trim().is_empty() { Value::Unset } else { Value::Text(text.clone()) };
+            crate::metadata::write(vec![(file.uri().to_string(), "annotation".to_string(), value)], report(&d, "Could not save the note"));
+            *saved.borrow_mut() = text;
+            crate::window::refresh_everywhere(std::slice::from_ref(&file));
         })
     };
     // Saved a moment after typing stops, and when the window closes.

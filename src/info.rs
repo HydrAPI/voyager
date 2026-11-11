@@ -307,7 +307,7 @@ impl InfoPanel {
             } else {
                 p.show_custom_or_icon(custom_icon(&info), info.icon().as_ref(), gen);
                 // Once it's made, the thumbnail replaces the icon.
-                if config::with(|s| s.thumbnails) && icons::can_thumbnail(&ctype) {
+                if config::with(|s| util::preview_on(&s.show_thumbnails, &file)) && icons::can_thumbnail(&ctype) {
                     if let Some(path) = &path {
                         icons::request_thumbnail(&uri, path, mtime, info.size().max(0) as u64, &ctype);
                     }

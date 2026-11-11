@@ -109,6 +109,186 @@ fn icon_key(icon: &gio::Icon) -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Text in icons (Preferences → Previews, as in Caja)
+
+/// A text file's first lines, as read: by URI, with the modification time
+/// read at; None while being read, "" for a file that isn't text after all.
+type Texts = HashMap<String, (i64, Option<std::rc::Rc<str>>)>;
+
+thread_local! {
+    static TEXTS: RefCell<Texts> = RefCell::new(HashMap::new());
+    /// Icons with their file's text, by (URI, size, modification time,
+    /// icon: its emblems may change).
+    static TEXT_ICONS: RefCell<HashMap<(String, i32, i64, String), Pixbuf>> = RefCell::new(HashMap::new());
+    /// Whether a content type is text, as asked.
+    static IS_TEXT: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
+    static TEXT_READER: RefCell<Option<async_channel::Sender<(String, std::path::PathBuf, i64)>>> = const { RefCell::new(None) };
+    /// What lays the text out (any widget's Pango context does).
+    static LAYOUTS: gtk::Label = gtk::Label::new(None);
+}
+
+/// Whether files of `ctype` show their text in their icon: plain text and
+/// its kinds (source code, scripts, …), as in Caja.
+pub fn is_text(ctype: &str) -> bool {
+    IS_TEXT.with(|c| *c.borrow_mut().entry(ctype.to_string()).or_insert_with(|| gio::content_type_is_a(ctype, "text/plain")))
+}
+
+/// The start of a text file for its icon: the first lines, tabs as spaces;
+/// "" if it isn't text (a NUL byte in the first 4 KB).
+pub fn read_text_start(path: &std::path::Path) -> String {
+    use std::io::Read;
+    let mut buf = vec![0u8; 4096];
+    let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut buf)).unwrap_or(0);
+    buf.truncate(n);
+    if buf.contains(&0) {
+        return String::new();
+    }
+    String::from_utf8_lossy(&buf)
+        .lines()
+        .take(40)
+        .map(|l| l.replace('\t', "    ").chars().filter(|c| !c.is_control()).take(100).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Reads text files' starts in a thread of its own; each read is told to
+/// the thumbnail listeners with no thumbnail ("") so the views redraw.
+fn text_reader() -> async_channel::Sender<(String, std::path::PathBuf, i64)> {
+    if let Some(tx) = TEXT_READER.with(|r| r.borrow().clone()) {
+        return tx;
+    }
+    let (tx, rx) = async_channel::unbounded::<(String, std::path::PathBuf, i64)>();
+    let (done_tx, done_rx) = async_channel::unbounded::<(String, i64, String)>();
+    std::thread::spawn(move || {
+        while let Ok((uri, path, mtime)) = rx.recv_blocking() {
+            if done_tx.send_blocking((uri, mtime, read_text_start(&path))).is_err() {
+                return;
+            }
+        }
+    });
+    glib::MainContext::default().spawn_local(async move {
+        while let Ok((uri, mtime, text)) = done_rx.recv().await {
+            TEXTS.with(|t| {
+                let mut t = t.borrow_mut();
+                // Kept within bounds: a big folder's worth.
+                if t.len() > 5000 {
+                    t.clear();
+                }
+                t.insert(uri.clone(), (mtime, Some(std::rc::Rc::from(text))));
+            });
+            LISTENERS.with(|l| {
+                for (_, f) in l.borrow().iter() {
+                    f(&uri, "");
+                }
+            });
+        }
+    });
+    TEXT_READER.with(|r| *r.borrow_mut() = Some(tx.clone()));
+    tx
+}
+
+/// A text file's `icon` at `size` pixels with the file's first lines on
+/// it, as Caja shows text files, its emblems over them; None until they're
+/// read (they're asked for here) or if it isn't text.
+pub fn text_icon(uri: &str, path: &std::path::Path, mtime: i64, size: i32, icon: &gio::Icon) -> Option<Pixbuf> {
+    let key = (uri.to_string(), size, mtime, icon_key(icon));
+    if let Some(p) = TEXT_ICONS.with(|c| c.borrow().get(&key).cloned()) {
+        return Some(p);
+    }
+    let known = TEXTS.with(|t| t.borrow().get(uri).cloned());
+    let text = match known {
+        Some((m, Some(text))) if m == mtime => text,
+        // Being read.
+        Some((m, None)) if m == mtime => return None,
+        _ => {
+            TEXTS.with(|t| t.borrow_mut().insert(uri.to_string(), (mtime, None)));
+            let _ = text_reader().send_blocking((uri.to_string(), path.to_path_buf(), mtime));
+            return None;
+        }
+    };
+    if text.is_empty() {
+        return None;
+    }
+    // On the icon without its emblems, which then go on top (as GTK puts
+    // them on any icon).
+    let em = icon.downcast_ref::<gio::EmblemedIcon>();
+    let plain = em.map_or_else(|| icon.clone(), |e| e.icon());
+    let page = draw_text_on(&icon_pixbuf(Some(&plain), size)?, &text, size)?;
+    let pb = match em {
+        Some(e) if !e.emblems().is_empty() => {
+            let with = gio::EmblemedIcon::new(&page, None::<&gio::Emblem>);
+            for emblem in e.emblems() {
+                with.add_emblem(&emblem);
+            }
+            gtk::IconTheme::default()
+                .and_then(|t| t.lookup_by_gicon(&with, size, gtk::IconLookupFlags::FORCE_SIZE))
+                .and_then(|i| i.load_icon().ok())
+                .unwrap_or(page)
+        }
+        _ => page,
+    };
+    TEXT_ICONS.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.len() > 400 {
+            c.clear();
+        }
+        c.insert(key, pb.clone());
+    });
+    Some(pb)
+}
+
+/// A document icon's page colour (0–1 each): at an empty spot near its
+/// top, left of where themes put a symbol; white if it can't be told.
+fn page_colour(base: &Pixbuf) -> (f64, f64, f64) {
+    let (x, y) = ((base.width() as f64 * 0.3) as usize, (base.height() as f64 * 0.27) as usize);
+    let n = base.n_channels() as usize;
+    let bytes = base.read_pixel_bytes();
+    let at = y * base.rowstride() as usize + x * n;
+    match bytes.get(at..at + n) {
+        Some(p) if n < 4 || p[3] > 128 => (p[0] as f64 / 255.0, p[1] as f64 / 255.0, p[2] as f64 / 255.0),
+        _ => (1.0, 1.0, 1.0),
+    }
+}
+
+/// Draws `text` small, in the page of a document icon.
+fn draw_text_on(base: &Pixbuf, text: &str, size: i32) -> Option<Pixbuf> {
+    let (w, h) = (base.width(), base.height());
+    let surface = gtk::cairo::ImageSurface::create(gtk::cairo::Format::ARgb32, w, h).ok()?;
+    {
+        use gdk::prelude::GdkContextExt;
+        let cr = gtk::cairo::Context::new(&surface).ok()?;
+        cr.set_source_pixbuf(base, 0.0, 0.0);
+        cr.paint().ok()?;
+        // Where a document icon's page is (themes don't say any more), made
+        // blank in the page's own colour (taken from an empty spot of it):
+        // themes draw lines or a symbol there.
+        let (x0, y0, x1, y1) = (w as f64 * 0.24, h as f64 * 0.34, w as f64 * 0.76, h as f64 * 0.86);
+        let (r, g, b) = page_colour(base);
+        cr.rectangle(x0, y0, x1 - x0, y1 - y0);
+        cr.set_source_rgb(r, g, b);
+        let _ = cr.fill_preserve();
+        cr.clip();
+        let pad = (size as f64 / 48.0).max(1.0);
+        LAYOUTS.with(|l| {
+            let layout = l.create_pango_layout(Some(text));
+            let mut font = pango::FontDescription::from_string("Monospace");
+            font.set_absolute_size((size as f64 / 16.0).max(2.0) * pango::SCALE as f64);
+            layout.set_font_description(Some(&font));
+            // Dark on a light page, light on a dark one, whatever the theme's
+            // text colour.
+            let attrs = pango::AttrList::new();
+            let ink: u16 = if 0.299 * r + 0.587 * g + 0.114 * b > 0.5 { 0x3000 } else { 0xe000 };
+            attrs.insert(pango::AttrColor::new_foreground(ink, ink, ink));
+            attrs.insert(pango::AttrInt::new_foreground_alpha(0xd000));
+            layout.set_attributes(Some(&attrs));
+            gtk::render_layout(&l.style_context(), &cr, x0 + pad, y0 + pad, &layout);
+        });
+    }
+    surface.flush();
+    gdk::pixbuf_get_from_surface(&surface, 0, 0, w, h)
+}
+
 /// The emblems the user can't choose (Caja adds them by itself).
 const AUTOMATIC_EMBLEMS: &[&str] = &["emblem-trash", "emblem-symbolic-link", "emblem-noread", "emblem-nowrite", "emblem-note", "emblem-shared", "emblem-unreadable"];
 
@@ -726,7 +906,7 @@ pub fn can_thumbnail(ctype: &str) -> bool {
 pub fn request_thumbnail(uri: &str, path: &std::path::Path, mtime: i64, size: u64, ctype: &str) {
     let custom = custom_for(ctype);
     // Big images are slow to decode; custom thumbnailers (videos…) decide themselves.
-    if custom.is_none() && (!builtin_can(ctype) || size > 60 * 1024 * 1024) {
+    if custom.is_none() && (!builtin_can(ctype) || size > crate::config::with(|s| s.thumbnail_limit)) {
         glib::g_debug!("arkha", "thumbnail: none for {ctype} of {size} bytes ({uri})");
         return;
     }
@@ -842,6 +1022,20 @@ mod tests {
         named.set_attribute_string("metadata::custom-icon-name", "folder-music");
         let n = item_icon(&named, &[]).unwrap();
         assert!(is_custom(&n) && IconExt::to_string(&n).unwrap().contains("folder-music"));
+    }
+
+    #[test]
+    fn text_starts_for_icons() {
+        let d = TestDir::new("textstart");
+        let lines: String = (1..=60).map(|i| format!("line {i}\tend\n")).collect();
+        std::fs::write(d.0.join("a.txt"), &lines).unwrap();
+        let t = read_text_start(&d.0.join("a.txt"));
+        assert_eq!(t.lines().count(), 40);
+        assert_eq!(t.lines().next(), Some("line 1    end"));
+        std::fs::write(d.0.join("b.txt"), b"PK\x03\x04\x00binary").unwrap();
+        assert_eq!(read_text_start(&d.0.join("b.txt")), "");
+        assert_eq!(read_text_start(&d.0.join("missing")), "");
+        assert!(is_text("text/plain") && is_text("text/x-shellscript") && !is_text("image/png"));
     }
 
     #[test]
