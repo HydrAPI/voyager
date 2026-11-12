@@ -30,7 +30,7 @@ drag_tab() {  # drag_tab FROM TO: FROM dropped on TO's left half
 props() { gt_click 900 650; gt_type "$1"; gt_key Escape; gdbus call --session --dest io.github.arkha.FileManager \
   --object-path $APP_PATH/window/1 --method org.gtk.Actions.Activate properties [] {} >/dev/null & sleep 1.5; }
 props a.t
-[ "$BACKEND" = wayland ] || gt_check "Properties of a file: the usual order" "$(tabs)" "Basic Emblems Permissions Open With Notes Checksums "
+[ "$BACKEND" = wayland ] || gt_check "Properties of a file: the usual order" "$(tabs)" "Basic Emblems Permissions Open With Checksums Notes "
 to_front Notes Basic; gt_shot props-moved
 gt_check "Notes moved to the front" "$(tabs)" "Notes Basic Emblems Permissions Open With Checksums "
 gt_check "and kept (Media Info, not shown, still after Notes)" "$(grep '^props_tab_order=' "$XDG_CONFIG_HOME/arkha/arkha.conf")" "props_tab_order=notes;media;basic;emblems;permissions;open-with;checksums;"

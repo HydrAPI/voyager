@@ -17,7 +17,9 @@ base() {
     for e in /usr/share/*; do [ "$(basename "$e")" = applications ] || ln -s "$e" "$FIX/share-noapps.new/"; done
     mv "$FIX/share-noapps.new" "$FIX/share-noapps"
   fi
-  if [ ! -x "$FIX/xmonad/xmonad-x86_64-linux" ] && [ ! -e "$FIX/xmonad/xmonad.ok" ]; then
+  # Built again when a system update took away a library it was linked with.
+  if { [ ! -x "$FIX/xmonad/xmonad-x86_64-linux" ] && [ ! -e "$FIX/xmonad/xmonad.ok" ]; } \
+     || ldd "$FIX/xmonad/xmonad-x86_64-linux" 2>/dev/null | grep -q 'not found'; then
     mkdir -p "$FIX/xmonad"
     printf 'import XMonad\nmain :: IO ()\nmain = xmonad def { modMask = mod4Mask }\n' > "$FIX/xmonad/xmonad.hs"
     XMONAD_CONFIG_DIR=$FIX/xmonad XMONAD_CACHE_DIR=$FIX/xmonad XMONAD_DATA_DIR=$FIX/xmonad xmonad --recompile

@@ -17,10 +17,10 @@ pub enum Algo {
 }
 
 /// Every checksum, in the order they're offered until arranged otherwise.
-pub const ALL: [Algo; 7] = [Algo::Md5, Algo::Sha1, Algo::Sha256, Algo::Sha512, Algo::Crc32, Algo::Sha384, Algo::Blake2b];
+pub const ALL: [Algo; 7] = [Algo::Crc32, Algo::Md5, Algo::Sha1, Algo::Sha256, Algo::Sha384, Algo::Sha512, Algo::Blake2b];
 
 /// Those not offered until turned on in Preferences.
-pub const HIDDEN_AT_FIRST: [&str; 2] = ["sha384", "blake2b"];
+pub const HIDDEN_AT_FIRST: [&str; 3] = ["sha384", "sha512", "blake2b"];
 
 impl Algo {
     /// Its name in the settings.

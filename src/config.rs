@@ -172,7 +172,7 @@ pub struct Settings {
 /// The bulk rename window's tabs, in their default order.
 pub const RENAME_TABS: [&str; 6] = ["case", "insert", "remove", "replace", "enumerate", "regex"];
 /// The Properties window's tabs (not every one shows for every item).
-pub const PROPS_TABS: [&str; 7] = ["basic", "emblems", "permissions", "open-with", "notes", "media", "checksums"];
+pub const PROPS_TABS: [&str; 7] = ["basic", "emblems", "permissions", "open-with", "checksums", "notes", "media"];
 pub const SIDEBAR_SECTIONS: [&str; 3] = ["computer", "devices", "bookmarks"];
 
 /// The location bar's button groups: zoom, view mode, split view, the info
