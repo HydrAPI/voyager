@@ -15,6 +15,7 @@
 #   GT_A11Y=1    accessibility on (needed by gt_a11y)
 #   GT_WARNINGS=allow   warnings in the log don't fail the test
 #   GT_WM=none   no window manager on X11 (the benchmarks)
+#   GT_WESTON_SHELL=desktop   Weston's desktop shell on Wayland (default: kiosk)
 #   GT_BENCH=1   a benchmark: its results are shown, nothing is checked
 # From outside: ARKHA (the binary, default target/release/arkha).
 
@@ -84,7 +85,7 @@ gt_display() {
     /usr/lib/at-spi2-registryd >/dev/null 2>&1 & GT_PIDS="$GT_PIDS $!"; sleep 0.5
   fi
   if [ "$BACKEND" = wayland ]; then
-    weston --backend=x11 --shell=kiosk --width="$w" --height="$h" --socket=wayland-gt --idle-time=0 > "$OUT/weston.log" 2>&1 &
+    weston --backend=x11 --shell=${GT_WESTON_SHELL:-kiosk} --width="$w" --height="$h" --socket=wayland-gt --idle-time=0 > "$OUT/weston.log" 2>&1 &
     GT_PIDS="$GT_PIDS $!"
     for _ in $(seq 50); do [ -S "$XDG_RUNTIME_DIR/wayland-gt" ] && break; sleep 0.1; done; sleep 0.5
     export WAYLAND_DISPLAY=wayland-gt GDK_BACKEND=wayland

@@ -589,6 +589,11 @@ class Run:
             # is answered first, the last listed (AT-SPI lists them in no
             # set order), as a person would answer the one in front.
             modal = [w for w in ds if self.is_modal(w)]
+            # Pressing a button through AT-SPI sends no mouse or key event,
+            # so a tooltip shown in the dialog would stay up while it closes
+            # (GDK warns on Wayland); a person's click or key hides it first.
+            # The pointer moves off to the screen's corner, as theirs would.
+            self.xdo("mousemove", 1278, 798)
             for w in (modal or ds)[-1:]:
                 bs = self.buttons(w)
                 press = lambda a: a.get_action_iface().do_action(0)
