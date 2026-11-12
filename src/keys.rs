@@ -91,6 +91,7 @@ pub const BINDINGS: &[Binding] = &[
     b("View", "win.show-hidden", "Show hidden files", &["<Ctrl>h"]),
     b("View", "win.show-sidebar", "Side pane", &["F9"]),
     b("View", "win.split-view", "Extra pane (split view)", &["F3"]),
+    b("View", "win.swap-panes", "Swap the panes (split view)", &["<Ctrl>u"]),
     b("View", "win.focus-follows-mouse", "Focus the pane under the mouse pointer", &["<Shift>F3"]),
     b("View", "win.info-panel", "Info panel (for this folder)", &["F11"]),
     b("View", "win.show-statusbar", "Statusbar", &[]),

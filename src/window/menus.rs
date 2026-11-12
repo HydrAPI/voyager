@@ -54,7 +54,7 @@ impl AppWindow {
         view.append_section(None, &section(&[("_Reload", "win.reload"), ("Sto_p", "win.stop")]));
         view.append_section(None, &section(&[("_Icons", "win.view-mode::icon"), ("_List", "win.view-mode::list"), ("_Compact", "win.view-mode::compact"), ("C_olumns", "win.view-mode::columns")]));
         view.append_section(None, &section(&[("Show _Hidden Files", "win.show-hidden"), ("_Side Pane", "win.show-sidebar"), ("E_xtra Pane", "win.split-view"), ("St_atusbar", "win.show-statusbar"), ("_Info Panel", "win.info-panel")]));
-        view.append_section(None, &section(&[("S_witch to Other Pane", "win.switch-pane"), ("Same Location as O_ther Pane", "win.same-location")]));
+        view.append_section(None, &section(&[("Swap Pa_nes", "win.swap-panes"), ("S_witch to Other Pane", "win.switch-pane"), ("Same Location as O_ther Pane", "win.same-location")]));
         view.append_section(None, &section(&[("_Main Toolbar", "win.show-toolbar"), ("Location _Bar", "win.show-locbar")]));
         let sort = gio::Menu::new();
         sort.append_section(None, &sort_section(false));

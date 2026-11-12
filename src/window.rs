@@ -324,7 +324,9 @@ pub struct AppWindow {
     path_area: gtk::Box,
     zoom_box: gtk::Box,
     view_box: gtk::Box,
-    split_btn: gtk::ToggleButton,
+    /// The split button and, in split view, the Swap Panes button.
+    split_box: gtk::Box,
+    swap_btn: gtk::Button,
     info_btn: gtk::ToggleButton,
     ops_btn: gtk::ToggleButton,
     ops_bar: gtk::ProgressBar,
@@ -528,7 +530,21 @@ impl AppWindow {
         split_btn.set_action_name(Some("win.split-view"));
         split_btn.set_tooltip_text(Some("Split view: show a second pane"));
         split_btn.set_focus_on_click(false);
-        locbar.pack_start(&split_btn, false, false, 3);
+        let swap_btn = gtk::Button::new();
+        let swap_icon = gio::ThemedIcon::from_names(&["object-flip-horizontal-symbolic", "view-dual-symbolic"]);
+        swap_btn.add(&gtk::Image::from_gicon(&swap_icon, gtk::IconSize::Button));
+        swap_btn.set_action_name(Some("win.swap-panes"));
+        swap_btn.set_tooltip_text(Some("Swap the panes: their tabs change sides (Ctrl+U)"));
+        swap_btn.set_focus_on_click(false);
+        // An icon without words: named for screen readers.
+        if let Some(a) = swap_btn.accessible() {
+            gtk::atk::prelude::AtkObjectExt::set_name(&a, "Swap Panes");
+        }
+        let split_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        split_box.style_context().add_class("linked");
+        split_box.pack_start(&split_btn, false, false, 0);
+        split_box.pack_start(&swap_btn, false, false, 0);
+        locbar.pack_start(&split_box, false, false, 3);
         let info_btn = gtk::ToggleButton::new();
         // A window with a panel on its right; fallbacks for themes without it.
         let info_icon = gio::ThemedIcon::from_names(&["sidebar-show-right-symbolic", "view-right-pane-symbolic", "dialog-information-symbolic"]);
@@ -595,15 +611,18 @@ impl AppWindow {
         ops_btn.set_no_show_all(true);
         ops_btn.set_visible(false);
         // Each group can be hidden in Preferences; show_all() leaves them be.
-        for (w, on) in [(zoom_box.upcast_ref::<gtk::Widget>(), s.show_zoom_buttons), (view_box.upcast_ref(), s.show_view_buttons), (split_btn.upcast_ref(), s.show_split_button), (info_btn.upcast_ref(), s.show_info_button)] {
+        for (w, on) in [(zoom_box.upcast_ref::<gtk::Widget>(), s.show_zoom_buttons), (view_box.upcast_ref(), s.show_view_buttons), (split_box.upcast_ref(), s.show_split_button), (info_btn.upcast_ref(), s.show_info_button)] {
             w.show_all();
             w.set_no_show_all(true);
             w.set_visible(on);
         }
+        // Only while there are two panes to swap (see set_split).
+        swap_btn.set_no_show_all(true);
+        swap_btn.set_visible(false);
         // Any group can be dragged onto another, or onto the path, to
         // rearrange the bar.
         enable_bar_drop(path_area.upcast_ref(), "path", path_area.upcast_ref());
-        for (id, group) in [("zoom", zoom_box.clone().upcast::<gtk::Widget>()), ("view", view_box.clone().upcast()), ("split", split_btn.clone().upcast()), ("info", info_btn.clone().upcast()), ("ops", ops_btn.clone().upcast())] {
+        for (id, group) in [("zoom", zoom_box.clone().upcast::<gtk::Widget>()), ("view", view_box.clone().upcast()), ("split", split_box.clone().upcast()), ("info", info_btn.clone().upcast()), ("ops", ops_btn.clone().upcast())] {
             let buttons = match group.downcast_ref::<gtk::Box>() {
                 Some(b) => b.children(),
                 None => vec![group.clone()],
@@ -669,7 +688,8 @@ impl AppWindow {
             path_area,
             zoom_box,
             view_box,
-            split_btn,
+            split_box,
+            swap_btn,
             info_btn,
             ops_btn,
             ops_bar,
@@ -1154,6 +1174,7 @@ impl AppWindow {
             }
         });
         self.add_toggle("split-view", false, |w, v| w.set_split(v));
+        self.add("swap-panes", |w| w.swap_panes());
         self.add_toggle("folders-first", s.folders_first, |_, v| {
             config::update(|s| s.folders_first = v);
             for_all_panes(|p| p.set_folders_first(v));
@@ -1851,8 +1872,34 @@ impl AppWindow {
             }
         }
         self.set_state("split-view", on.to_variant());
+        self.set_enabled("swap-panes", on);
+        self.swap_btn.set_visible(on && config::with(|s| s.show_swap_button));
         self.update_pane_dimming();
         self.update_tabs_visibility();
+    }
+
+    /// Swaps the two sides of split view, each with all its tabs (their
+    /// history, selection and scrolling as they are); the pane in use keeps
+    /// the focus, and each side keeps its width.
+    fn swap_panes(self: &Rc<Self>) {
+        if !self.split_on() {
+            return;
+        }
+        let (Some(first), Some(second)) = (self.split.child1(), self.split.child2()) else { return };
+        let width = self.split.allocated_width();
+        let handle = width - first.allocated_width() - second.allocated_width();
+        let position = self.split.position();
+        self.split.remove(&first);
+        self.split.remove(&second);
+        self.split.pack1(&second, true, false);
+        self.split.pack2(&first, true, false);
+        if width > 0 {
+            self.split.set_position((width - position - handle.max(0)).max(0));
+        }
+        if let Some(p) = self.current_pane() {
+            p.grab_focus();
+        }
+        self.update_pane_dimming();
     }
 
     /// One side of split view lost its last tab: carry on with a single pane
@@ -1929,7 +1976,7 @@ impl AppWindow {
             ("path", self.path_area.clone().upcast::<gtk::Widget>()),
             ("zoom", self.zoom_box.clone().upcast()),
             ("view", self.view_box.clone().upcast()),
-            ("split", self.split_btn.clone().upcast()),
+            ("split", self.split_box.clone().upcast()),
             ("info", self.info_btn.clone().upcast()),
             ("ops", self.ops_btn.clone().upcast()),
         ];
@@ -2208,6 +2255,7 @@ impl AppWindow {
         self.set_enabled("terminal", p.current().path().is_some());
         self.set_enabled("stop", p.is_loading());
         self.set_enabled("switch-pane", self.split_on());
+        self.set_enabled("swap-panes", self.split_on());
         self.set_enabled("same-location", self.other_pane().is_some_and(|o| !o.current().equal(&p.current())));
         let nb = self.active();
         let (cur, n) = (nb.current_page().unwrap_or(0), nb.n_pages());

@@ -20,8 +20,9 @@
 #
 # Both fill the screen with the window (xmonad and the kiosk shell), so
 # the same coordinates fit both: the default theme (Adwaita) on a 1200×800
-# screen. Set DRAG ("x1 y1 x2 y2") and MENU ("View x y Lock-Toolbar x y")
-# for another one.
+# screen. Set DRAG ("x1 y1 x2 y2") for another one. View → Lock Toolbar is
+# chosen by clicking View and pressing Up (its last item) and Return; MENU
+# ("View x y Lock-Toolbar x y") clicks it instead.
 #
 # Needs: Xvfb, xdotool, dbus-run-session, weston (for Wayland), a release build.
 
@@ -30,7 +31,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN=$ROOT/target/release/arkha
 OUT=$ROOT/target/lockbar-test
 DRAG=${DRAG:-"908 87 1128 87"}
-MENU=${MENU:-"110 15 150 423"}
+MENU=${MENU:-}
 
 if [ -z "${LOCKBAR_INNER:-}" ]; then
     [ -x "$BIN" ] || { echo "Build first: cargo build --release"; exit 2; }
@@ -95,10 +96,19 @@ drag() {
     xdotool mouseup 1; sleep 1
 }
 
+# View → Lock Toolbar: View clicked, then Up (which goes to the menu's last
+# item, Lock Toolbar, wherever the font puts it) and Return; or both
+# clicked where MENU says.
 toggle_from_menu() {
-    read -r MX MY LX LY <<< "$MENU"
-    xdotool mousemove "$MX" "$MY" click 1; sleep 0.8
-    xdotool mousemove "$LX" "$LY" click 1; sleep 0.8
+    if [ -n "$MENU" ]; then
+        read -r MX MY LX LY <<< "$MENU"
+        xdotool mousemove "$MX" "$MY" click 1; sleep 0.8
+        xdotool mousemove "$LX" "$LY" click 1; sleep 0.8
+    else
+        xdotool mousemove 110 15 click 1; sleep 0.8
+        xdotool key Up; sleep 0.4
+        xdotool key Return; sleep 0.8
+    fi
 }
 
 start() {

@@ -74,7 +74,7 @@ ACTIONS = [
     ("show-statusbar", "toggle", 1, "plain"), ("lock-bar", "toggle", 1, "plain"),
     ("show-toolbar", "toggle", 1, "plain"), ("show-locbar", "toggle", 1, "plain"), ("reset-view", None, 1, "plain"),
     ("stop", None, 1, "plain"), ("clear-history", None, 1, "plain"), ("tab-left", None, 1, "plain"), ("tab-right", None, 1, "plain"),
-    ("switch-pane", None, 1, "plain"), ("same-location", None, 1, "plain"), ("split-view", "toggle", 2, "plain"), ("info-panel", "toggle", 2, "plain"),
+    ("switch-pane", None, 1, "plain"), ("same-location", None, 1, "plain"), ("split-view", "toggle", 2, "plain"), ("swap-panes", None, 1, "plain"), ("info-panel", "toggle", 2, "plain"),
     ("sort-by", "sort", 3, "plain"), ("sort-desc", "toggle", 2, "plain"), ("folders-first", "toggle", 1, "plain"),
     ("filter", None, 1, "plain"), ("location", None, 1, "plain"), ("escape", None, 3, "plain"),
     ("select-all", None, 5, "plain"), ("invert-selection", None, 3, "plain"),

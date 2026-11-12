@@ -5,8 +5,8 @@ A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust wit
 ## Features
 
 - **Caja layout:** menubar, toolbar (Back / Forward / Up / Reload / Home / File System / Search), breadcrumb path bar (a middle-click opens a folder in a new tab) that switches to a text location bar (Ctrl+L) with path completion, side pane with Computer, Devices and Bookmarks sections (reorder them by dragging their headings), tabs, status bar with selection info and free space. The toolbar, location bar, side pane and status bar can each be hidden (View menu); a hidden location bar still shows while you type a location or search.
-- **The bar beside the path:** file operations, split view, view, zoom and info panel buttons; drag them to rearrange the bar (View → Lock Toolbar stops that, so a touchpad can't move them by accident), and hide the ones you don't use (Preferences → Display).
-- **Split view (F3):** a second pane side by side, each with its own tabs; the toolbar and menus act on the pane you last clicked (or, optionally, the one under the mouse pointer), F6 switches to the other pane, View → Same Location as Other Pane goes where the other one is, and Edit → Copy/Move to Other Pane transfers the selection across.
+- **The bar beside the path:** file operations, split view (and Swap Panes), view, zoom and info panel buttons; drag them to rearrange the bar (View → Lock Toolbar stops that, so a touchpad can't move them by accident), and hide the ones you don't use (Preferences → Display).
+- **Split view (F3):** a second pane side by side, each with its own tabs; the toolbar and menus act on the pane you last clicked (or, optionally, the one under the mouse pointer), F6 switches to the other pane, View → Swap Panes (Ctrl+U, or its toolbar button) swaps the two sides with all their tabs, View → Same Location as Other Pane goes where the other one is, and Edit → Copy/Move to Other Pane transfers the selection across.
 - **Tabs like a browser:** reopen closed tabs (Ctrl+Shift+T), move them with Ctrl+Shift+Page Up/Down or drag them, also between windows or out into a new window, optionally always show the tab bar. File → Close All Windows, Go → Clear History, View → Stop (for places that are slow to load).
 - **Customizable keyboard shortcuts** for every action (Preferences → Keyboard).
 - **Four views:** Icons, List (Name, then any of Size, Type, Modified, Accessed, Created, Owner, Group, Permissions, Octal Permissions, MIME Type, Extension, Location and Size on Disk, sortable by each; Trashed On and Original Location show in the Trash, Location in search results), Compact and Columns (like macOS Finder: the folders on the way in columns side by side, the selected folder's contents or file's preview on the right; ← / → move between them, and every column has context menus, drag and drop and live updates); zoom with Ctrl+plus/minus or Ctrl+scroll, through zoom levels you can set per view.
@@ -112,6 +112,7 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `prefs` | Every Preferences page; adding and removing a custom action |
 | `backgrounds` | Backgrounds and Emblems opens and closes |
 | `focuscol` | No accessibility assertion after the columns view hides the cursor's column |
+| `swap` | Swapping the panes of split view: the menu, Ctrl+U and the toolbar button |
 | `columns` | The list columns: default, one added from a header's menu (and kept), the Trash's own; sorting by permissions |
 | `undo-redo` | Undo and Redo of a move to the trash, a new folder named at once, renames |
 | `properties` | An emblem ticked and a note typed in Properties, kept in GVfs metadata under Caja's keys |

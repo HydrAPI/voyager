@@ -10,6 +10,9 @@ same on X11 and Wayland, where window titles can't be read otherwise.
     a11y.py press NAME  presses the button or check box called NAME in its
                         first dialog (as a screen reader would)
     a11y.py tab NAME    shows the dialog's tab called NAME
+    a11y.py where TEXT  "x y", the middle of the shown button in its first
+                        window whose name or tooltip starts with TEXT (to
+                        click it with real input)
     a11y.py focus ROLE  gives the dialog's first ROLE (e.g. text) the focus
     a11y.py listen S    keeps listening to focus events for S seconds, as
                         screen readers do (GTK then does more for them)
@@ -98,7 +101,7 @@ def main():
                     print(name)
     elif what == "press":
         for d in windows(app, ("dialog",)):
-            for role in ("check box", "push button", "toggle button"):
+            for role in ("check box", "button", "push button", "toggle button"):
                 for b in find(d, role, []):
                     if b.get_name().replace("_", "") == sys.argv[2]:
                         b.get_action_iface().do_action(0)
@@ -111,6 +114,15 @@ def main():
                     if tabs.get_child_at_index(i).get_name() == sys.argv[2]:
                         Atspi.Selection.select_child(tabs, i)
                         return
+        sys.exit(1)
+    elif what == "where":
+        ws = windows(app)
+        for role in ("button", "push button", "toggle button"):
+            for b in find(ws[0], role, []) if ws else []:
+                if (b.get_name() or "").startswith(sys.argv[2]) or (b.get_description() or "").startswith(sys.argv[2]):
+                    e = Atspi.Component.get_extents(b, Atspi.CoordType.SCREEN)
+                    print(e.x + e.width // 2, e.y + e.height // 2)
+                    return
         sys.exit(1)
     elif what == "focus":
         for d in windows(app, ("dialog",)):

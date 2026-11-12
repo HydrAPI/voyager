@@ -500,9 +500,13 @@ impl AppWindow {
         };
         let zoom_b = bar_button("_Zoom", "Zoom in, zoom out and the zoom level", s.show_zoom_buttons, |s, v| s.show_zoom_buttons = v, |w| w.zoom_box.clone().upcast());
         let view_b = bar_button("Vi_ew", "Icon, list and compact view", s.show_view_buttons, |s, v| s.show_view_buttons = v, |w| w.view_box.clone().upcast());
-        let split_b = bar_button("_Split view", "Show or hide the extra pane (F3)", s.show_split_button, |s, v| s.show_split_button = v, |w| w.split_btn.clone().upcast());
+        let split_b = bar_button("_Split view", "Show or hide the extra pane (F3)", s.show_split_button, |s, v| s.show_split_button = v, |w| w.split_box.clone().upcast());
+        // Shown only while there are two panes to swap.
+        let swap_b = setting_check("S_wap panes", Some("Swap the two sides of split view (Ctrl+U); shown in split view"), s.show_swap_button, |s, v| s.show_swap_button = v, |v| {
+            all_windows().iter().for_each(|w| w.swap_btn.set_visible(v && w.split_on()))
+        });
         let info_b = bar_button("_Info panel", "Show or hide the info panel in the folder you're in (F11)", s.show_info_button, |s, v| s.show_info_button = v, |w| w.info_btn.clone().upcast());
-        f.inline(&dp, "Buttons:", &[zoom_b.upcast_ref(), view_b.upcast_ref(), split_b.upcast_ref(), info_b.upcast_ref()]);
+        f.inline(&dp, "Buttons:", &[zoom_b.upcast_ref(), view_b.upcast_ref(), split_b.upcast_ref(), swap_b.upcast_ref(), info_b.upcast_ref()]);
         dp
     }
 

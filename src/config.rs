@@ -58,6 +58,8 @@ pub struct Settings {
     pub show_zoom_buttons: bool,
     pub show_view_buttons: bool,
     pub show_split_button: bool,
+    /// The Swap Panes button beside it (shown in split view).
+    pub show_swap_button: bool,
     pub show_info_button: bool,
     /// Order of the location bar items (see BAR_ITEMS); rearranged by dragging.
     pub bar_order: Vec<String>,
@@ -255,6 +257,7 @@ impl Default for Settings {
             show_zoom_buttons: true,
             show_view_buttons: true,
             show_split_button: true,
+            show_swap_button: false,
             show_info_button: true,
             bar_order: BAR_ITEMS.iter().map(|g| g.to_string()).collect(),
             rename_tab_order: RENAME_TABS.iter().map(|t| t.to_string()).collect(),
@@ -410,6 +413,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     b!(show_zoom_buttons);
     b!(show_view_buttons);
     b!(show_split_button);
+    b!(show_swap_button);
     b!(show_info_button);
     b!(path_as_text);
     if let Ok(v) = kf.string_list(g, "rename_tab_order") {
@@ -613,6 +617,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_boolean(g, "show_zoom_buttons", s.show_zoom_buttons);
     kf.set_boolean(g, "show_view_buttons", s.show_view_buttons);
     kf.set_boolean(g, "show_split_button", s.show_split_button);
+    kf.set_boolean(g, "show_swap_button", s.show_swap_button);
     kf.set_boolean(g, "show_info_button", s.show_info_button);
     set_string_list(&kf, g, "bar_order", &s.bar_order);
     set_string_list(&kf, g, "rename_tab_order", &s.rename_tab_order);
