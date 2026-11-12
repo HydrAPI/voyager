@@ -4,7 +4,7 @@
 # Swap Panes (its action), with Ctrl+U, and with the toolbar's button, each
 # time the tabs change sides and the pane in use keeps the focus; closing
 # split view then keeps the pane in use, as before.
-GT_A11Y=1 GT_CONF='show_swap_button=true'
+GT_A11Y=1
 . "$(dirname "$0")/lib.sh"
 gt_session "$@"
 

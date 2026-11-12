@@ -246,7 +246,7 @@ impl Default for Settings {
             mouse_forward_button: 9,
             list_icons: true,
             show_locbar: true,
-            lock_bar: false,
+            lock_bar: true,
             status_hidden: false,
             always_show_tabs: false,
             toolbar_text: false,
@@ -257,7 +257,7 @@ impl Default for Settings {
             show_zoom_buttons: true,
             show_view_buttons: true,
             show_split_button: true,
-            show_swap_button: false,
+            show_swap_button: true,
             show_info_button: true,
             bar_order: BAR_ITEMS.iter().map(|g| g.to_string()).collect(),
             rename_tab_order: RENAME_TABS.iter().map(|t| t.to_string()).collect(),
@@ -282,7 +282,7 @@ impl Default for Settings {
             side_pane_image: String::new(),
             text_in_icons: "local".into(),
             count_items: "local".into(),
-            thumbnail_limit: 10 << 20,
+            thumbnail_limit: 100 << 20,
             hidden_places: vec![],
             places_order: vec![],
             hidden_menu_items: vec![],
@@ -798,7 +798,7 @@ mod tests {
         assert_eq!((s.show_thumbnails.as_str(), s.text_in_icons.as_str(), s.count_items.as_str(), s.thumbnail_limit), ("never", "local", "local", 1 << 20));
         let d = Settings::default();
         let back = from_keyfile(&to_keyfile(&d));
-        assert_eq!((back.show_thumbnails, back.thumbnail_limit), ("local".to_string(), 10 << 20));
+        assert_eq!((back.show_thumbnails, back.thumbnail_limit), ("local".to_string(), 100 << 20));
         assert!(crate::util::preview_on("local", &gio::File::for_path("/home/x")));
         assert!(crate::util::preview_on("local", &gio::File::for_uri("trash:///x")));
         assert!(!crate::util::preview_on("local", &gio::File::for_uri("sftp://host/x")));
