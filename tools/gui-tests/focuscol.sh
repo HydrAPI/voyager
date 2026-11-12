@@ -17,7 +17,7 @@ gt_a11y windows >/dev/null     # makes the accessible tree
 gt_a11y listen 40 & L=$!
 sleep 1
 # The second row's Size cell (a.txt).
-y=172; [ "$BACKEND" = wayland ] && y=186
+y=172
 gt_click 870 $y; gt_shot clicked
 gt_act view-mode "<'columns'>"; gt_shot columns
 gt_key Down Down; gt_act reload; gt_act view-mode "<'list'>"; gt_act view-mode "<'columns'>"; gt_act reload

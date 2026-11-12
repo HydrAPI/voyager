@@ -5,6 +5,12 @@ same on X11 and Wayland, where window titles can't be read otherwise.
     a11y.py windows     the titles of Arkha's windows, one per line
     a11y.py tabs        the tab names of its first window, in order
     a11y.py dialogs     its open dialogs' titles
+    a11y.py headers     the column headers of its first window's list
+    a11y.py cells       the texts of that list's cells, a line each
+    a11y.py press NAME  presses the button or check box called NAME in its
+                        first dialog (as a screen reader would)
+    a11y.py tab NAME    shows the dialog's tab called NAME
+    a11y.py focus ROLE  gives the dialog's first ROLE (e.g. text) the focus
     a11y.py listen S    keeps listening to focus events for S seconds, as
                         screen readers do (GTK then does more for them)
 """
@@ -75,6 +81,43 @@ def main():
     elif what == "dialogs":
         for w in windows(app, ("dialog", "alert", "file chooser")):
             print(w.get_name())
+    elif what == "headers":
+        ws = windows(app)
+        tables = find(ws[0], "tree table", []) + find(ws[0], "table", []) if ws else []
+        if tables:
+            t = tables[0]
+            for i in range(Atspi.Table.get_n_columns(t)):
+                h = Atspi.Table.get_column_header(t, i)
+                print(h.get_name() if h else Atspi.Table.get_column_description(t, i))
+    elif what == "cells":
+        ws = windows(app)
+        if ws:
+            for t in find(ws[0], "table cell", []):
+                name = t.get_name()
+                if name:
+                    print(name)
+    elif what == "press":
+        for d in windows(app, ("dialog",)):
+            for role in ("check box", "push button", "toggle button"):
+                for b in find(d, role, []):
+                    if b.get_name().replace("_", "") == sys.argv[2]:
+                        b.get_action_iface().do_action(0)
+                        return
+        sys.exit(1)
+    elif what == "tab":
+        for d in windows(app, ("dialog",)):
+            for tabs in find(d, "page tab list", []):
+                for i in range(tabs.get_child_count()):
+                    if tabs.get_child_at_index(i).get_name() == sys.argv[2]:
+                        Atspi.Selection.select_child(tabs, i)
+                        return
+        sys.exit(1)
+    elif what == "focus":
+        for d in windows(app, ("dialog",)):
+            for x in find(d, sys.argv[2], []):
+                Atspi.Component.grab_focus(x)
+                return
+        sys.exit(1)
 
 
 main()

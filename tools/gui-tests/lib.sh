@@ -46,7 +46,11 @@ gt_session() {
   : > "$OUT/result"
   local rt status
   rt=$(mktemp -d /tmp/arkha-gt.XXXXXX)
-  XDG_RUNTIME_DIR=$rt GT_INNER=1 dbus-run-session -- bash "$0" "$@" > "$OUT/session.log" 2>&1
+  # The home is set before the session starts, so the services D-Bus starts
+  # (GVfs's Trash and metadata) use the test home too, never the user's.
+  HOME=$OUT/home XDG_CONFIG_HOME=$OUT/config XDG_CACHE_HOME=$OUT/home/.cache XDG_DATA_HOME=$OUT/home/.local/share \
+    XDG_DATA_DIRS=$GT_FIX/share-noapps XDG_RUNTIME_DIR=$rt GT_INNER=1 \
+    dbus-run-session -- bash "$0" "$@" > "$OUT/session.log" 2>&1
   status=$?
   sleep 0.5
   for d in "$rt/doc" "$rt/gvfs"; do [ -d "$d" ] && fusermount3 -uz "$d" 2>/dev/null; done

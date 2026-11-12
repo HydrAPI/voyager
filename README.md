@@ -112,6 +112,10 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `prefs` | Every Preferences page; adding and removing a custom action |
 | `backgrounds` | Backgrounds and Emblems opens and closes |
 | `focuscol` | No accessibility assertion after the columns view hides the cursor's column |
+| `columns` | The list columns: default, one added from a header's menu (and kept), the Trash's own; sorting by permissions |
+| `undo-redo` | Undo and Redo of a move to the trash, a new folder named at once, renames |
+| `properties` | An emblem ticked and a note typed in Properties, kept in GVfs metadata under Caja's keys |
+| `previews` | Thumbnails always (with a size limit) or never; folders' item counts always or never |
 
 `tools/bench/compare.sh` measures what the audits show: opening `/usr/lib` and 20,000 files (when the main thread stays idle, its CPU, all threads'), scrolling, memory and thumbnails, against Caja and Nemo where installed; `speed.sh` compares two builds of Arkha opening folders in the icon view, the list view and the list view with every column. `sample.sh` profiles without perf (gdb samples the main thread's stack), summarized by `sample-report.py`.
 
@@ -130,6 +134,7 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `src/scroll.rs` | Sideways wheel scrolling and middle-click autoscroll in every scrolled area, and a workaround for a GTK 3 overlay-scrollbar bug |
 | `src/pane.rs` | One tab: folder loading, monitoring, icon/list views, selection, DnD, inline rename |
 | `src/pane/signals.rs` | What clicks, keys, drags and edits do in a tab's views |
+| `src/pane/build.rs` | The parts of a tab made on their own: the sorted model and its filter, the list columns, the Trash bar |
 | `src/search.rs` | Searching a folder and its subfolders by name |
 | `src/bulkrename.rs` | Rename All…: renaming several items at once |
 | `src/keys.rs` | Keyboard shortcuts and their editor |
