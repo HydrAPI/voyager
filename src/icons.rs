@@ -739,6 +739,118 @@ fn makers_for(cpus: usize) -> usize {
     }
 }
 
+/// Loads the theme icons the images in `root` are about to show into GTK's
+/// own cache, several at once (as many as thumbnails are made at once) on
+/// GLib's threads, and waits for them, at most a second. Left to GTK, a new
+/// window would load them one by one on the main thread when shown, which
+/// takes about 3 ms each with gdk-pixbuf's sandboxed (glycin) loaders,
+/// some 200 ms for a window. Called once the widgets are shown and the
+/// window isn't yet: only visible images count. Each icon is looked up as
+/// GtkImage does (name, size, flags), a symbolic one in its widget's
+/// colours, so that GTK then finds it loaded; one it looks up differently
+/// is simply loaded again.
+pub fn preload_widget_icons(root: &gtk::Widget) {
+    let Some(theme) = gtk::IconTheme::default() else { return };
+    let mut jobs = Vec::new();
+    collect_widget_icons(root, &theme, &mut jobs, &mut HashSet::new());
+    if jobs.is_empty() {
+        return;
+    }
+    // The loads report back to a context of their own, so that nothing
+    // else runs while waiting.
+    let ctx = glib::MainContext::new();
+    let _ = ctx.with_thread_default(|| {
+        let pending = std::rc::Rc::new(std::cell::Cell::new(jobs.len()));
+        let queue = std::rc::Rc::new(RefCell::new(jobs.into_iter()));
+        let late = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let timer = {
+            let late = late.clone();
+            glib::timeout_source_new(std::time::Duration::from_secs(1), None, glib::Priority::DEFAULT, move || {
+                late.store(true, std::sync::atomic::Ordering::Relaxed);
+                glib::ControlFlow::Break
+            })
+        };
+        timer.attach(Some(&ctx));
+        for _ in 0..maker_count() {
+            preload_next(&queue, &pending);
+        }
+        while pending.get() > 0 && !late.load(std::sync::atomic::Ordering::Relaxed) {
+            ctx.iteration(true);
+        }
+        timer.destroy();
+    });
+}
+
+/// An icon to load: its lookup, and for a symbolic one its widget's style.
+type IconJob = (gtk::IconInfo, Option<gtk::StyleContext>);
+
+fn preload_next(queue: &std::rc::Rc<RefCell<std::vec::IntoIter<IconJob>>>, pending: &std::rc::Rc<std::cell::Cell<usize>>) {
+    let Some((info, style)) = queue.borrow_mut().next() else { return };
+    let (queue, pending) = (queue.clone(), pending.clone());
+    let done = move || {
+        pending.set(pending.get() - 1);
+        preload_next(&queue, &pending);
+    };
+    match style {
+        Some(style) => info.load_symbolic_for_context_async(&style, gio::Cancellable::NONE, move |_| done()),
+        None => info.load_icon_async(gio::Cancellable::NONE, move |_| done()),
+    }
+}
+
+/// The icons of the visible images in `w`, each lookup (and colour) once.
+fn collect_widget_icons(w: &gtk::Widget, theme: &gtk::IconTheme, jobs: &mut Vec<IconJob>, seen: &mut HashSet<(usize, String)>) {
+    if let Some((info, style)) = w.downcast_ref::<gtk::Image>().and_then(|i| image_icon(i, theme)) {
+        let colour = style.as_ref().map(|s| s.color(s.state()).to_string()).unwrap_or_default();
+        if seen.insert((info.as_ptr() as usize, colour)) {
+            jobs.push((info, style));
+        }
+    }
+    if let Some(c) = w.downcast_ref::<gtk::Container>() {
+        // Its own flag: is_visible() would also want the window shown.
+        c.forall(|child| {
+            if child.get_visible() {
+                collect_widget_icons(child, theme, jobs, seen);
+            }
+        });
+    }
+}
+
+/// The icon `img` shows from the theme, looked up as GTK 3's GtkIconHelper
+/// does, with the style to colour it in if it's symbolic.
+fn image_icon(img: &gtk::Image, theme: &gtk::IconTheme) -> Option<IconJob> {
+    let icon: gio::Icon = match img.storage_type() {
+        gtk::ImageType::IconName => {
+            let name = img.icon_name()?;
+            if img.uses_fallback() {
+                gio::ThemedIcon::with_default_fallbacks(&name).upcast()
+            } else {
+                gio::ThemedIcon::new(&name).upcast()
+            }
+        }
+        gtk::ImageType::Gicon => img.gicon().0,
+        _ => return None,
+    };
+    let size = match img.pixel_size() {
+        n if n > 0 => n,
+        _ => img.icon_size().lookup().map(|(w, h)| w.min(h))?,
+    };
+    let style = img.style_context();
+    let mut flags = gtk::IconLookupFlags::USE_BUILTIN;
+    if img.uses_fallback() {
+        flags |= gtk::IconLookupFlags::GENERIC_FALLBACK;
+    }
+    match img.direction() {
+        gtk::TextDirection::Ltr => flags |= gtk::IconLookupFlags::DIR_LTR,
+        gtk::TextDirection::Rtl => flags |= gtk::IconLookupFlags::DIR_RTL,
+        _ => {}
+    }
+    // A theme's -gtk-icon-style (forcing regular or symbolic icons) can't
+    // be read; with one, GTK looks them up differently and loads them itself.
+    let info = theme.lookup_by_gicon_for_scale(&icon, size, img.scale_factor(), flags)?;
+    let symbolic = info.is_symbolic();
+    Some((info, symbolic.then_some(style)))
+}
+
 /// The thumbnails to make, the latest asked for first.
 fn makers() -> Arc<Pool<ThumbJob>> {
     if let Some(q) = MAKERS.with(|m| m.borrow().clone()) {

@@ -759,13 +759,17 @@ impl AppWindow {
         if !locs.is_empty() {
             this.notebook.set_current_page(Some(0));
         }
-        window.show_all();
+        // Everything shown but the window itself, so that the icons it will
+        // show can be loaded all at once first (see preload_widget_icons).
+        window.forall(|w| w.show_all());
         this.sidebar.widget.set_visible(s.show_sidebar);
         this.statusbar.set_visible(s.show_statusbar);
         this.toolbar.set_visible(s.show_toolbar);
         this.apply_path_mode();
         this.update_locbar_visibility();
         this.update_tabs_visibility();
+        icons::preload_widget_icons(window.upcast_ref());
+        window.show();
         WINDOWS.with(|w| w.borrow_mut().push(this.clone()));
         if let Some(p) = this.current_pane() {
             // The first tab's events came before the window was in WINDOWS
