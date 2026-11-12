@@ -15,6 +15,7 @@ mod info;
 mod fm1;
 mod folders;
 mod icons;
+mod imagesize;
 mod keys;
 mod metadata;
 mod backgrounds;

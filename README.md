@@ -154,6 +154,7 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `src/props.rs` | Properties dialog: basic info and custom icon, emblems, permissions with owner and group, Open With, notes, media info, checksums |
 | `src/checksums.rs` | Checksums of a file (MD5, SHA family, CRC32, BLAKE2b): for the Checksums tab and checked copies |
 | `src/icons.rs` | Icon cache, background thumbnailer, thumbnail caches |
+| `src/imagesize.rs` | An image's width and height from its file header, so big pictures can wait their turn for thumbnails |
 | `src/thumbnailers.rs` | Custom thumbnailer commands, and the system's (`.thumbnailer` files) |
 | `src/config.rs` | Settings file, zoom levels |
 | `src/actions.rs` | Context menu entries (hiding, order), custom actions |

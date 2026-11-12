@@ -943,13 +943,16 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
                 }
             }
         }
-        None => match load_at_scale(&job.src, 256) {
-            Ok(pb) => pb.apply_embedded_orientation().unwrap_or(pb),
-            Err(e) => {
-                glib::g_debug!("arkha", "thumbnail: couldn't load the image: {e} ({})", job.uri);
-                return None;
+        None => {
+            let _decoding = DECODE_BUDGET.take(decode_cost(&job.src));
+            match load_at_scale(&job.src, 256) {
+                Ok(pb) => pb.apply_embedded_orientation().unwrap_or(pb),
+                Err(e) => {
+                    glib::g_debug!("arkha", "thumbnail: couldn't load the image: {e} ({})", job.uri);
+                    return None;
+                }
             }
-        },
+        }
     };
     let tmp = job.out.with_extension(format!("arkha-{}.tmp", std::process::id()));
     let mtime = job.mtime.to_string();
@@ -971,6 +974,70 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
     }
     glib::g_debug!("arkha", "thumbnail: made {} ({})", job.out.display(), job.uri);
     Some(job.out.to_string_lossy().to_string())
+}
+
+/// Memory for the pictures being decoded for thumbnails at once. Decoding
+/// one takes some 20 bytes a pixel until it's scaled down: 3–4 in Arkha,
+/// 8–27 in gdk-pixbuf's (glycin) loader process, by format. With all
+/// makers busy on big pictures that added up to gigabytes (3 GB for
+/// GNOME's 4096 × 4096 wallpapers). A maker waits while what it would
+/// decode doesn't fit beside the others'; one bigger than all of it is
+/// decoded on its own.
+static DECODE_BUDGET: std::sync::LazyLock<DecodeBudget> =
+    std::sync::LazyLock::new(|| DecodeBudget::new(decode_budget_for(total_ram().unwrap_or(8 << 30))));
+
+/// A quarter of the memory, 1 to 4 GB: with 16 GB, the makers' 7 wallpapers
+/// of 4096 × 4096 (335 MB each) or 4 photos of 50 megapixels at once; with
+/// 8 GB, 6 such wallpapers or 2 photos; with 4 GB, 3 wallpapers or 1 photo.
+fn decode_budget_for(ram: u64) -> usize {
+    (ram / 4).clamp(1 << 30, 4 << 30) as usize
+}
+
+fn total_ram() -> Option<u64> {
+    let info = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let kb: u64 = info.lines().find_map(|l| l.strip_prefix("MemTotal:"))?.split_whitespace().next()?.parse().ok()?;
+    Some(kb * 1024)
+}
+
+/// The memory decoding `path` takes (see DECODE_BUDGET), from its size in
+/// its header; a picture whose size can't be told counts as a 16-megapixel
+/// photo.
+fn decode_cost(path: &std::path::Path) -> usize {
+    crate::imagesize::dimensions(path).map_or(16_000_000, |(w, h)| w as usize * h as usize) * 20
+}
+
+struct DecodeBudget {
+    limit: usize,
+    used: Mutex<usize>,
+    freed: Condvar,
+}
+
+/// A share of the budget, given back when dropped.
+struct Decoding<'a> {
+    budget: &'a DecodeBudget,
+    cost: usize,
+}
+
+impl DecodeBudget {
+    fn new(limit: usize) -> Self {
+        DecodeBudget { limit, used: Mutex::new(0), freed: Condvar::new() }
+    }
+
+    fn take(&self, cost: usize) -> Decoding<'_> {
+        let mut used = self.used.lock().unwrap_or_else(|e| e.into_inner());
+        while *used > 0 && *used + cost > self.limit {
+            used = self.freed.wait(used).unwrap_or_else(|e| e.into_inner());
+        }
+        *used += cost;
+        Decoding { budget: self, cost }
+    }
+}
+
+impl Drop for Decoding<'_> {
+    fn drop(&mut self) {
+        *self.budget.used.lock().unwrap_or_else(|e| e.into_inner()) -= self.cost;
+        self.budget.freed.notify_all();
+    }
 }
 
 /// A picture scaled to fit in `size` (as Pixbuf::from_file_at_scale). If
@@ -1213,6 +1280,39 @@ mod tests {
         // A tRNS after the picture's data isn't one.
         assert_eq!(head(&[(b"IHDR", &rgb), (b"IDAT", b""), (b"tRNS", b"\0\0")]).map(|h| h.alpha), Some(false));
         assert_eq!(parse_png_header(b"GIF89a"), None);
+    }
+
+    #[test]
+    fn decode_budget_sizes() {
+        assert_eq!(decode_budget_for(16 << 30), 4 << 30);
+        assert_eq!(decode_budget_for(8 << 30), 2 << 30);
+        assert_eq!(decode_budget_for(2 << 30), 1 << 30);
+        assert_eq!(decode_budget_for(256 << 30), 4 << 30);
+    }
+
+    #[test]
+    fn decode_budget_holds_back_what_doesnt_fit() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let b = Arc::new(DecodeBudget::new(100));
+        let first = b.take(60);
+        let small = b.take(40); // fits beside it
+        let got = Arc::new(AtomicBool::new(false));
+        let waiter = {
+            let (b, got) = (b.clone(), got.clone());
+            std::thread::spawn(move || {
+                let _big = b.take(500); // bigger than it all: alone
+                got.store(true, Ordering::SeqCst);
+            })
+        };
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(!got.load(Ordering::SeqCst), "waits while others decode");
+        drop(first);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(!got.load(Ordering::SeqCst), "still one decoding");
+        drop(small);
+        waiter.join().unwrap();
+        assert!(got.load(Ordering::SeqCst));
+        assert_eq!(*b.used.lock().unwrap(), 0);
     }
 
     #[test]
