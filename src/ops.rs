@@ -1154,7 +1154,7 @@ pub fn open_window() {
                 win.set_title("File Operations");
                 win.set_default_size(440, -1);
                 win.set_resizable(false);
-                win.set_icon_name(Some("system-file-manager"));
+                win.set_icon_name(Some(crate::util::app_icon()));
                 win.set_type_hint(gdk::WindowTypeHint::Dialog);
                 win.connect_delete_event(|w, _| {
                     w.hide();

@@ -204,10 +204,21 @@ pub fn save_settings(kf: &glib::KeyFile, path: &std::path::Path) {
     }
 }
 
+/// Arkha's own icon (`arkha`, installed in the hicolor theme), or the icon
+/// theme's file manager icon where it isn't installed, as when run from the
+/// build folder.
+pub fn app_icon() -> &'static str {
+    static ICON: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    ICON.get_or_init(|| {
+        let ours = gtk::IconTheme::default().is_some_and(|t| t.has_icon("arkha"));
+        if ours { "arkha" } else { "system-file-manager" }
+    })
+}
+
 /// Shows a desktop notification from Arkha (as libnotify does, which Caja
 /// uses: clicking it does nothing).
 pub fn notify(summary: &str, body: &str) {
-    send_notification(&Notification { summary, body, icon: "system-file-manager", sticky: false }, |_| {});
+    send_notification(&Notification { summary, body, icon: app_icon(), sticky: false }, |_| {});
 }
 
 pub struct Notification<'a> {

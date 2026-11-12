@@ -58,7 +58,7 @@ fn main() -> glib::ExitCode {
             a.quit();
         });
         app.add_action(&quit);
-        gtk::Window::set_default_icon_name("system-file-manager");
+        gtk::Window::set_default_icon_name(util::app_icon());
         scroll::init();
         a11y::fix_defunct_states();
         util::set_iec_units(config::with(|s| s.iec_units));

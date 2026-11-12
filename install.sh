@@ -8,6 +8,9 @@ cargo build --release
 PREFIX="${PREFIX:-$HOME/.local}"
 install -Dm755 target/release/arkha "$PREFIX/bin/arkha"
 install -Dm644 arkha.desktop "$PREFIX/share/applications/arkha.desktop"
+install -Dm644 data/arkha.svg "$PREFIX/share/icons/hicolor/scalable/apps/arkha.svg"
+# Only where the theme has a cache, which then has to know the new icon.
+[ -f "$PREFIX/share/icons/hicolor/icon-theme.cache" ] && gtk-update-icon-cache -q "$PREFIX/share/icons/hicolor" 2>/dev/null || true
 update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
 if [ "$1" = "--default" ]; then
     # Remember the current folder handler, so uninstall.sh can restore it.

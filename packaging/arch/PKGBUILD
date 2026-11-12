@@ -66,5 +66,6 @@ package() {
   cd "$pkgname"
   install -Dm755 target/release/arkha "$pkgdir/usr/bin/arkha"
   install -Dm644 arkha.desktop "$pkgdir/usr/share/applications/arkha.desktop"
+  install -Dm644 data/arkha.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/arkha.svg"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }

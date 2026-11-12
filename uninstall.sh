@@ -8,7 +8,7 @@ PREFIX="${PREFIX:-$HOME/.local}"
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 removed=0
-for f in "$PREFIX/bin/arkha" "$PREFIX/share/applications/arkha.desktop"; do
+for f in "$PREFIX/bin/arkha" "$PREFIX/share/applications/arkha.desktop" "$PREFIX/share/icons/hicolor/scalable/apps/arkha.svg"; do
     if [ -e "$f" ]; then
         rm -f "$f"
         echo "Removed $f"
@@ -17,6 +17,7 @@ for f in "$PREFIX/bin/arkha" "$PREFIX/share/applications/arkha.desktop"; do
 done
 [ "$removed" = 1 ] || echo "Arkha isn't installed in $PREFIX."
 update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
+[ -f "$PREFIX/share/icons/hicolor/icon-theme.cache" ] && gtk-update-icon-cache -q "$PREFIX/share/icons/hicolor" 2>/dev/null || true
 
 # If --default made Arkha the folder handler, give folders back to the
 # application it replaced, or else drop just that association so the

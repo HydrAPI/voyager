@@ -385,7 +385,7 @@ impl AppWindow {
         if s.maximized {
             window.maximize();
         }
-        window.set_icon_name(Some("system-file-manager"));
+        window.set_icon_name(Some(util::app_icon()));
 
         let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
         window.add(&vbox);
@@ -3257,7 +3257,7 @@ impl AppWindow {
         d.set_program_name("Arkha");
         d.set_version(Some(env!("CARGO_PKG_VERSION")));
         d.set_comments(Some("A fast graphical file manager."));
-        d.set_logo_icon_name(Some("system-file-manager"));
+        d.set_logo_icon_name(Some(util::app_icon()));
         d.connect_response(|d, _| d.close());
         d.show();
     }
