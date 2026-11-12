@@ -583,9 +583,18 @@ fn bookmark_lines(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// What a bookmark without a label is called: its folder's name.
+/// What a bookmark without a label is called: its folder's name. A
+/// share's top (smb://server/Share/), which GVfs calls "/", by the last part
+/// of its address ("Share"; "server" for smb://server/).
 fn default_bookmark_label(uri: &str) -> String {
-    gio::File::for_uri(uri).basename().map(|b| b.to_string_lossy().to_string()).unwrap_or_else(|| uri.to_string())
+    match gio::File::for_uri(uri).basename().map(|b| b.to_string_lossy().to_string()) {
+        Some(b) if !b.is_empty() && b != "/" => b,
+        _ => {
+            let unescaped = glib::Uri::unescape_string(uri, None::<&str>).map_or_else(|| uri.to_string(), |u| u.to_string());
+            let trimmed = unescaped.trim_end_matches('/');
+            trimmed.rsplit('/').next().filter(|p| !p.is_empty()).unwrap_or(trimmed).to_string()
+        }
+    }
 }
 
 /// Changes the bookmarks file: `f` gets its (URI, label) lines, the label
@@ -731,6 +740,13 @@ pub fn preview_on(mode: &str, file: &gio::File) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bookmark_names_of_shares() {
+        assert_eq!(default_bookmark_label("file:///home/u/Backups"), "Backups");
+        assert_eq!(default_bookmark_label("smb://server/My%20Share/"), "My Share");
+        assert_eq!(default_bookmark_label("smb://server/"), "server");
+    }
 
     #[test]
     fn numbered_groups_in_order() {

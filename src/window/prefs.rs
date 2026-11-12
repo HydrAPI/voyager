@@ -1266,7 +1266,13 @@ pub(super) fn bookmark_editor(parent: &gtk::Window) -> gtk::Box {
     loc_r.set_property("ellipsize", pango::EllipsizeMode::Middle);
     c2.set_title("Location");
     CellLayoutExt::pack_start(&c2, &loc_r, true);
-    CellLayoutExt::add_attribute(&c2, &loc_r, "text", 1);
+    // Kept as URLs (as the bookmarks file has them), shown as people know
+    // them: a folder's path, another place's address without its escapes.
+    CellLayoutExt::set_cell_data_func(
+        &c2,
+        &loc_r,
+        Some(Box::new(|_, cell, m, it| cell.set_property("text", bookmark_location(&m.gv::<String>(it, 1))))),
+    );
     c2.set_expand(true);
     tv.append_column(&c1);
     tv.append_column(&c2);
@@ -1340,6 +1346,17 @@ pub(super) fn bookmark_editor(parent: &gtk::Window) -> gtk::Box {
     hb.pack_end(&add, false, false, 0);
     bx.pack_start(&hb, false, false, 0);
     bx
+}
+
+/// How a bookmark's location shows: "/home/user/Backups" for
+/// file:///home/user/Backups, "smb://server/My Share" for
+/// smb://server/My%20Share.
+fn bookmark_location(uri: &str) -> String {
+    let f = gio::File::for_uri(uri);
+    match f.path() {
+        Some(p) if f.has_uri_scheme("file") => p.to_string_lossy().to_string(),
+        _ => glib::Uri::unescape_string(uri, None::<&str>).map_or_else(|| uri.to_string(), |u| u.to_string()),
+    }
 }
 
 /// Every action with its shortcuts, grouped. Double-click (or Change…) to
@@ -1947,4 +1964,17 @@ fn edit_custom_action(parent: &gtk::Window, title: &str, cur: &actions::CustomAc
     };
     d.close();
     ok.then_some(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bookmark_locations_shown_as_paths() {
+        assert_eq!(bookmark_location("file:///home/user/Backups"), "/home/user/Backups");
+        assert_eq!(bookmark_location("file:///home/user/My%20Files"), "/home/user/My Files");
+        assert_eq!(bookmark_location("smb://server/My%20Share/"), "smb://server/My Share/");
+        assert_eq!(bookmark_location("sftp://host/srv/data"), "sftp://host/srv/data");
+    }
 }

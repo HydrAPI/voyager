@@ -115,6 +115,7 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `swap` | Swapping the panes of split view: the menu, Ctrl+U and the toolbar button |
 | `columns` | The list columns: default, one added from a header's menu (and kept), the Trash's own; sorting by permissions |
 | `undo-redo` | Undo and Redo of a move to the trash, a new folder named at once, renames |
+| `bookmarks` | The bookmark editor shows paths, the bookmarks file keeps the URLs |
 | `properties` | An emblem ticked and a note typed in Properties, kept in GVfs metadata under Caja's keys |
 | `previews` | Thumbnails always (with a size limit) or never; folders' item counts always or never |
 
