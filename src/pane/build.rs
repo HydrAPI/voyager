@@ -109,7 +109,7 @@ pub(super) struct ListColumns {
 /// detail columns, put in when first shown (see apply_column_choice).
 pub(super) fn list_columns(tree_view: &gtk::TreeView, list_size: &Rc<Cell<i32>>) -> ListColumns {
     let name_col = gtk::TreeViewColumn::new();
-    name_col.set_title("Name");
+    name_col.set_title(&tr("Name"));
     name_col.set_expand(true);
     name_col.set_resizable(true);
     name_col.set_min_width(200);
@@ -151,7 +151,7 @@ pub(super) fn list_columns(tree_view: &gtk::TreeView, list_size: &Rc<Cell<i32>>)
     let mut detail_cols = vec![];
     for d in crate::details::DETAILS {
         let c = gtk::TreeViewColumn::new();
-        c.set_title(d.title);
+        c.set_title(&tr(d.title));
         c.set_resizable(true);
         // Made at least as wide as its title when first shown.
         c.set_min_width(d.min_width);
@@ -205,16 +205,16 @@ pub(super) fn trash_bar() -> gtk::InfoBar {
     trash_bar.set_message_type(gtk::MessageType::Other);
     {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        let title = gtk::Label::new(Some("Trash"));
+        let title = gtk::Label::new(Some(&tr("Trash")));
         title.set_xalign(0.0);
         title.set_hexpand(true);
         title.style_context().add_class("dim-label");
-        let restore = gtk::Button::with_label("Restore Selected Items");
+        let restore = gtk::Button::with_label(&tr("Restore Selected Items"));
         restore.set_action_name(Some("win.restore"));
-        restore.set_tooltip_text(Some("Move the selected items back to where they were deleted from"));
-        let empty = gtk::Button::with_label("Empty Trash");
+        restore.set_tooltip_text(Some(&tr("Move the selected items back to where they were deleted from")));
+        let empty = gtk::Button::with_label(&tr("Empty Trash"));
         empty.set_action_name(Some("win.empty-trash"));
-        empty.set_tooltip_text(Some("Delete all items in the Trash"));
+        empty.set_tooltip_text(Some(&tr("Delete all items in the Trash")));
         row.pack_start(&title, true, true, 0);
         row.pack_start(&restore, false, false, 0);
         row.pack_start(&empty, false, false, 0);

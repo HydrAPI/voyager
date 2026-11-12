@@ -2,55 +2,57 @@
 //! reorder, and custom actions (shell commands) stored in
 //! ~/.config/arkha/actions.conf.
 
+use crate::i18n::n_;
 use std::path::{Path, PathBuf};
 
-/// Built-in context menu items that can be hidden: (key, label).
+/// Built-in context menu items that can be hidden: (key, label, translated
+/// where shown).
 /// Keys starting with "bg:" are in the menu for a folder's empty space.
 pub const ITEM_ENTRIES: &[(&str, &str)] = &[
-    ("open", "Open"),
-    ("open-new-tab", "Open in New Tab"),
-    ("open-new-window", "Open in New Window"),
-    ("open-with", "Open With"),
-    ("open-parent", "Open parent location (in search results)"),
-    ("cut", "Cut"),
-    ("copy", "Copy"),
-    ("paste-into", "Paste Into Folder"),
-    ("duplicate", "Duplicate"),
-    ("make-link", "Make Link"),
-    ("rename", "Rename…"),
-    ("rename-all", "Rename All… / Advanced Rename…"),
-    ("copy-to", "Copy To…"),
-    ("move-to", "Move To…"),
-    ("trash", "Move to Trash"),
-    ("delete", "Delete"),
-    ("extract", "Extract Here"),
-    ("compress", "Compress…"),
-    ("terminal", "Open in Terminal"),
-    ("restore", "Restore (in the Trash)"),
-    ("properties", "Properties"),
+    ("open", n_("Open")),
+    ("open-new-tab", n_("Open in New Tab")),
+    ("open-new-window", n_("Open in New Window")),
+    ("open-with", n_("Open With")),
+    ("open-parent", n_("Open parent location (in search results)")),
+    ("cut", n_("Cut")),
+    ("copy", n_("Copy")),
+    ("paste-into", n_("Paste Into Folder")),
+    ("duplicate", n_("Duplicate")),
+    ("make-link", n_("Make Link")),
+    ("rename", n_("Rename…")),
+    ("rename-all", n_("Rename All… / Advanced Rename…")),
+    ("copy-to", n_("Copy To…")),
+    ("move-to", n_("Move To…")),
+    ("trash", n_("Move to Trash")),
+    ("delete", n_("Delete")),
+    ("extract", n_("Extract Here")),
+    ("compress", n_("Compress…")),
+    ("terminal", n_("Open in Terminal")),
+    ("restore", n_("Restore (in the Trash)")),
+    ("properties", n_("Properties")),
 ];
 
 pub const BACKGROUND_ENTRIES: &[(&str, &str)] = &[
-    ("bg:new-folder", "Create Folder"),
-    ("bg:new-document", "Create Document"),
-    ("bg:terminal", "Open in Terminal"),
-    ("bg:paste", "Paste"),
-    ("bg:paste-check", "Paste and Check"),
-    ("bg:select-all", "Select All"),
-    ("bg:arrange", "Arrange Items"),
-    ("bg:view", "View (the whole submenu)"),
-    ("bg:view-icons", "View › Icons"),
-    ("bg:view-list", "View › List"),
-    ("bg:view-compact", "View › Compact"),
-    ("bg:view-columns", "View › Columns"),
-    ("bg:show-hidden", "View › Show Hidden Files"),
-    ("bg:view-sidepane", "View › Side Pane"),
-    ("bg:view-extrapane", "View › Extra Pane"),
-    ("bg:view-statusbar", "View › Statusbar"),
-    ("bg:add-bookmark", "Add Bookmark"),
-    ("bg:empty-trash", "Empty Trash (in the Trash)"),
-    ("bg:reload", "Reload"),
-    ("bg:properties", "Properties"),
+    ("bg:new-folder", n_("Create Folder")),
+    ("bg:new-document", n_("Create Document")),
+    ("bg:terminal", n_("Open in Terminal")),
+    ("bg:paste", n_("Paste")),
+    ("bg:paste-check", n_("Paste and Check")),
+    ("bg:select-all", n_("Select All")),
+    ("bg:arrange", n_("Arrange Items")),
+    ("bg:view", n_("View (the whole submenu)")),
+    ("bg:view-icons", n_("View › Icons")),
+    ("bg:view-list", n_("View › List")),
+    ("bg:view-compact", n_("View › Compact")),
+    ("bg:view-columns", n_("View › Columns")),
+    ("bg:show-hidden", n_("View › Show Hidden Files")),
+    ("bg:view-sidepane", n_("View › Side Pane")),
+    ("bg:view-extrapane", n_("View › Extra Pane")),
+    ("bg:view-statusbar", n_("View › Statusbar")),
+    ("bg:add-bookmark", n_("Add Bookmark")),
+    ("bg:empty-trash", n_("Empty Trash (in the Trash)")),
+    ("bg:reload", n_("Reload")),
+    ("bg:properties", n_("Properties")),
 ];
 
 /// Separators in a menu order.
@@ -212,12 +214,12 @@ pub fn shell_found(shell: &str) -> bool {
 
 /// File type groups a custom action can be limited to: (id, label).
 pub const FILE_TYPES: &[(&str, &str)] = &[
-    ("video", "Videos"),
-    ("audio", "Audio"),
-    ("image", "Images"),
-    ("text", "Text files"),
-    ("document", "Documents"),
-    ("archive", "Archives"),
+    ("video", n_("Videos")),
+    ("audio", n_("Audio")),
+    ("image", n_("Images")),
+    ("text", n_("Text files")),
+    ("document", n_("Documents")),
+    ("archive", n_("Archives")),
 ];
 
 /// Whether content type `ctype` belongs to file type group `kind`.

@@ -4,6 +4,7 @@
 //! above them (more criteria: location, file type, tags, modification
 //! time, size, contained text).
 
+use crate::i18n::{fill, n_, tr};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -15,24 +16,25 @@ use crate::pane::ModelGet;
 
 // ------------------------------------------------------------------ query
 
-/// The kinds of criteria, in the order of Caja's row type menu.
-pub const KINDS: [&str; 6] = ["Location", "File Type", "Tags", "Modification Time", "Size", "Contained text"];
+/// The kinds of criteria, in the order of Caja's row type menu (these
+/// tables' texts are translated where shown, in text_combo).
+pub const KINDS: [&str; 6] = [n_("Location"), n_("File Type"), n_("Tags"), n_("Modification Time"), n_("Size"), n_("Contained text")];
 
 /// Caja's file type groups and their MIME types.
 const GROUPS: &[(&str, &[&str])] = &[
-    ("Documents", &["application/rtf", "application/msword", "application/vnd.sun.xml.writer", "application/vnd.sun.xml.writer.global", "application/vnd.sun.xml.writer.template", "application/vnd.oasis.opendocument.text", "application/vnd.oasis.opendocument.text-template", "application/x-abiword", "application/x-applix-word", "application/x-mswrite", "application/docbook+xml", "application/x-kword", "application/x-kword-crypt", "application/x-lyx"]),
-    ("Music", &["application/ogg", "audio/ac3", "audio/basic", "audio/midi", "audio/x-flac", "audio/mp4", "audio/mpeg", "audio/x-mpeg", "audio/x-ms-asx", "audio/x-pn-realaudio"]),
-    ("Video", &["video/mp4", "video/3gpp", "video/mpeg", "video/quicktime", "video/vivo", "video/x-avi", "video/x-mng", "video/x-ms-asf", "video/x-ms-wmv", "video/x-msvideo", "video/x-nsv", "video/x-real-video"]),
-    ("Picture", &["application/vnd.oasis.opendocument.image", "application/x-krita", "image/bmp", "image/cgm", "image/gif", "image/jpeg", "image/jpeg2000", "image/png", "image/svg+xml", "image/tiff", "image/x-compressed-xcf", "image/x-pcx", "image/x-photo-cd", "image/x-psd", "image/x-tga", "image/x-xcf"]),
-    ("Illustration", &["application/illustrator", "application/vnd.corel-draw", "application/vnd.stardivision.draw", "application/vnd.oasis.opendocument.graphics", "application/x-dia-diagram", "application/x-karbon", "application/x-killustrator", "application/x-kivio", "application/x-kontour", "application/x-wpg"]),
-    ("Spreadsheet", &["application/vnd.lotus-1-2-3", "application/vnd.ms-excel", "application/vnd.stardivision.calc", "application/vnd.sun.xml.calc", "application/vnd.oasis.opendocument.spreadsheet", "application/x-applix-spreadsheet", "application/x-gnumeric", "application/x-kspread", "application/x-kspread-crypt", "application/x-quattropro", "application/x-sc", "application/x-siag"]),
-    ("Presentation", &["application/vnd.ms-powerpoint", "application/vnd.sun.xml.impress", "application/vnd.oasis.opendocument.presentation", "application/x-magicpoint", "application/x-kpresenter"]),
-    ("Pdf / Postscript", &["application/pdf", "application/postscript", "application/x-dvi", "image/x-eps"]),
-    ("Text File", &["text/plain"]),
+    (n_("Documents"), &["application/rtf", "application/msword", "application/vnd.sun.xml.writer", "application/vnd.sun.xml.writer.global", "application/vnd.sun.xml.writer.template", "application/vnd.oasis.opendocument.text", "application/vnd.oasis.opendocument.text-template", "application/x-abiword", "application/x-applix-word", "application/x-mswrite", "application/docbook+xml", "application/x-kword", "application/x-kword-crypt", "application/x-lyx"]),
+    (n_("Music"), &["application/ogg", "audio/ac3", "audio/basic", "audio/midi", "audio/x-flac", "audio/mp4", "audio/mpeg", "audio/x-mpeg", "audio/x-ms-asx", "audio/x-pn-realaudio"]),
+    (n_("Video"), &["video/mp4", "video/3gpp", "video/mpeg", "video/quicktime", "video/vivo", "video/x-avi", "video/x-mng", "video/x-ms-asf", "video/x-ms-wmv", "video/x-msvideo", "video/x-nsv", "video/x-real-video"]),
+    (n_("Picture"), &["application/vnd.oasis.opendocument.image", "application/x-krita", "image/bmp", "image/cgm", "image/gif", "image/jpeg", "image/jpeg2000", "image/png", "image/svg+xml", "image/tiff", "image/x-compressed-xcf", "image/x-pcx", "image/x-photo-cd", "image/x-psd", "image/x-tga", "image/x-xcf"]),
+    (n_("Illustration"), &["application/illustrator", "application/vnd.corel-draw", "application/vnd.stardivision.draw", "application/vnd.oasis.opendocument.graphics", "application/x-dia-diagram", "application/x-karbon", "application/x-killustrator", "application/x-kivio", "application/x-kontour", "application/x-wpg"]),
+    (n_("Spreadsheet"), &["application/vnd.lotus-1-2-3", "application/vnd.ms-excel", "application/vnd.stardivision.calc", "application/vnd.sun.xml.calc", "application/vnd.oasis.opendocument.spreadsheet", "application/x-applix-spreadsheet", "application/x-gnumeric", "application/x-kspread", "application/x-kspread-crypt", "application/x-quattropro", "application/x-sc", "application/x-siag"]),
+    (n_("Presentation"), &["application/vnd.ms-powerpoint", "application/vnd.sun.xml.impress", "application/vnd.oasis.opendocument.presentation", "application/x-magicpoint", "application/x-kpresenter"]),
+    (n_("Pdf / Postscript"), &["application/pdf", "application/postscript", "application/x-dvi", "image/x-eps"]),
+    (n_("Text File"), &["text/plain"]),
 ];
 
-const COMPARISONS: [&str; 2] = ["Less than or equal to", "Greater than or equal to"];
-const DURATIONS: [&str; 6] = ["1 Hour", "1 Day", "1 Week", "1 Month", "6 Months", "1 Year"];
+const COMPARISONS: [&str; 2] = [n_("Less than or equal to"), n_("Greater than or equal to")];
+const DURATIONS: [&str; 6] = [n_("1 Hour"), n_("1 Day"), n_("1 Week"), n_("1 Month"), n_("6 Months"), n_("1 Year")];
 const SIZES_SI: [(i64, &str); 11] = [(10_000, "10 KB"), (100_000, "100 KB"), (500_000, "500 KB"), (1_000_000, "1 MB"), (5_000_000, "5 MB"), (10_000_000, "10 MB"), (100_000_000, "100 MB"), (500_000_000, "500 MB"), (1_000_000_000, "1 GB"), (2_000_000_000, "2 GB"), (4_000_000_000, "4 GB")];
 const SIZES_IEC: [(i64, &str); 11] = [(10_240, "10 KiB"), (102_400, "100 KiB"), (512_000, "500 KiB"), (1_048_576, "1 MiB"), (5_242_880, "5 MiB"), (10_485_760, "10 MiB"), (104_857_600, "100 MiB"), (524_288_000, "500 MiB"), (1_073_741_824, "1 GiB"), (2_147_483_648, "2 GiB"), (4_294_967_296, "4 GiB")];
 
@@ -109,7 +111,7 @@ impl Query {
 
     /// Caja's title for the results.
     pub fn title(&self) -> String {
-        format!("Search for \"{}\"", self.text)
+        fill(&tr("Search for “{text}”"), &[("text", &self.text)])
     }
 
     /// What the search engine needs, with the times counted from now. As
@@ -402,7 +404,7 @@ fn icon_button(icons: &[&str], tip: &str) -> gtk::Button {
 fn text_combo(items: &[&str], active: usize) -> gtk::ComboBoxText {
     let c = gtk::ComboBoxText::new();
     for i in items {
-        c.append_text(i);
+        c.append_text(&tr(i));
     }
     c.set_active(Some(active as u32));
     c
@@ -423,11 +425,11 @@ impl QueryEditor {
         let rows_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
         extras.pack_start(&rows_box, true, true, 0);
         let first = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        first.pack_start(&gtk::Label::new(Some("Search results")), false, false, 0);
-        let add = icon_button(&["add", "list-add"], "Add a new criterion to this search");
+        first.pack_start(&gtk::Label::new(Some(&tr("Search results"))), false, false, 0);
+        let add = icon_button(&["add", "list-add"], &tr("Add a new criterion to this search"));
         first.pack_end(&add, false, false, 0);
-        let reload = gtk::Button::with_label("Reload");
-        reload.set_tooltip_text(Some("Perform or update the search"));
+        let reload = gtk::Button::with_label(&tr("Reload"));
+        reload.set_tooltip_text(Some(&tr("Perform or update the search")));
         first.pack_end(&reload, false, false, 0);
         rows_box.pack_start(&first, false, false, 0);
         frame.show_all();
@@ -507,7 +509,7 @@ impl QueryEditor {
         let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         let combo = text_combo(&KINDS, c.kind());
         hbox.pack_start(&combo, false, false, 0);
-        let remove = icon_button(&["remove", "list-remove"], "Remove this criterion from the search");
+        let remove = icon_button(&["remove", "list-remove"], &tr("Remove this criterion from the search"));
         hbox.pack_end(&remove, false, false, 0);
         let row = Rc::new(Row { hbox: hbox.clone(), kind: Cell::new(c.kind()), widget: RefCell::new(gtk::Label::new(None).upcast()) });
         self.set_row_widget(&row, c);
@@ -551,7 +553,7 @@ impl QueryEditor {
         };
         let (widget, expand): (gtk::Widget, bool) = match c {
             Criterion::Location(uri) => {
-                let chooser = gtk::FileChooserButton::new("Select folder to search in", gtk::FileChooserAction::SelectFolder);
+                let chooser = gtk::FileChooserButton::new(&tr("Select folder to search in"), gtk::FileChooserAction::SelectFolder);
                 chooser.set_local_only(false);
                 let _ = chooser.set_current_folder_uri(uri);
                 chooser.connect_current_folder_changed(move |_| changed());
@@ -562,12 +564,12 @@ impl QueryEditor {
                 let entry = gtk::Entry::new();
                 let tip = if matches!(c, Criterion::Tags(_)) {
                     entry.set_max_length(4096);
-                    "Tags separated by spaces. Matches files that contains ALL specified tags."
+                    tr("Tags separated by spaces. Matches files that contain ALL the tags.")
                 } else {
-                    "Matches files that contains specified text."
+                    tr("Matches files that contain the text.")
                 };
-                entry.set_tooltip_text(Some(tip));
-                entry.set_placeholder_text(Some(tip));
+                entry.set_tooltip_text(Some(&tip));
+                entry.set_placeholder_text(Some(&tip));
                 entry.set_text(text);
                 let tags = matches!(c, Criterion::Tags(_));
                 entry.connect_changed(move |e| {
@@ -608,13 +610,13 @@ impl QueryEditor {
         let add = |text: &str, group: i32, mime: &str, other: bool| {
             store.insert_with_values(None, &[(0, &text), (1, &group), (2, &mime), (3, &other)])
         };
-        add("Any", -1, "", false);
+        add(&tr("Any"), -1, "", false);
         add("---", -1, "", false);
         for (i, (name, _)) in GROUPS.iter().enumerate() {
-            add(name, i as i32, "", false);
+            add(&tr(name), i as i32, "", false);
         }
         add("---", -1, "", false);
-        add("Other Type...", -1, "", true);
+        add(&tr("Other Type…"), -1, "", true);
         let combo = gtk::ComboBox::with_model(&store);
         let cell = gtk::CellRendererText::new();
         combo.pack_start(&cell, true);
@@ -699,11 +701,11 @@ fn pick_type(parent: &impl IsA<gtk::Widget>) -> Option<(String, String)> {
     }
     store.set_sort_column_id(gtk::SortColumn::Index(0), gtk::SortType::Ascending);
     let dialog = gtk::Dialog::new();
-    dialog.set_title("Select type");
+    dialog.set_title(&tr("Select type"));
     if let Some(top) = parent.toplevel().and_then(|t| t.downcast::<gtk::Window>().ok()) {
         dialog.set_transient_for(Some(&top));
     }
-    dialog.add_button("_OK", gtk::ResponseType::Ok);
+    dialog.add_button(&tr("_OK"), gtk::ResponseType::Ok);
     dialog.set_default_size(400, 600);
     let scrolled = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
     scrolled.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
@@ -714,7 +716,7 @@ fn pick_type(parent: &impl IsA<gtk::Widget>) -> Option<(String, String)> {
     view.selection().set_mode(gtk::SelectionMode::Browse);
     let cell = gtk::CellRendererText::new();
     let col = gtk::TreeViewColumn::new();
-    col.set_title("Name");
+    col.set_title(&tr("Name"));
     gtk::prelude::CellLayoutExt::pack_start(&col, &cell, true);
     gtk::prelude::CellLayoutExt::add_attribute(&col, &cell, "text", 0);
     view.append_column(&col);
@@ -789,7 +791,7 @@ mod tests {
         assert!(p.size > 0);
         assert_eq!(p.text.as_deref(), Some("x"));
         assert_eq!(Query { text: "a".into(), criteria: vec![] }.params().root().uri(), "file:///");
-        assert_eq!(q.title(), "Search for \"Un\"");
+        assert_eq!(q.title(), "Search for “Un”");
     }
 
     #[test]

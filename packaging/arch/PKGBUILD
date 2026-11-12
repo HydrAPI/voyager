@@ -19,7 +19,7 @@ depends=(
   'gvfs'
   'pango'
 )
-makedepends=('cargo' 'git')
+makedepends=('cargo' 'git' 'gettext')
 optdepends=(
   'ffmpegthumbnailer: video thumbnails'
   'ffmpeg: video thumbnails without ffmpegthumbnailer'
@@ -67,5 +67,9 @@ package() {
   install -Dm755 target/release/arkha "$pkgdir/usr/bin/arkha"
   install -Dm644 arkha.desktop "$pkgdir/usr/share/applications/arkha.desktop"
   install -Dm644 data/arkha.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/arkha.svg"
+  # The translations build.rs made from po/*.po.
+  for mo in target/release/locale/*/LC_MESSAGES/arkha.mo; do
+    install -Dm644 "$mo" "$pkgdir/usr/share/locale/${mo#target/release/locale/}"
+  done
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }

@@ -7,6 +7,7 @@
 //! folders show the panel is remembered like their view, and what it shows
 //! for which selection is decided in pane.rs.
 
+use crate::i18n::{fill, n_, tr, trn};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -161,7 +162,8 @@ impl InfoPanel {
         }
         let mut values = vec![];
         for (i, (key, value)) in rows.iter().enumerate() {
-            let k = gtk::Label::new(Some(key));
+            // The keys are English (see set_value), shown translated.
+            let k = gtk::Label::new(Some(&tr(key)));
             k.set_xalign(0.0);
             k.set_valign(gtk::Align::Start);
             k.style_context().add_class("dim-label");
@@ -250,12 +252,12 @@ impl InfoPanel {
                             continue;
                         }
                         p.set_name(&name);
-                        let contents = if items == 1 { "1 item".to_string() } else { format!("{items} items") };
-                        let modified = ("Modified", util::format_time(mtime));
+                        let contents = fill(&trn("{n} item", "{n} items", items as u64), &[("n", &items)]);
+                        let modified = (n_("Modified"), util::format_time(mtime));
                         if remote {
-                            p.set_details(&[("Contents", contents), modified]);
+                            p.set_details(&[(n_("Contents"), contents), modified]);
                         } else {
-                            p.set_details(&[("Contents", contents), ("Size", "…".into()), modified]);
+                            p.set_details(&[(n_("Contents"), contents), (n_("Size"), "…".into()), modified]);
                         }
                         match cover {
                             Some(file) => p.load_image(&file, gen, false),
@@ -287,15 +289,15 @@ impl InfoPanel {
             let ctype = util::info_content_type(&info).unwrap_or_default();
             let mtime = info.attribute_uint64("time::modified") as i64;
             let mut rows: Vec<(&'static str, String)> = vec![
-                ("Type", crate::pane::type_description(&ctype, false)),
-                ("Size", util::format_size(info.size().max(0) as u64)),
-                ("Modified", util::format_time(mtime)),
+                (n_("Type"), crate::pane::type_description(&ctype, false)),
+                (n_("Size"), util::format_size(info.size().max(0) as u64)),
+                (n_("Modified"), util::format_time(mtime)),
             ];
             let path = file.path();
             let is_image = ctype.starts_with("image/") && path.is_some();
             if let Some(path) = path.as_ref().filter(|_| is_image) {
                 if let Some((_, w, h)) = gdk_pixbuf::Pixbuf::file_info(path) {
-                    rows.push(("Dimensions", format!("{w} × {h}")));
+                    rows.push((n_("Dimensions"), format!("{w} × {h}")));
                 }
             }
             p.set_details(&rows);
@@ -327,15 +329,17 @@ impl InfoPanel {
         let n_files = items.len() - n_dirs;
         let file_bytes: u64 = items.iter().filter(|i| !i.1).map(|i| i.2).sum();
         let dirs: Vec<PathBuf> = items.iter().filter(|i| i.1).filter_map(|i| gio::File::for_uri(&i.0).path()).collect();
-        let count = |n: usize, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
+        let folders = |n: usize| fill(&trn("{n} folder", "{n} folders", n as u64), &[("n", &n)]);
+        let files = |n: usize| fill(&trn("{n} file", "{n} files", n as u64), &[("n", &n)]);
         let contents = match (n_dirs, n_files) {
-            (0, f) => count(f, "file", "files"),
-            (d, 0) => count(d, "folder", "folders"),
-            (d, f) => format!("{}, {}", count(d, "folder", "folders"), count(f, "file", "files")),
+            (0, f) => files(f),
+            (d, 0) => folders(d),
+            // TRANSLATORS: "2 folders, 3 files".
+            (d, f) => fill(&tr("{folders}, {files}"), &[("folders", &folders(d)), ("files", &files(f))]),
         };
-        self.set_name(&format!("{} items selected", items.len()));
+        self.set_name(&fill(&trn("{n} item selected", "{n} items selected", items.len() as u64), &[("n", &items.len())]));
         let size = if dirs.is_empty() { util::format_size(file_bytes) } else { "…".into() };
-        self.set_details(&[("Contents", contents), ("Size", size)]);
+        self.set_details(&[(n_("Contents"), contents), (n_("Size"), size)]);
         self.show_icon(Some(&gio::ThemedIcon::from_names(&["emblem-documents", "text-x-generic"]).upcast()));
         if dirs.is_empty() {
             return;

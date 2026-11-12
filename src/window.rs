@@ -7,6 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::actions;
+use crate::i18n::{fill, n_, tr, trn};
 use crate::bulkrename;
 use crate::config;
 use crate::folders;
@@ -179,9 +180,9 @@ fn column_chooser() -> gtk::Box {
     sw.set_hexpand(true);
     sw.add(&list);
     let buttons = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    let up = gtk::Button::with_mnemonic("Move _Up");
-    let down = gtk::Button::with_mnemonic("Move _Down");
-    let reset = gtk::Button::with_mnemonic("_Reset to Default");
+    let up = gtk::Button::with_mnemonic(&tr("Move _Up"));
+    let down = gtk::Button::with_mnemonic(&tr("Move _Down"));
+    let reset = gtk::Button::with_mnemonic(&tr("_Reset to Default"));
     for b in [&up, &down, &reset] {
         buttons.add(b);
     }
@@ -216,7 +217,7 @@ fn column_chooser() -> gtk::Box {
                 let Some(d) = crate::details::get(id) else { continue };
                 let row = gtk::ListBoxRow::new();
                 row.set_widget_name(d.id);
-                let check = gtk::CheckButton::with_label(d.title);
+                let check = gtk::CheckButton::with_label(&tr(d.title));
                 check.set_active(chosen.contains(&d.id));
                 check.set_margin_start(6);
                 let save = save.clone();
@@ -415,17 +416,17 @@ impl AppWindow {
             b.set_focus_on_click(false);
             b
         };
-        let back_btn = tbtn("go-previous", "Go to the previous visited location (right-click for history)", "win.back", Some("Back"));
-        let fwd_btn = tbtn("go-next", "Go to the next visited location", "win.forward", Some("Forward"));
-        let up_btn = tbtn("go-up", "Open the parent folder", "win.up", None);
-        let reload_btn = tbtn("view-refresh", "Reload the current location", "win.reload", None);
-        let home_btn = tbtn("go-home", "Open your personal folder", "win.home", None);
-        let root_btn = tbtn("drive-harddisk", "Browse the file system", "win.go-root", None);
+        let back_btn = tbtn("go-previous", &tr("Go to the previous visited location (right-click for history)"), "win.back", Some(&tr("Back")));
+        let fwd_btn = tbtn("go-next", &tr("Go to the next visited location"), "win.forward", Some(&tr("Forward")));
+        let up_btn = tbtn("go-up", &tr("Open the parent folder"), "win.up", None);
+        let reload_btn = tbtn("view-refresh", &tr("Reload the current location"), "win.reload", None);
+        let home_btn = tbtn("go-home", &tr("Open your personal folder"), "win.home", None);
+        let root_btn = tbtn("drive-harddisk", &tr("Browse the file system"), "win.go-root", None);
         // Caja's Search for Files button: shows and hides the search bar.
         let search_btn = gtk::ToggleButton::new();
         search_btn.add(&gtk::Image::from_icon_name(Some("edit-find"), gtk::IconSize::LargeToolbar));
         search_btn.set_relief(gtk::ReliefStyle::None);
-        search_btn.set_tooltip_text(Some("Search documents and folders by name"));
+        search_btn.set_tooltip_text(Some(&tr("Search documents and folders by name")));
         search_btn.set_focus_on_click(false);
         for b in [&back_btn, &fwd_btn, &up_btn] {
             toolbar.pack_start(b, false, false, 0);
@@ -444,7 +445,7 @@ impl AppWindow {
         locbar.set_border_width(3);
         let loc_toggle = gtk::ToggleButton::new();
         loc_toggle.add(&gtk::Image::from_icon_name(Some("document-edit-symbolic"), gtk::IconSize::Button));
-        loc_toggle.set_tooltip_text(Some("Toggle between button and text-based location bar (Ctrl+L)"));
+        loc_toggle.set_tooltip_text(Some(&tr("Toggle between button and text-based location bar (Ctrl+L)")));
         loc_toggle.set_focus_on_click(false);
         // The path (edit toggle + breadcrumbs or text) is one item that the
         // button groups can be dragged to either side of.
@@ -460,14 +461,14 @@ impl AppWindow {
         path_scroll.set_hexpand(true);
         let location_entry = gtk::Entry::new();
         location_entry.set_hexpand(true);
-        location_entry.set_placeholder_text(Some("Type a path, e.g. ~/Documents or /etc"));
+        location_entry.set_placeholder_text(Some(&tr("Type a path, e.g. ~/Documents or /etc")));
         // Ctrl+F: a search field in place of the path, as in Caja. Typing
         // shows only the matching items of the open folder.
         let search_field = gtk::Entry::new();
         search_field.set_hexpand(true);
         search_field.set_icon_from_icon_name(gtk::EntryIconPosition::Secondary, Some("edit-find-symbolic"));
         let search_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        let search_label = gtk::Label::with_mnemonic("_Search:");
+        let search_label = gtk::Label::with_mnemonic(&tr("_Search:"));
         search_label.set_mnemonic_widget(Some(&search_field));
         search_label.set_margin_start(6);
         search_box.pack_start(&search_label, false, false, 0);
@@ -482,13 +483,13 @@ impl AppWindow {
         let zoom_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         zoom_box.style_context().add_class("linked");
         for (icon, act, tip) in [
-            ("zoom-out-symbolic", "win.zoom-out", "Zoom out"),
-            ("zoom-original-symbolic", "win.zoom-normal", "Normal size"),
-            ("zoom-in-symbolic", "win.zoom-in", "Zoom in"),
+            ("zoom-out-symbolic", "win.zoom-out", n_("Zoom out")),
+            ("zoom-original-symbolic", "win.zoom-normal", n_("Normal size")),
+            ("zoom-in-symbolic", "win.zoom-in", n_("Zoom in")),
         ] {
             let b = gtk::Button::from_icon_name(Some(icon), gtk::IconSize::Button);
             b.set_action_name(Some(act));
-            b.set_tooltip_text(Some(tip));
+            b.set_tooltip_text(Some(&tr(tip)));
             b.set_focus_on_click(false);
             zoom_box.pack_start(&b, false, false, 0);
         }
@@ -496,10 +497,10 @@ impl AppWindow {
         let view_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         view_box.style_context().add_class("linked");
         for (icon, target, tip) in [
-            ("view-grid-symbolic", "icon", "Icon View (Ctrl+1)"),
-            ("view-list-symbolic", "list", "List View (Ctrl+2)"),
-            ("view-continuous-symbolic", "compact", "Compact View (Ctrl+3)"),
-            ("view-column-symbolic", "columns", "Columns View (Ctrl+4)"),
+            ("view-grid-symbolic", "icon", n_("Icon View (Ctrl+1)")),
+            ("view-list-symbolic", "list", n_("List View (Ctrl+2)")),
+            ("view-continuous-symbolic", "compact", n_("Compact View (Ctrl+3)")),
+            ("view-column-symbolic", "columns", n_("Columns View (Ctrl+4)")),
         ] {
             let b = gtk::ToggleButton::new();
             // view-column isn't in every theme (Adwaita lacks it).
@@ -528,17 +529,17 @@ impl AppWindow {
         let split_btn = gtk::ToggleButton::new();
         split_btn.add(&gtk::Image::from_icon_name(Some("view-dual-symbolic"), gtk::IconSize::Button));
         split_btn.set_action_name(Some("win.split-view"));
-        split_btn.set_tooltip_text(Some("Split view: show a second pane"));
+        split_btn.set_tooltip_text(Some(&tr("Split view: show a second pane")));
         split_btn.set_focus_on_click(false);
         let swap_btn = gtk::Button::new();
         let swap_icon = gio::ThemedIcon::from_names(&["object-flip-horizontal-symbolic", "view-dual-symbolic"]);
         swap_btn.add(&gtk::Image::from_gicon(&swap_icon, gtk::IconSize::Button));
         swap_btn.set_action_name(Some("win.swap-panes"));
-        swap_btn.set_tooltip_text(Some("Swap the panes: their tabs change sides (Ctrl+U)"));
+        swap_btn.set_tooltip_text(Some(&tr("Swap the panes: their tabs change sides (Ctrl+U)")));
         swap_btn.set_focus_on_click(false);
         // An icon without words: named for screen readers.
         if let Some(a) = swap_btn.accessible() {
-            gtk::atk::prelude::AtkObjectExt::set_name(&a, "Swap Panes");
+            gtk::atk::prelude::AtkObjectExt::set_name(&a, &tr("Swap Panes"));
         }
         let split_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         split_box.style_context().add_class("linked");
@@ -550,13 +551,13 @@ impl AppWindow {
         let info_icon = gio::ThemedIcon::from_names(&["sidebar-show-right-symbolic", "view-right-pane-symbolic", "dialog-information-symbolic"]);
         info_btn.add(&gtk::Image::from_gicon(&info_icon, gtk::IconSize::Button));
         info_btn.set_action_name(Some("win.info-panel"));
-        info_btn.set_tooltip_text(Some("Info panel: the selected item's picture and details, in this folder (F11)"));
+        info_btn.set_tooltip_text(Some(&tr("Info panel: the selected item's picture and details, in this folder (F11)")));
         info_btn.set_focus_on_click(false);
         locbar.pack_start(&info_btn, false, false, 3);
         // File operations, like a browser's downloads button: shown while
         // there are any, with their overall progress; click for the list.
         let ops_btn = gtk::ToggleButton::new();
-        ops_btn.set_tooltip_text(Some("File operations"));
+        ops_btn.set_tooltip_text(Some(&tr("File operations")));
         ops_btn.set_focus_on_click(false);
         let ops_inner = gtk::Box::new(gtk::Orientation::Vertical, 1);
         ops_inner.add(&gtk::Image::from_icon_name(Some("edit-copy-symbolic"), gtk::IconSize::Button));
@@ -576,7 +577,7 @@ impl AppWindow {
         ops_scroll.set_propagate_natural_height(true);
         ops_scroll.set_max_content_height(420);
         ops_scroll.add(&ops_slot);
-        let open_win = gtk::Button::with_label("Open in Window");
+        let open_win = gtk::Button::with_label(&tr("Open in Window"));
         open_win.set_relief(gtk::ReliefStyle::None);
         open_win.set_margin_top(4);
         open_win.set_margin_bottom(4);
@@ -847,8 +848,8 @@ impl AppWindow {
             return;
         }
         self.undo_menu.remove_all();
-        self.undo_menu.append(Some(labels.0.as_deref().unwrap_or("_Undo")), Some("win.undo"));
-        self.undo_menu.append(Some(labels.1.as_deref().unwrap_or("_Redo")), Some("win.redo"));
+        self.undo_menu.append(Some(&labels.0.clone().unwrap_or_else(|| tr("_Undo"))), Some("win.undo"));
+        self.undo_menu.append(Some(&labels.1.clone().unwrap_or_else(|| tr("_Redo"))), Some("win.redo"));
         self.set_enabled("undo", labels.0.is_some());
         self.set_enabled("redo", labels.1.is_some());
         *self.undo_label.borrow_mut() = Some(labels);
@@ -1045,8 +1046,8 @@ impl AppWindow {
                 let uri = p.current().uri().to_string();
                 match util::add_bookmark(&uri) {
                     Ok(true) => {}
-                    Ok(false) => w.flash_status("This location is already bookmarked"),
-                    Err(e) => util::error_dialog(Some(w.window.upcast_ref()), "Could not add bookmark", &e.to_string()),
+                    Ok(false) => w.flash_status(&tr("This location is already bookmarked")),
+                    Err(e) => util::error_dialog(Some(w.window.upcast_ref()), &tr("Could not add bookmark"), &e.to_string()),
                 }
             }
         });
@@ -1473,7 +1474,7 @@ impl AppWindow {
                             s.go(&f); // let gvfs try (e.g. sftp://)
                             s.loc_toggle.set_active(false);
                         } else {
-                            util::error_dialog(Some(s.window.upcast_ref()), &format!("Could not find “{text}”"), err.message());
+                            util::error_dialog(Some(s.window.upcast_ref()), &fill(&tr("Could not find “{text}”"), &[("text", &text)]), err.message());
                         }
                     }
                 }
@@ -1651,7 +1652,7 @@ impl AppWindow {
         let close = gtk::Button::from_icon_name(Some("window-close-symbolic"), gtk::IconSize::Menu);
         close.set_relief(gtk::ReliefStyle::None);
         close.set_focus_on_click(false);
-        close.set_tooltip_text(Some("Close tab"));
+        close.set_tooltip_text(Some(&tr("Close tab")));
         {
             let wp = Rc::downgrade(&pane);
             close.connect_clicked(move |_| {
@@ -1974,9 +1975,8 @@ impl AppWindow {
         self.ops_btn.set_visible(n > 0);
         self.ops_bar.set_fraction(fraction);
         self.ops_btn.set_tooltip_text(Some(&match n {
-            0 => "File operations".to_string(),
-            1 => "1 file operation".to_string(),
-            n => format!("{n} file operations"),
+            0 => tr("File operations"),
+            n => fill(&trn("{n} file operation", "{n} file operations", n as u64), &[("n", &n)]),
         }));
         if n == 0 {
             self.ops_pop.popdown();
@@ -2169,11 +2169,11 @@ impl AppWindow {
     /// the new sorting everywhere.
     /// View → Visible Columns, as in Caja.
     fn show_column_chooser(&self) {
-        let d = gtk::Dialog::with_buttons(Some("Visible Columns"), Some(&self.window), gtk::DialogFlags::DESTROY_WITH_PARENT, &[("_Close", gtk::ResponseType::Close)]);
+        let d = gtk::Dialog::with_buttons(Some(&tr("Visible Columns")), Some(&self.window), gtk::DialogFlags::DESTROY_WITH_PARENT, &[(tr("_Close").as_str(), gtk::ResponseType::Close)]);
         let area = d.content_area();
         area.set_spacing(12);
         area.set_border_width(12);
-        let text = gtk::Label::new(Some("Choose the order of information to appear in the list view."));
+        let text = gtk::Label::new(Some(&tr("Choose the order of information to appear in the list view.")));
         text.set_xalign(0.0);
         area.add(&text);
         area.add(&column_chooser());
@@ -2320,12 +2320,12 @@ impl AppWindow {
             b.style_context().add_class("text-button");
             let bx = gtk::Box::new(gtk::Orientation::Horizontal, 2);
             let (icon, label) = if c.equal(&home) {
-                (Some("user-home"), "Home".to_string())
+                (Some("user-home"), tr("Home"))
             } else if c.uri() == "trash:///" {
-                (Some("user-trash"), "Trash".to_string())
+                (Some("user-trash"), tr("Trash"))
             } else if c.parent().is_none() {
                 if c.path().is_some() {
-                    (Some("drive-harddisk"), "File System".to_string())
+                    (Some("drive-harddisk"), tr("File System"))
                 } else {
                     (Some("folder-remote"), util::display_name(c))
                 }
@@ -2727,7 +2727,7 @@ impl AppWindow {
             app.launch_uris(&refs, ctx.as_ref())
         };
         if let Err(e) = res {
-            util::error_dialog(Some(self.window.upcast_ref()), &format!("Could not open with {}", app.display_name()), e.message());
+            util::error_dialog(Some(self.window.upcast_ref()), &fill(&tr("Could not open with {program}"), &[("program", &app.display_name())]), e.message());
         }
     }
 
@@ -2738,18 +2738,18 @@ impl AppWindow {
             gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
             gtk::MessageType::Question,
             gtk::ButtonsType::None,
-            &format!("Do you want to run “{name}”, or display its contents?"),
+            &fill(&tr("Do you want to run “{name}”, or display its contents?"), &[("name", &name)]),
         );
-        d.set_secondary_text(Some(&format!("“{name}” is an executable file.")));
+        d.set_secondary_text(Some(&fill(&tr("“{name}” is an executable file."), &[("name", &name)])));
         let term = util::terminal_command();
         if term.is_some() {
-            d.add_button("Run in _Terminal", gtk::ResponseType::Other(1));
+            d.add_button(&tr("Run in _Terminal"), gtk::ResponseType::Other(1));
         }
         if is_script {
-            d.add_button("_Display", gtk::ResponseType::Other(2));
+            d.add_button(&tr("_Display"), gtk::ResponseType::Other(2));
         }
-        d.add_button("_Cancel", gtk::ResponseType::Cancel);
-        d.add_button("_Run", gtk::ResponseType::Other(3));
+        d.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
+        d.add_button(&tr("_Run"), gtk::ResponseType::Other(3));
         d.set_default_response(gtk::ResponseType::Other(3));
         let w = Rc::downgrade(self);
         let f = f.clone();
@@ -2774,7 +2774,7 @@ impl AppWindow {
                 _ => Ok(()),
             };
             if let Err(e) = res {
-                util::error_dialog(Some(s.window.upcast_ref()), "Could not run the program", &e);
+                util::error_dialog(Some(s.window.upcast_ref()), &tr("Could not run the program"), &e);
             }
         });
         d.show();
@@ -2815,7 +2815,7 @@ impl AppWindow {
     fn new_folder(self: &Rc<Self>) {
         let Some(p) = self.current_pane() else { return };
         let dir = p.current();
-        let name = util::unique_name(&dir, "Untitled Folder", true);
+        let name = util::unique_name(&dir, &tr("Untitled Folder"), true);
         let f = dir.child(&name);
         match f.make_directory(gio::Cancellable::NONE) {
             Ok(()) => {
@@ -2823,7 +2823,7 @@ impl AppWindow {
                 p.add_file_now(&f);
                 p.rename_later(f.uri().to_string());
             }
-            Err(e) => util::error_dialog(Some(self.window.upcast_ref()), "Could not create the folder", e.message()),
+            Err(e) => util::error_dialog(Some(self.window.upcast_ref()), &tr("Could not create the folder"), e.message()),
         }
     }
 
@@ -2832,7 +2832,7 @@ impl AppWindow {
         let dir = p.current();
         let res = match &template {
             None => {
-                let name = util::unique_name(&dir, "Untitled Document", false);
+                let name = util::unique_name(&dir, &tr("Untitled Document"), false);
                 let f = dir.child(&name);
                 f.create(gio::FileCreateFlags::NONE, gio::Cancellable::NONE).map(|_| f)
             }
@@ -2850,13 +2850,13 @@ impl AppWindow {
                 p.add_file_now(&f);
                 p.rename_later(f.uri().to_string());
             }
-            Err(e) => util::error_dialog(Some(self.window.upcast_ref()), "Could not create the document", e.message()),
+            Err(e) => util::error_dialog(Some(self.window.upcast_ref()), &tr("Could not create the document"), e.message()),
         }
     }
 
     fn rename(self: &Rc<Self>, pane: &Rc<Pane>, uri: &str, new_name: &str) {
         if new_name.contains('/') {
-            util::error_dialog(Some(self.window.upcast_ref()), "Invalid name", "File names cannot contain “/”.");
+            util::error_dialog(Some(self.window.upcast_ref()), &tr("Invalid name"), &tr("File names cannot contain “/”."));
             return;
         }
         let f = gio::File::for_uri(uri);
@@ -2865,8 +2865,8 @@ impl AppWindow {
             if target.query_exists(gio::Cancellable::NONE) && !target.equal(&f) {
                 util::error_dialog(
                     Some(self.window.upcast_ref()),
-                    &format!("The name “{new_name}” is already used in this location."),
-                    "Please use a different name.",
+                    &fill(&tr("The name “{name}” is already used in this location."), &[("name", &new_name)]),
+                    &tr("Please use a different name."),
                 );
                 return;
             }
@@ -2878,7 +2878,7 @@ impl AppWindow {
                 pane.add_file_now(&nf);
                 pane.select_uris(&[nf.uri().to_string()]);
             }
-            Err(e) => util::error_dialog(Some(self.window.upcast_ref()), &format!("Could not rename “{}”", util::display_name(&f)), e.message()),
+            Err(e) => util::error_dialog(Some(self.window.upcast_ref()), &fill(&tr("Could not rename “{name}”"), &[("name", &util::display_name(&f))]), e.message()),
         }
     }
 
@@ -2902,7 +2902,7 @@ impl AppWindow {
         clipboard::get(move |cut, uris| {
             let Some(s) = w.upgrade() else { return };
             if uris.is_empty() {
-                s.flash_status("There is nothing on the clipboard to paste.");
+                s.flash_status(&tr("There is nothing on the clipboard to paste."));
                 return;
             }
             let kind = if cut { Kind::Move } else { Kind::Copy };
@@ -2964,17 +2964,17 @@ impl AppWindow {
         if uris.is_empty() {
             return;
         }
-        let title = if kind == Kind::Move { "Move To" } else { "Copy To" };
-        let d = gtk::FileChooserDialog::new(Some(title), Some(&self.window), gtk::FileChooserAction::SelectFolder);
-        d.add_button("_Cancel", gtk::ResponseType::Cancel);
-        d.add_button(if kind == Kind::Move { "_Move" } else { "_Copy" }, gtk::ResponseType::Accept);
+        let title = if kind == Kind::Move { tr("Move To") } else { tr("Copy To") };
+        let d = gtk::FileChooserDialog::new(Some(&title), Some(&self.window), gtk::FileChooserAction::SelectFolder);
+        d.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
+        d.add_button(&if kind == Kind::Move { tr("_Move") } else { tr("_Copy") }, gtk::ResponseType::Accept);
         d.set_default_response(gtk::ResponseType::Accept);
         let _ = d.set_current_folder_file(&p.current());
-        let check = gtk::CheckButton::with_mnemonic("C_heck the copies");
-        check.set_tooltip_text(Some(if kind == Kind::Move {
-            "Each file moved to another drive is read back from there and compared with its original (CRC32), which is deleted only once they match. A move within one drive copies nothing, so there's nothing to check."
+        let check = gtk::CheckButton::with_mnemonic(&tr("C_heck the copies"));
+        check.set_tooltip_text(Some(&if kind == Kind::Move {
+            tr("Each file moved to another drive is read back from there and compared with its original (CRC32), which is deleted only once they match. A move within one drive copies nothing, so there’s nothing to check.")
         } else {
-            "Each copy is read back from where it went and compared with its original (CRC32). It takes about as long again as the copy."
+            tr("Each copy is read back from where it went and compared with its original (CRC32). It takes about as long again as the copy.")
         }));
         d.set_extra_widget(&check);
         d.set_modal(true);
@@ -3010,19 +3010,23 @@ impl AppWindow {
         if !can_trash {
             let sel = p.selected();
             let q = if sel.len() == 1 {
-                format!("“{}” can't be moved to the Trash. Delete it permanently?", sel[0].name)
+                fill(&tr("“{name}” can’t be moved to the Trash. Delete it permanently?"), &[("name", &sel[0].name)])
             } else {
-                format!("These {} items can't be moved to the Trash. Delete them permanently?", sel.len())
+                fill(&trn("This item can’t be moved to the Trash. Delete it permanently?", "These {n} items can’t be moved to the Trash. Delete them permanently?", sel.len() as u64), &[("n", &sel.len())])
             };
-            if self.confirm(&q, "This location has no trash. If you delete an item, it will be permanently lost.", "_Delete", true) {
+            if self.confirm(&q, &tr("This location has no trash. If you delete an item, it will be permanently lost."), &tr("_Delete"), true) {
                 self.run_job(Job::Delete(uris));
             }
             return;
         }
         if config::with(|s| s.confirm_trash) {
             let sel = p.selected();
-            let q = if sel.len() == 1 { format!("Move “{}” to the Trash?", sel[0].name) } else { format!("Move {} items to the Trash?", sel.len()) };
-            if !self.confirm(&q, "", "Move to _Trash", true) {
+            let q = if sel.len() == 1 {
+                fill(&tr("Move “{name}” to the Trash?"), &[("name", &sel[0].name)])
+            } else {
+                fill(&trn("Move {n} item to the Trash?", "Move {n} items to the Trash?", sel.len() as u64), &[("n", &sel.len())])
+            };
+            if !self.confirm(&q, "", &tr("Move to _Trash"), true) {
                 return;
             }
         }
@@ -3036,12 +3040,15 @@ impl AppWindow {
             return;
         }
         let q = if sel.len() == 1 {
-            format!("Are you sure you want to permanently delete “{}”?", sel[0].name)
+            fill(&tr("Are you sure you want to permanently delete “{name}”?"), &[("name", &sel[0].name)])
         } else {
-            format!("Are you sure you want to permanently delete the {} selected items?", sel.len())
+            fill(
+                &trn("Are you sure you want to permanently delete the {n} selected item?", "Are you sure you want to permanently delete the {n} selected items?", sel.len() as u64),
+                &[("n", &sel.len())],
+            )
         };
         // Delete is the default, so Shift+Delete then Enter deletes.
-        if self.confirm(&q, "If you delete an item, it will be permanently lost.", "_Delete", true) {
+        if self.confirm(&q, &tr("If you delete an item, it will be permanently lost."), &tr("_Delete"), true) {
             self.run_job(Job::Delete(sel.into_iter().map(|r| r.uri).collect()));
         }
     }
@@ -3065,9 +3072,9 @@ impl AppWindow {
 
     fn empty_trash(self: &Rc<Self>) {
         if self.confirm(
-            "Empty all items from the Trash?",
-            "All items in the Trash will be permanently deleted.",
-            "_Empty Trash",
+            &tr("Empty all items from the Trash?"),
+            &tr("All items in the Trash will be permanently deleted."),
+            &tr("_Empty Trash"),
             false,
         ) {
             self.run_job(Job::EmptyTrash);
@@ -3087,7 +3094,7 @@ impl AppWindow {
         if !secondary.is_empty() {
             d.set_secondary_text(Some(secondary));
         }
-        d.add_button("_Cancel", gtk::ResponseType::Cancel);
+        d.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
         let ok_btn = d.add_button(ok, gtk::ResponseType::Ok);
         if ok_default {
             d.set_default_response(gtk::ResponseType::Ok);
@@ -3111,18 +3118,19 @@ impl AppWindow {
         if action == gdk::DragAction::ASK {
             let menu = gtk::Menu::new();
             let choices = [
-                ("_Move Here", Some(Kind::Move), false),
-                ("_Copy Here", Some(Kind::Copy), false),
-                ("_Link Here", Some(Kind::Link), false),
-                ("Move and C_heck Here", Some(Kind::Move), true),
-                ("Copy and Ch_eck Here", Some(Kind::Copy), true),
-                ("Cancel", None, false),
+                (n_("_Move Here"), Some(Kind::Move), false),
+                (n_("_Copy Here"), Some(Kind::Copy), false),
+                (n_("_Link Here"), Some(Kind::Link), false),
+                (n_("Move and C_heck Here"), Some(Kind::Move), true),
+                (n_("Copy and Ch_eck Here"), Some(Kind::Copy), true),
+                (n_("Cancel"), None, false),
             ];
-            for (label, kind, check) in choices {
-                if label.starts_with("Move and") || label == "Cancel" {
+            for (i, (label, kind, check)) in choices.into_iter().enumerate() {
+                // Before the checked ones, and before Cancel.
+                if i == 3 || i == 5 {
                     menu.append(&gtk::SeparatorMenuItem::new());
                 }
-                let item = gtk::MenuItem::with_mnemonic(label);
+                let item = gtk::MenuItem::with_mnemonic(&tr(label));
                 let w = Rc::downgrade(self);
                 let uris = uris.clone();
                 let dest = dest.clone();
@@ -3158,7 +3166,7 @@ impl AppWindow {
             .unwrap_or_else(|| p.current());
         let Some(path) = dir.path() else { return };
         let Some(term) = util::terminal_command() else {
-            util::error_dialog(Some(self.window.upcast_ref()), "No terminal found", "Install mate-terminal or set $TERMINAL.");
+            util::error_dialog(Some(self.window.upcast_ref()), &tr("No terminal found"), &tr("Install mate-terminal or set $TERMINAL."));
             return;
         };
         let mut argv = vec![term.clone()];
@@ -3166,7 +3174,7 @@ impl AppWindow {
             argv.push(format!("--working-directory={}", path.to_string_lossy()));
         }
         if let Err(e) = util::spawn_in_dir(&argv, Some(&path)) {
-            util::error_dialog(Some(self.window.upcast_ref()), "Could not open a terminal", &e);
+            util::error_dialog(Some(self.window.upcast_ref()), &tr("Could not open a terminal"), &e);
         }
     }
 
@@ -3192,22 +3200,22 @@ impl AppWindow {
         }
         argv.extend(paths);
         if let Err(e) = util::spawn_in_dir(&argv, p.current().path().as_deref()) {
-            util::error_dialog(Some(self.window.upcast_ref()), "Could not start the archive manager", &e);
+            util::error_dialog(Some(self.window.upcast_ref()), &tr("Could not start the archive manager"), &e);
         }
     }
 
     fn select_pattern_dialog(self: &Rc<Self>) {
         let d = gtk::Dialog::with_buttons(
-            Some("Select Items Matching"),
+            Some(&tr("Select Items Matching")),
             Some(&self.window),
             gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
-            &[("_Cancel", gtk::ResponseType::Cancel), ("_Select", gtk::ResponseType::Ok)],
+            &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Select").as_str(), gtk::ResponseType::Ok)],
         );
         d.set_default_response(gtk::ResponseType::Ok);
         let bx = d.content_area();
         bx.set_spacing(6);
         bx.set_border_width(12);
-        bx.add(&gtk::Label::new(Some("Pattern (e.g. *.jpg, report-??.pdf):")));
+        bx.add(&gtk::Label::new(Some(&tr("Pattern (e.g. *.jpg, report-??.pdf):"))));
         let e = gtk::Entry::new();
         e.set_activates_default(true);
         e.set_text("*");
@@ -3232,10 +3240,10 @@ impl AppWindow {
             return;
         }
         let d = gtk::Dialog::with_buttons(
-            Some("Edit Bookmarks"),
+            Some(&tr("Edit Bookmarks")),
             Some(&self.window),
             gtk::DialogFlags::DESTROY_WITH_PARENT,
-            &[("_Close", gtk::ResponseType::Close)],
+            &[(tr("_Close").as_str(), gtk::ResponseType::Close)],
         );
         d.set_default_size(460, 360);
         let bx = d.content_area();
@@ -3263,14 +3271,14 @@ impl AppWindow {
         d.set_modal(true);
         d.set_program_name("Arkha");
         d.set_version(Some(env!("CARGO_PKG_VERSION")));
-        d.set_comments(Some("A fast graphical file manager."));
+        d.set_comments(Some(&tr("A fast graphical file manager.")));
         d.set_logo_icon_name(Some(util::app_icon()));
         d.connect_response(|d, _| d.close());
         d.show();
     }
 
     fn shortcuts(&self) {
-        let d = gtk::Dialog::with_buttons(Some("Keyboard Shortcuts"), Some(&self.window), gtk::DialogFlags::DESTROY_WITH_PARENT, &[("_Close", gtk::ResponseType::Close)]);
+        let d = gtk::Dialog::with_buttons(Some(&tr("Keyboard Shortcuts")), Some(&self.window), gtk::DialogFlags::DESTROY_WITH_PARENT, &[(tr("_Close").as_str(), gtk::ResponseType::Close)]);
         d.set_default_size(-1, 560);
         let grid = gtk::Grid::new();
         grid.set_row_spacing(4);
@@ -3302,15 +3310,15 @@ impl AppWindow {
             }
             if b.group != group {
                 group = b.group;
-                add(group, "");
+                add(&tr(group), "");
             }
-            add(&keys::labels(&current), b.label);
+            add(&keys::labels(&current), &tr(b.label));
         }
-        add("Mouse", "");
-        add("Middle-click a folder", "Open in new tab");
-        add("Drag with Ctrl / Shift / Alt", "Copy / Move / Ask");
-        add("Ctrl+scroll", "Zoom");
-        add("Back / forward mouse buttons", "Back / Forward");
+        add(&tr("Mouse"), "");
+        add(&tr("Middle-click a folder"), &tr("Open in new tab"));
+        add(&tr("Drag with Ctrl / Shift / Alt"), &tr("Copy / Move / Ask"));
+        add(&tr("Ctrl+scroll"), &tr("Zoom"));
+        add(&tr("Back / forward mouse buttons"), &tr("Back / Forward"));
         let sw = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
         sw.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
         sw.set_propagate_natural_width(true);

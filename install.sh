@@ -9,6 +9,10 @@ PREFIX="${PREFIX:-$HOME/.local}"
 install -Dm755 target/release/arkha "$PREFIX/bin/arkha"
 install -Dm644 arkha.desktop "$PREFIX/share/applications/arkha.desktop"
 install -Dm644 data/arkha.svg "$PREFIX/share/icons/hicolor/scalable/apps/arkha.svg"
+# The translations the build made from po/*.po (none without gettext).
+for mo in target/release/locale/*/LC_MESSAGES/arkha.mo; do
+    [ -e "$mo" ] && install -Dm644 "$mo" "$PREFIX/share/locale/${mo#target/release/locale/}"
+done
 # Only where the theme has a cache, which then has to know the new icon.
 [ -f "$PREFIX/share/icons/hicolor/icon-theme.cache" ] && gtk-update-icon-cache -q "$PREFIX/share/icons/hicolor" 2>/dev/null || true
 update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true

@@ -11,6 +11,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::config;
+use crate::i18n::{fill, tr, trn};
 use crate::folders;
 use crate::{clipboard, icons, util};
 
@@ -247,7 +248,7 @@ thread_local! {
 
 pub fn type_description(ctype: &str, is_dir: bool) -> String {
     if is_dir {
-        return "Folder".into();
+        return tr("Folder");
     }
     TYPE_DESC.with(|t| {
         if let Some(d) = t.borrow().get(ctype) {
@@ -1187,13 +1188,13 @@ impl Pane {
         }
         let f = self.current();
         if f.uri() == "trash:///" {
-            return "Trash".into();
+            return tr("Trash");
         }
         if f.path().map(|p| p == std::path::Path::new("/")).unwrap_or(false) {
-            return "File System".into();
+            return tr("File System");
         }
         if f.equal(&util::home_file()) {
-            return "Home".into();
+            return tr("Home");
         }
         self.folder_display_name()
     }
@@ -1333,7 +1334,7 @@ impl Pane {
                 Err(e) => {
                     if let Some(p) = weak.upgrade() {
                         if p.gen.get() == gen {
-                            p.show_error(&format!("Could not open “{}”: {}", util::pretty_location(&file), e.message()));
+                            p.show_error(&fill(&tr("Could not open “{location}”: {error}"), &[("location", &util::pretty_location(&file)), ("error", &e.message())]));
                             p.finish_load(gen);
                         }
                     }
@@ -1360,7 +1361,7 @@ impl Pane {
                         false
                     }
                     Err(e) => {
-                        p.show_error(&format!("Error while reading folder: {}", e.message()));
+                        p.show_error(&fill(&tr("Error while reading the folder: {error}"), &[("error", &e.message())]));
                         true
                     }
                 };
@@ -1546,9 +1547,9 @@ impl Pane {
         let it = self.index.borrow().get(uri).cloned();
         if let Some(it) = it {
             let text = match n {
-                Some(1) => "1 item".to_string(),
-                Some(n) => format!("{n} items"),
-                None => "? items".into(),
+                Some(n) => fill(&trn("{n} item", "{n} items", n), &[("n", &n)]),
+                // TRANSLATORS: a folder's number of items when it couldn't be counted.
+                None => tr("? items"),
             };
             self.store
                 .set(&it, &[(COL_SIZE, &n.unwrap_or(0)), (COL_SIZE_TEXT, &text)]);
@@ -1910,7 +1911,8 @@ impl Pane {
         let counted = is_dir && self.counts_items(&child);
         let (size_val, size_text) = if is_dir { (0u64, if counted { String::new() } else { "—".to_string() }) } else { (size, util::format_size(size)) };
         let tdesc = if util::info_is_symlink(info) && !is_dir {
-            format!("Link ({})", type_description(&ctype, false))
+            // TRANSLATORS: the type of a link: "Link (PNG image)".
+            fill(&tr("Link ({type})"), &[("type", &type_description(&ctype, false))])
         } else {
             type_description(&ctype, is_dir)
         };
@@ -2722,7 +2724,7 @@ impl Pane {
         let menu = gtk::Menu::new();
         let chosen = config::with(|s| crate::details::known(&s.list_columns));
         for d in crate::details::choosable() {
-            let item = gtk::CheckMenuItem::with_label(d.title);
+            let item = gtk::CheckMenuItem::with_label(&tr(d.title));
             item.set_active(chosen.contains(&d.id));
             let w = Rc::downgrade(self);
             let id = d.id;
@@ -2741,7 +2743,7 @@ impl Pane {
             menu.append(&item);
         }
         menu.append(&gtk::SeparatorMenuItem::new());
-        let more = gtk::MenuItem::with_mnemonic("_Visible Columns…");
+        let more = gtk::MenuItem::with_mnemonic(&tr("_Visible Columns…"));
         more.set_action_name(Some("win.visible-columns"));
         menu.append(&more);
         menu.show_all();
@@ -3813,10 +3815,10 @@ impl Pane {
         use crate::backgrounds::Drop;
         use crate::metadata::Value;
         let parent = self.root.toplevel().and_downcast::<gtk::Window>();
-        let report = move |what: &'static str| {
+        let report = move |what: String| {
             move |errors: Vec<String>| {
                 if !errors.is_empty() {
-                    util::error_dialog(parent.as_ref(), what, &errors.join("\n"));
+                    util::error_dialog(parent.as_ref(), &what, &errors.join("\n"));
                 }
             }
         };
@@ -3840,7 +3842,7 @@ impl Pane {
                         (u.clone(), "emblems".to_string(), if k.is_empty() { Value::Unset } else { Value::List(k) })
                     })
                     .collect();
-                crate::metadata::write(writes, report("Could not change the emblems"));
+                crate::metadata::write(writes, report(tr("Could not change the emblems")));
                 let files: Vec<gio::File> = uris.iter().map(|u| gio::File::for_uri(u)).collect();
                 crate::window::refresh_everywhere(&files);
             }
@@ -3856,7 +3858,7 @@ impl Pane {
                 let writes = vec![(folder.uri().to_string(), "folder-background-color".to_string(), value(&color)), (folder.uri().to_string(), "folder-background-image".to_string(), value(&image))];
                 // Shown here at once, in the other panes there once written.
                 self.set_background(&color, &image);
-                let done = report("Could not change the background");
+                let done = report(tr("Could not change the background"));
                 crate::metadata::write(writes, move |errors| {
                     done(errors);
                     crate::window::show_backgrounds_of(&folder);
@@ -3939,16 +3941,17 @@ impl Pane {
         let free = self
             .free_space
             .borrow()
-            .map(|f| format!(", Free space: {}", util::format_size(f)))
+            // TRANSLATORS: after the number of items in the status bar.
+            .map(|f| fill(&tr(", Free space: {size}"), &[("size", &util::format_size(f))]))
             .unwrap_or_default();
         if self.loading.get() && sel.is_empty() {
-            return format!("Loading… {visible} items");
+            return fill(&trn("Loading… {n} item", "Loading… {n} items", visible as u64), &[("n", &visible)]);
         }
         match sel.len() {
             0 => {
-                let mut s = format!("{visible} item{}", if visible == 1 { "" } else { "s" });
+                let mut s = fill(&trn("{n} item", "{n} items", visible as u64), &[("n", &visible)]);
                 if !self.show_hidden.get() && hidden > 0 && config::with(|s| s.status_hidden) {
-                    s.push_str(&format!(" ({hidden} hidden)"));
+                    s.push_str(&fill(&tr(" ({n} hidden)"), &[("n", &hidden)]));
                 }
                 s + &free
             }
@@ -3959,11 +3962,12 @@ impl Pane {
                         self.store.gv::<String>(it, COL_SIZE_TEXT as i32)
                     });
                     match n {
-                        Some(t) if !t.is_empty() => format!("“{}” selected (containing {t})", r.name),
-                        _ => format!("“{}” selected", r.name),
+                        // TRANSLATORS: {count} is a folder's number of items: "12 items".
+                        Some(t) if !t.is_empty() => fill(&tr("“{name}” selected (containing {count})"), &[("name", &r.name), ("count", &t)]),
+                        _ => fill(&tr("“{name}” selected"), &[("name", &r.name)]),
                     }
                 } else {
-                    format!("“{}” selected ({})", r.name, util::format_size(r.size))
+                    fill(&tr("“{name}” selected ({size})"), &[("name", &r.name), ("size", &util::format_size(r.size))])
                 }
             }
             n => {
@@ -3971,13 +3975,16 @@ impl Pane {
                 let files = n - dirs;
                 let bytes: u64 = sel.iter().filter(|r| !r.is_dir).map(|r| r.size).sum();
                 match (dirs, files) {
-                    (0, f) => format!("{f} items selected ({})", util::format_size(bytes)),
-                    (d, 0) => format!("{d} folders selected"),
-                    (d, f) => format!(
-                        "{d} folder{} selected, {f} other item{} selected ({})",
-                        if d == 1 { "" } else { "s" },
-                        if f == 1 { "" } else { "s" },
-                        util::format_size(bytes)
+                    (0, f) => fill(&trn("{n} item selected ({size})", "{n} items selected ({size})", f as u64), &[("n", &f), ("size", &util::format_size(bytes))]),
+                    (d, 0) => fill(&trn("{n} folder selected", "{n} folders selected", d as u64), &[("n", &d)]),
+                    // TRANSLATORS: the two parts of "2 folders selected, 3 other items selected (1.2 MB)".
+                    (d, f) => fill(
+                        &tr("{folders}, {others} ({size})"),
+                        &[
+                            ("folders", &fill(&trn("{n} folder selected", "{n} folders selected", d as u64), &[("n", &d)])),
+                            ("others", &fill(&trn("{n} other item selected", "{n} other items selected", f as u64), &[("n", &f)])),
+                            ("size", &util::format_size(bytes)),
+                        ],
                     ),
                 }
             }

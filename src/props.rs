@@ -2,6 +2,8 @@
 //! Notes, Media Info), as Caja's. Emblems, notes and a custom icon are GVfs
 //! metadata, as Caja keeps them, so the two share them.
 
+use crate::i18n::fill as subst;
+use crate::i18n::{n_, tr, trn};
 use gio::prelude::*;
 use gtk::prelude::*;
 use std::cell::Cell;
@@ -71,12 +73,9 @@ fn deep_count(uris: Vec<String>, count_top: bool, label: gtk::Label) {
     });
     glib::MainContext::default().spawn_local(async move {
         while let Ok((b, n, done)) = rx.recv().await {
-            label.set_text(&format!(
-                "{n} item{}, totalling {}{}",
-                if n == 1 { "" } else { "s" },
-                util::format_size(b),
-                if done { "" } else { " …" }
-            ));
+            let text = subst(&trn("{n} item, totalling {size}", "{n} items, totalling {size}", n), &[("n", &n), ("size", &util::format_size(b))]);
+            // Still counting.
+            label.set_text(&if done { text } else { format!("{text} …") });
         }
     });
 }
@@ -87,13 +86,13 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     }
     let dialog = gtk::Dialog::with_buttons(
         Some(&if files.len() == 1 {
-            format!("{} Properties", util::display_name(&files[0]))
+            subst(&tr("{name} Properties"), &[("name", &util::display_name(&files[0]))])
         } else {
-            format!("Properties of {} items", files.len())
+            subst(&trn("Properties of {n} item", "Properties of {n} items", files.len() as u64), &[("n", &files.len())])
         }),
         Some(parent),
         gtk::DialogFlags::DESTROY_WITH_PARENT,
-        &[("_Close", gtk::ResponseType::Close)],
+        &[(tr("_Close").as_str(), gtk::ResponseType::Close)],
     );
     // Wide enough for the Emblems page's columns, which fill in later (see fill).
     dialog.set_default_size(620, -1);
@@ -114,7 +113,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         })
         .unzip();
     if infos.is_empty() {
-        util::error_dialog(Some(parent), "Could not read properties", "The file may have been removed.");
+        util::error_dialog(Some(parent), &tr("Could not read properties"), &tr("The file may have been removed."));
         return;
     }
 
@@ -136,7 +135,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     let icon_button = gtk::Button::new();
     icon_button.set_relief(gtk::ReliefStyle::None);
     icon_button.set_valign(gtk::Align::Center);
-    icon_button.set_tooltip_text(Some("Choose another icon"));
+    icon_button.set_tooltip_text(Some(&tr("Choose another icon")));
     icon_button.add(&img);
     {
         let (files, d, img, metas, info) = (files.clone(), dialog.clone(), img.clone(), metas.clone(), infos[0].clone());
@@ -165,9 +164,9 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                     Ok(nf) => {
                         crate::ops::note_rename(&file, &nf);
                         *cur.borrow_mut() = nf;
-                        d.set_title(&format!("{new} Properties"));
+                        d.set_title(&subst(&tr("{name} Properties"), &[("name", &new)]));
                     }
-                    Err(err) => util::error_dialog(d.transient_for().as_ref(), "Could not rename", err.message()),
+                    Err(err) => util::error_dialog(d.transient_for().as_ref(), &tr("Could not rename"), err.message()),
                 }
             });
         }
@@ -178,46 +177,45 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         let is_dir = info.file_type() == gio::FileType::Directory;
         let ctype = util::info_content_type(info).unwrap_or_default();
         let tdesc = if is_dir {
-            "Folder (inode/directory)".to_string()
+            tr("Folder (inode/directory)")
         } else {
             format!("{} ({ctype})", gio::content_type_get_description(&ctype))
         };
-        row(&grid, r, "Type:", value_label(&tdesc).upcast_ref());
+        row(&grid, r, &tr("Type:"), value_label(&tdesc).upcast_ref());
         r += 1;
         if util::info_is_symlink(info) {
             if let Some(t) = info.symlink_target() {
-                row(&grid, r, "Link target:", value_label(&t.to_string_lossy()).upcast_ref());
+                row(&grid, r, &tr("Link target:"), value_label(&t.to_string_lossy()).upcast_ref());
                 r += 1;
             }
         }
         let size_label = value_label("");
         if is_dir {
-            size_label.set_text("Counting…");
+            size_label.set_text(&tr("Counting…"));
             if f.path().is_some() {
                 deep_count(vec![f.uri().to_string()], false, size_label.clone());
             } else {
-                size_label.set_text("Unknown");
+                size_label.set_text(&tr("Unknown"));
             }
-            row(&grid, r, "Contents:", size_label.upcast_ref());
+            row(&grid, r, &tr("Contents:"), size_label.upcast_ref());
         } else {
             let s = info.size().max(0) as u64;
-            size_label.set_text(&format!("{} ({} bytes)", util::format_size(s), group_digits(s)));
-            row(&grid, r, "Size:", size_label.upcast_ref());
+            size_label.set_text(&subst(&trn("{size} ({bytes} byte)", "{size} ({bytes} bytes)", s), &[("size", &util::format_size(s)), ("bytes", &group_digits(s))]));
+            row(&grid, r, &tr("Size:"), size_label.upcast_ref());
         }
         r += 1;
         let parent_loc = f.parent().map(|p| util::pretty_location(&p)).unwrap_or_default();
-        row(&grid, r, "Location:", value_label(&parent_loc).upcast_ref());
+        row(&grid, r, &tr("Location:"), value_label(&parent_loc).upcast_ref());
         r += 1;
         if let Ok(fsinfo) = f.query_filesystem_info("filesystem::free,filesystem::size", gio::Cancellable::NONE) {
             if fsinfo.has_attribute("filesystem::free") {
                 row(
                     &grid,
                     r,
-                    "Free space:",
-                    value_label(&format!(
-                        "{} of {}",
-                        util::format_size(fsinfo.attribute_uint64("filesystem::free")),
-                        util::format_size(fsinfo.attribute_uint64("filesystem::size"))
+                    &tr("Free space:"),
+                    value_label(&subst(
+                        &tr("{free} of {total}"),
+                        &[("free", &util::format_size(fsinfo.attribute_uint64("filesystem::free"))), ("total", &util::format_size(fsinfo.attribute_uint64("filesystem::size")))],
                     ))
                     .upcast_ref(),
                 );
@@ -229,36 +227,36 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             if let Some(usage) = disk_usage(&f) {
                 grid.attach(&gtk::Separator::new(gtk::Orientation::Horizontal), 0, r, 2, 1);
                 r += 1;
-                row(&grid, r, "Disk usage:", usage.upcast_ref());
+                row(&grid, r, &tr("Disk usage:"), usage.upcast_ref());
                 r += 1;
             }
         }
         grid.attach(&gtk::Separator::new(gtk::Orientation::Horizontal), 0, r, 2, 1);
         r += 1;
-        for (key, attr) in [("Accessed:", "time::access"), ("Modified:", "time::modified"), ("Created:", "time::created")] {
+        for (key, attr) in [(tr("Accessed:"), "time::access"), (tr("Modified:"), "time::modified"), (tr("Created:"), "time::created")] {
             if info.has_attribute(attr) {
-                row(&grid, r, key, value_label(&util::format_time_long(info.attribute_uint64(attr) as i64)).upcast_ref());
+                row(&grid, r, &key, value_label(&util::format_time_long(info.attribute_uint64(attr) as i64)).upcast_ref());
                 r += 1;
             }
         }
     } else {
-        let l = value_label(&format!("{} items", files.len()));
+        let l = value_label(&subst(&trn("{n} item", "{n} items", files.len() as u64), &[("n", &files.len())]));
         head.pack_start(&l, true, true, 0);
         grid.attach(&head, 0, r, 2, 1);
         r += 1;
-        let size_label = value_label("Counting…");
+        let size_label = value_label(&tr("Counting…"));
         let uris: Vec<String> = files.iter().map(|f| f.uri().to_string()).collect();
         deep_count(uris, true, size_label.clone());
-        row(&grid, r, "Contents:", size_label.upcast_ref());
+        row(&grid, r, &tr("Contents:"), size_label.upcast_ref());
         r += 1;
         let parent_loc = files[0].parent().map(|p| util::pretty_location(&p)).unwrap_or_default();
-        row(&grid, r, "Location:", value_label(&parent_loc).upcast_ref());
+        row(&grid, r, &tr("Location:"), value_label(&parent_loc).upcast_ref());
     }
-    add_page(&nb, &grid, "basic", "Basic");
+    add_page(&nb, &grid, "basic", &tr("Basic"));
 
     // -------------------------------------------------------------- Emblems
     let emblems_slot = reading_page();
-    add_page(&nb, &emblems_slot, "emblems", "Emblems");
+    add_page(&nb, &emblems_slot, "emblems", &tr("Emblems"));
     let notes_slot = reading_page();
 
     // ---------------------------------------------------------- Permissions
@@ -277,8 +275,8 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         // changed by root, the group by the owner, to one of their groups.
         let owner = owner_combo(&dialog, &files, &infos, my_uid == 0 && native);
         let group = group_combo(&dialog, &files, &infos, can_change && native, my_uid == 0);
-        for (key, combo) in [("Owner:", &owner), ("Group:", &group)] {
-            let l = gtk::Label::new(Some(key));
+        for (key, combo) in [(tr("Owner:"), &owner), (tr("Group:"), &group)] {
+            let l = gtk::Label::new(Some(&key));
             l.set_xalign(1.0);
             l.style_context().add_class("dim-label");
             pg.attach(&l, 0, r, 1, 1);
@@ -286,7 +284,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             pg.attach(combo, 1, r, 3, 1);
             r += 1;
         }
-        let headers = ["", "Read", "Write", "Execute"];
+        let headers = [String::new(), tr("Read"), tr("Write"), tr("Execute")];
         for (c, h) in headers.iter().enumerate() {
             let l = gtk::Label::new(Some(h));
             l.style_context().add_class("dim-label");
@@ -303,11 +301,12 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             Rc::new(move || {
                 let first = modes[0].get() & 0o7777;
                 let text = if modes.iter().all(|m| m.get() & 0o7777 == first) {
-                    format!("Mode: {first:04o}")
+                    subst(&tr("Mode: {mode}"), &[("mode", &format!("{first:04o}"))])
                 } else {
-                    "Mode: mixed".to_string()
+                    tr("Mode: mixed")
                 };
-                octal.set_text(&format!("{text}{}", if any_dir { "  (execute = enter folder)" } else { "" }));
+                // TRANSLATORS: after "Mode: 0755", for folders.
+                octal.set_text(&if any_dir { format!("{text}  {}", tr("(execute = enter folder)")) } else { text });
             })
         };
         update_octal();
@@ -331,7 +330,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                     for (f, m) in files.iter().zip(modes.iter()) {
                         let new = if set { m.get() | bit } else { m.get() & !bit };
                         if let Err(e) = f.set_attribute_uint32("unix::mode", new & 0o7777, gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE) {
-                            util::error_dialog(d.transient_for().as_ref(), "Could not change permissions", e.message());
+                            util::error_dialog(d.transient_for().as_ref(), &tr("Could not change permissions"), e.message());
                             break;
                         }
                         changed.push((f.clone(), m.get(), new));
@@ -343,7 +342,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                 cb
             }
         };
-        for (i, who) in ["Owner", "Group", "Others"].iter().enumerate() {
+        for (i, who) in [tr("Owner"), tr("Group"), tr("Others")].iter().enumerate() {
             let l = gtk::Label::new(Some(who));
             l.set_xalign(1.0);
             pg.attach(&l, 0, r, 1, 1);
@@ -357,18 +356,18 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         // setuid, setgid, sticky: the latter for folders like /tmp, where
         // only an item's owner may delete or rename it.
         {
-            let l = gtk::Label::new(Some("Special"));
+            let l = gtk::Label::new(Some(&tr("Special")));
             l.set_xalign(1.0);
             l.set_yalign(0.0);
             pg.attach(&l, 0, r, 1, 1);
             let specials = gtk::Box::new(gtk::Orientation::Vertical, 2);
             for (bit, label, tip) in [
-                (0o4000, "Set user ID", "Run as the file's owner, whoever starts it"),
-                (0o2000, "Set group ID", "Run with the file's group; in a folder, new items get the folder's group"),
-                (0o1000, "Sticky", "In a folder: only an item's owner can delete or rename it"),
+                (0o4000, tr("Set user ID"), tr("Run as the file’s owner, whoever starts it")),
+                (0o2000, tr("Set group ID"), tr("Run with the file’s group; in a folder, new items get the folder’s group")),
+                (0o1000, tr("Sticky"), tr("In a folder: only an item’s owner can delete or rename it")),
             ] {
-                let cb = bit_box(bit, Some(label));
-                cb.set_tooltip_text(Some(tip));
+                let cb = bit_box(bit, Some(&label));
+                cb.set_tooltip_text(Some(&tip));
                 specials.add(&cb);
             }
             pg.attach(&specials, 1, r, 3, 1);
@@ -379,9 +378,9 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         // files its read and write bits (their own execute bits stay).
         if can_change && any_dir {
             r += 1;
-            let apply = gtk::Button::with_label("Apply to Enclosed Items…");
+            let apply = gtk::Button::with_label(&tr("Apply to Enclosed Items…"));
             apply.set_halign(gtk::Align::Start);
-            apply.set_tooltip_text(Some("Give the folders inside these permissions and this group, and the files inside the same read and write permissions and group"));
+            apply.set_tooltip_text(Some(&tr("Give the folders inside these permissions and this group, and the files inside the same read and write permissions and group")));
             let done = value_label("");
             done.style_context().add_class("dim-label");
             let grid = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -404,30 +403,31 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                     gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
                     gtk::MessageType::Question,
                     gtk::ButtonsType::None,
-                    "Apply these permissions to everything inside?",
+                    &tr("Apply these permissions to everything inside?"),
                 );
-                ask.set_secondary_text(Some(if my_uid == 0 {
-                    "Every folder inside gets the same permissions, owner and group, every file the same read and write permissions, owner and group. This can't be undone."
+                ask.set_secondary_text(Some(&if my_uid == 0 {
+                    tr("Every folder inside gets the same permissions, owner and group, every file the same read and write permissions, owner and group. This can’t be undone.")
                 } else {
-                    "Every folder inside gets the same permissions and group, every file the same read and write permissions and group. This can't be undone."
+                    tr("Every folder inside gets the same permissions and group, every file the same read and write permissions and group. This can’t be undone.")
                 }));
-                ask.add_button("_Cancel", gtk::ResponseType::Cancel);
-                ask.add_button("_Apply", gtk::ResponseType::Accept);
+                ask.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
+                ask.add_button(&tr("_Apply"), gtk::ResponseType::Accept);
                 let ok = ask.run() == gtk::ResponseType::Accept;
                 ask.close();
                 if !ok {
                     return;
                 }
                 b.set_sensitive(false);
-                done.set_text("Applying…");
+                done.set_text(&tr("Applying…"));
                 let (b, done) = (b.clone(), done.clone());
                 glib::MainContext::default().spawn_local(async move {
                     let (changed, failed) = gio::spawn_blocking(move || apply_enclosed(&dirs, my_uid == 0)).await.unwrap_or((0, 0));
                     b.set_sensitive(true);
-                    let items = |n: usize| if n == 1 { "1 item".to_string() } else { format!("{n} items") };
+                    let items = |n: usize| subst(&trn("{n} item", "{n} items", n as u64), &[("n", &n)]);
                     done.set_text(&match failed {
-                        0 => format!("Changed {}.", items(changed)),
-                        f => format!("Changed {}; {} couldn't be changed (not yours?).", items(changed), items(f)),
+                        0 => subst(&tr("Changed {items}."), &[("items", &items(changed))]),
+                        // TRANSLATORS: {items} and {failed} are numbers of items: "12 items".
+                        f => subst(&tr("Changed {items}; {failed} couldn’t be changed (not yours?)."), &[("items", &items(changed)), ("failed", &items(f))]),
                     });
                 });
             });
@@ -435,14 +435,14 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         // The SELinux security context, where the system has one.
         if let Some(ctx) = infos[0].attribute_string("selinux::context").filter(|c| !c.is_empty() && files.len() == 1) {
             r += 1;
-            row(&pg, r, "Security context:", value_label(&ctx).upcast_ref());
+            row(&pg, r, &tr("Security context:"), value_label(&ctx).upcast_ref());
         }
         if !can_change {
             r += 1;
-            let l = value_label("You are not the owner, so you can't change these permissions.");
+            let l = value_label(&tr("You are not the owner, so you can't change these permissions."));
             pg.attach(&l, 0, r, 4, 1);
         }
-        add_page(&nb, &pg, "permissions", "Permissions");
+        add_page(&nb, &pg, "permissions", &tr("Permissions"));
     }
 
     // ------------------------------------------------------------ Open With
@@ -450,10 +450,9 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         if let Some(ctype) = util::info_content_type(&infos[0]) {
             let ob = gtk::Box::new(gtk::Orientation::Vertical, 8);
             ob.set_border_width(12);
-            let l = value_label(&format!(
-                "Select an application to open “{}” and other files of type “{}”:",
-                infos[0].display_name(),
-                gio::content_type_get_description(&ctype)
+            let l = value_label(&subst(
+                &tr("Select an application to open “{name}” and other files of type “{type}”:"),
+                &[("name", &infos[0].display_name()), ("type", &gio::content_type_get_description(&ctype))],
             ));
             ob.pack_start(&l, false, false, 0);
             let w = gtk::AppChooserWidget::new(&ctype);
@@ -463,7 +462,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             w.set_vexpand(true);
             w.set_size_request(-1, 260);
             ob.pack_start(&w, true, true, 0);
-            let set_btn = gtk::Button::with_mnemonic("_Set as Default");
+            let set_btn = gtk::Button::with_mnemonic(&tr("_Set as Default"));
             set_btn.set_halign(gtk::Align::End);
             {
                 let w = w.clone();
@@ -472,19 +471,19 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                 set_btn.connect_clicked(move |_| {
                     if let Some(app) = w.app_info() {
                         if let Err(e) = app.set_as_default_for_type(&ctype) {
-                            util::error_dialog(d.transient_for().as_ref(), "Could not set default application", e.message());
+                            util::error_dialog(d.transient_for().as_ref(), &tr("Could not set default application"), e.message());
                         }
                     }
                 });
             }
             ob.pack_start(&set_btn, false, false, 0);
-            add_page(&nb, &ob, "open-with", "Open With");
+            add_page(&nb, &ob, "open-with", &tr("Open With"));
         }
     }
 
     // ---------------------------------------------------------------- Notes
     if files.len() == 1 {
-        add_page(&nb, &notes_slot, "notes", "Notes");
+        add_page(&nb, &notes_slot, "notes", &tr("Notes"));
     }
     // The metadata read in the background; then the pages that show it.
     {
@@ -504,14 +503,14 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     if files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
         let ctype = util::info_content_type(&infos[0]).unwrap_or_default();
         if let (Some(path), true) = (files[0].path(), media_info_wanted(&ctype)) {
-            add_page(&nb, &media_info_page(path), "media", "Media Info");
+            add_page(&nb, &media_info_page(path), "media", &tr("Media Info"));
         }
     }
 
     // ------------------------------------------------------------ Checksums
     if files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
         let page = checksums_page(&dialog, &files[0], infos[0].size().max(0) as u64);
-        add_page(&nb, &page, "checksums", "Checksums");
+        add_page(&nb, &page, "checksums", &tr("Checksums"));
     }
 
     // Draggable into another order, which is kept, as in Rename All.
@@ -530,10 +529,10 @@ fn checksums_page(dialog: &gtk::Dialog, file: &gio::File, size: u64) -> gtk::Box
     page.set_border_width(12);
     let algos = config::with(|s| checksums::offered(&s.checksum_order, &s.hidden_checksums));
     if algos.is_empty() {
-        page.add(&value_label("No checksums are chosen: pick them in Preferences → Checksums."));
+        page.add(&value_label(&tr("No checksums are chosen: pick them in Preferences → Checksums.")));
         return page;
     }
-    let hint = value_label("A checksum shows whether a file is exactly the one it should be: compare it with the one its source gives. Each is worked out from the whole file when you ask for it.");
+    let hint = value_label(&tr("A checksum shows whether a file is exactly the one it should be: compare it with the one its source gives. Each is worked out from the whole file when you ask for it."));
     hint.style_context().add_class("dim-label");
     page.add(&hint);
     let grid = gtk::Grid::new();
@@ -548,7 +547,7 @@ fn checksums_page(dialog: &gtk::Dialog, file: &gio::File, size: u64) -> gtk::Box
     let bar = gtk::ProgressBar::new();
     bar.set_show_text(true);
     bar.set_hexpand(true);
-    let cancel = gtk::Button::with_mnemonic("_Cancel");
+    let cancel = gtk::Button::with_mnemonic(&tr("_Cancel"));
     let progress_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     progress_row.pack_start(&bar, true, true, 0);
     progress_row.pack_start(&cancel, false, false, 0);
@@ -586,14 +585,15 @@ fn checksums_page(dialog: &gtk::Dialog, file: &gio::File, size: u64) -> gtk::Box
         let attrs = pango::AttrList::new();
         attrs.insert(pango::AttrString::new_family("monospace"));
         value.set_attributes(Some(&attrs));
-        let calc = gtk::Button::with_label("Calculate");
+        let calc = gtk::Button::with_label(&tr("Calculate"));
         calc.set_valign(gtk::Align::Start);
         let copy = gtk::Button::from_icon_name(Some("edit-copy-symbolic"), gtk::IconSize::Button);
-        copy.set_tooltip_text(Some("Copy it to the clipboard"));
+        copy.set_tooltip_text(Some(&tr("Copy it to the clipboard")));
         copy.set_valign(gtk::Align::Start);
         copy.set_sensitive(false);
         if let Some(a) = copy.accessible() {
-            gtk::atk::prelude::AtkObjectExt::set_name(&a, &format!("Copy {}", algo.name()));
+            // TRANSLATORS: a button's name for screen readers: "Copy SHA-256".
+            gtk::atk::prelude::AtkObjectExt::set_name(&a, &subst(&tr("Copy {checksum}"), &[("checksum", &algo.name())]));
         }
         {
             let value = value.clone();
@@ -614,8 +614,8 @@ fn checksums_page(dialog: &gtk::Dialog, file: &gio::File, size: u64) -> gtk::Box
         grid.attach(&calc, 2, row, 1, 1);
         grid.attach(&copy, 3, row, 1, 1);
     }
-    let all = gtk::Button::with_mnemonic("Calculate _All");
-    all.set_tooltip_text(Some("Work out every checksum above that has no result yet (all of them again if each has one), reading the file only once"));
+    let all = gtk::Button::with_mnemonic(&tr("Calculate _All"));
+    all.set_tooltip_text(Some(&tr("Work out every checksum above that has no result yet (all of them again if each has one), reading the file only once")));
     all.set_halign(gtk::Align::End);
     {
         let (running, buttons, bar, progress_row, rows) = (running.clone(), calc_buttons.clone(), bar.clone(), progress_row.clone(), rows.clone());
@@ -660,7 +660,7 @@ fn start_checksums(
     }
     let what = targets.iter().map(|(a, _, _)| a.name()).collect::<Vec<_>>().join(", ");
     bar.set_fraction(0.0);
-    bar.set_text(Some(&format!("{what}: starting…")));
+    bar.set_text(Some(&subst(&tr("{checksums}: starting…"), &[("checksums", &what)])));
     progress_row.set_no_show_all(false);
     progress_row.show_all();
     enum Step {
@@ -688,7 +688,8 @@ fn start_checksums(
                     if size > 0 {
                         bar.set_fraction((read as f64 / size as f64).clamp(0.0, 1.0));
                     }
-                    bar.set_text(Some(&format!("{what}: {}", crate::ops::bytes_detail(read, size, started.elapsed()))));
+                    // TRANSLATORS: the checksums being worked out, then how far: "SHA-256: 1.2 GB of 4 GB, 10 s left".
+                    bar.set_text(Some(&subst(&tr("{checksums}: {progress}"), &[("checksums", &what), ("progress", &crate::ops::bytes_detail(read, size, started.elapsed()))])));
                 }
                 Step::Done(r) => {
                     match r {
@@ -701,7 +702,7 @@ fn start_checksums(
                         Err(e) if e.matches(gio::IOErrorEnum::Cancelled) => {}
                         Err(e) => {
                             for (_, value, _) in &targets {
-                                value.set_text(&format!("Couldn't read the file: {}", e.message()));
+                                value.set_text(&subst(&tr("Couldn’t read the file: {error}"), &[("error", &e.message())]));
                             }
                         }
                     }
@@ -744,7 +745,7 @@ fn media_info_wanted(ctype: &str) -> bool {
 fn media_info_page(path: std::path::PathBuf) -> gtk::ScrolledWindow {
     let bx = gtk::Box::new(gtk::Orientation::Vertical, 0);
     bx.set_border_width(12);
-    let wait = value_label("Reading media information…");
+    let wait = value_label(&tr("Reading media information…"));
     wait.style_context().add_class("dim-label");
     bx.add(&wait);
     let sw = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
@@ -763,14 +764,14 @@ fn media_info_page(path: std::path::PathBuf) -> gtk::ScrolledWindow {
                     if !sections.is_empty() {
                         Ok(sections)
                     } else if !err.is_empty() {
-                        Err(format!("mediainfo reported an error:\n{err}"))
+                        Err(subst(&tr("mediainfo reported an error:\n{error}"), &[("error", &err)]))
                     } else {
-                        Err("mediainfo found no media information in this file.".to_string())
+                        Err(tr("mediainfo found no media information in this file."))
                     }
                 }
-                Err(e) => Err(format!("Could not read mediainfo's output: {}", e.message())),
+                Err(e) => Err(subst(&tr("Could not read mediainfo’s output: {error}"), &[("error", &e.message())])),
             },
-            Err(e) => Err(format!("Could not run mediainfo: {}", e.message())),
+            Err(e) => Err(subst(&tr("Could not run mediainfo: {error}"), &[("error", &e.message())])),
         };
         bx.remove(&wait);
         match result {
@@ -906,11 +907,12 @@ fn disk_usage(f: &gio::File) -> Option<gtk::Widget> {
         v.set_selectable(true);
         legend.attach(&v, 2, r, 1, 1);
     };
-    line(0, Some(swatch(true)), "Used:", format!("{} ({:.0} %)", util::format_size(used), fraction * 100.0));
-    line(1, Some(swatch(false)), "Free:", util::format_size(free));
-    line(2, None, "Total:", util::format_size(total));
+    // TRANSLATORS: a drive's used space and its share: "12 GB (40 %)".
+    line(0, Some(swatch(true)), &tr("Used:"), subst(&tr("{size} ({percent} %)"), &[("size", &util::format_size(used)), ("percent", &format!("{:.0}", fraction * 100.0))]));
+    line(1, Some(swatch(false)), &tr("Free:"), util::format_size(free));
+    line(2, None, &tr("Total:"), util::format_size(total));
     if let Some(t) = fs.attribute_string("filesystem::type").filter(|t| !t.is_empty()) {
-        line(3, None, "File system:", t.to_string());
+        line(3, None, &tr("File system:"), t.to_string());
     }
     hb.pack_start(&legend, false, false, 0);
     Some(hb.upcast())
@@ -976,7 +978,7 @@ fn apply_enclosed(dirs: &[(std::path::PathBuf, u32)], owner: bool) -> (usize, us
 /// A page saying its contents are being read (see fill).
 fn reading_page() -> gtk::Box {
     let b = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    let l = value_label("Reading…");
+    let l = value_label(&tr("Reading…"));
     l.set_margin_start(12);
     l.set_margin_top(12);
     b.pack_start(&l, false, false, 0);
@@ -993,11 +995,11 @@ fn fill(page: &gtk::Box, content: &gtk::Widget) {
 }
 
 /// Error messages from writing metadata, if any, shown over the window.
-fn report(dialog: &gtk::Dialog, title: &'static str) -> impl FnOnce(Vec<String>) + 'static {
+fn report(dialog: &gtk::Dialog, title: String) -> impl FnOnce(Vec<String>) + 'static {
     let parent = dialog.transient_for();
     move |errors| {
         if !errors.is_empty() {
-            util::error_dialog(parent.as_ref(), title, &errors.join("\n"));
+            util::error_dialog(parent.as_ref(), &title, &errors.join("\n"));
         }
     }
 }
@@ -1006,15 +1008,15 @@ fn report(dialog: &gtk::Dialog, title: &'static str) -> impl FnOnce(Vec<String>)
 /// icon, or (Revert) their own again. Kept as metadata::custom-icon, as Caja does.
 fn choose_icon(dialog: &gtk::Dialog, files: &[gio::File], img: &gtk::Image, metas: &Rc<std::cell::RefCell<Option<Vec<Meta>>>>, info: &gio::FileInfo) {
     let has_custom = metas.borrow().as_ref().is_some_and(|m| m.iter().any(|m| !m.icon.is_empty() || !m.icon_name.is_empty()));
-    let chooser = gtk::FileChooserDialog::new(Some("Select Custom Icon"), Some(dialog), gtk::FileChooserAction::Open);
+    let chooser = gtk::FileChooserDialog::new(Some(&tr("Select Custom Icon")), Some(dialog), gtk::FileChooserAction::Open);
     if has_custom {
-        chooser.add_button("_Revert", gtk::ResponseType::Other(1));
+        chooser.add_button(&tr("_Revert"), gtk::ResponseType::Other(1));
     }
-    chooser.add_button("_Cancel", gtk::ResponseType::Cancel);
-    chooser.add_button("_Open", gtk::ResponseType::Accept);
+    chooser.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
+    chooser.add_button(&tr("_Open"), gtk::ResponseType::Accept);
     chooser.set_default_response(gtk::ResponseType::Accept);
     let filter = gtk::FileFilter::new();
-    filter.set_name(Some("Images"));
+    filter.set_name(Some(&tr("Images")));
     filter.add_pixbuf_formats();
     chooser.add_filter(filter);
     let pictures = glib::user_special_dir(glib::UserDirectory::Pictures).filter(|p| p.is_dir()).unwrap_or_else(glib::home_dir);
@@ -1044,7 +1046,7 @@ fn choose_icon(dialog: &gtk::Dialog, files: &[gio::File], img: &gtk::Image, meta
         .iter()
         .flat_map(|f| [(f.uri().to_string(), "custom-icon-name".to_string(), Value::Unset), (f.uri().to_string(), "custom-icon".to_string(), value.clone())])
         .collect();
-    crate::metadata::write(writes, report(dialog, "Could not change the icon"));
+    crate::metadata::write(writes, report(dialog, tr("Could not change the icon")));
     // Shown here at once; the views read it again once it's written.
     if let Some(ms) = metas.borrow_mut().as_mut() {
         for m in ms.iter_mut() {
@@ -1061,7 +1063,8 @@ fn choose_icon(dialog: &gtk::Dialog, files: &[gio::File], img: &gtk::Image, meta
 
 /// A combo box of names by number (users or groups), the items' own
 /// selected if they share it; picking one calls `set` for each file.
-fn id_combo(dialog: &gtk::Dialog, files: &[gio::File], choices: &[(u32, String)], current: Option<u32>, usable: bool, what: &'static str, set: fn(&std::path::Path, u32) -> std::io::Result<()>) -> gtk::ComboBoxText {
+/// `failed`: the message's title if that doesn't work (shown translated).
+fn id_combo(dialog: &gtk::Dialog, files: &[gio::File], choices: &[(u32, String)], current: Option<u32>, usable: bool, failed: &'static str, set: fn(&std::path::Path, u32) -> std::io::Result<()>) -> gtk::ComboBoxText {
     let combo = gtk::ComboBoxText::new();
     for (id, name) in choices {
         combo.append(Some(&id.to_string()), name);
@@ -1080,7 +1083,7 @@ fn id_combo(dialog: &gtk::Dialog, files: &[gio::File], choices: &[(u32, String)]
             let Some(p) = f.path() else { continue };
             let before = ids(&p);
             if let Err(e) = set(&p, id) {
-                util::error_dialog(d.transient_for().as_ref(), &format!("Could not change the {what}"), &format!("{}: {e}", util::display_name(f)));
+                util::error_dialog(d.transient_for().as_ref(), &tr(failed), &format!("{}: {e}", util::display_name(f)));
                 break;
             }
             if let (Some(b), Some(a)) = (before, ids(&p)) {
@@ -1103,9 +1106,9 @@ fn owner_combo(dialog: &gtk::Dialog, files: &[gio::File], infos: &[gio::FileInfo
         }
     }
     let current = Some(uids[0]).filter(|u| uids.iter().all(|x| x == u));
-    let combo = id_combo(dialog, files, &users, current, usable, "owner", |p, uid| std::os::unix::fs::chown(p, Some(uid), None));
+    let combo = id_combo(dialog, files, &users, current, usable, n_("Could not change the owner"), |p, uid| std::os::unix::fs::chown(p, Some(uid), None));
     if !usable {
-        combo.set_tooltip_text(Some("Only the administrator (root) can give an item to someone else"));
+        combo.set_tooltip_text(Some(&tr("Only the administrator (root) can give an item to someone else")));
     }
     combo
 }
@@ -1122,9 +1125,9 @@ fn group_combo(dialog: &gtk::Dialog, files: &[gio::File], infos: &[gio::FileInfo
     }
     groups.sort_by(|a, b| a.1.cmp(&b.1));
     let current = Some(gids[0]).filter(|g| gids.iter().all(|x| x == g));
-    let combo = id_combo(dialog, files, &groups, current, usable, "group", |p, gid| std::os::unix::fs::chown(p, None, Some(gid)));
+    let combo = id_combo(dialog, files, &groups, current, usable, n_("Could not change the group"), |p, gid| std::os::unix::fs::chown(p, None, Some(gid)));
     if !usable {
-        combo.set_tooltip_text(Some("Only the owner can change the group"));
+        combo.set_tooltip_text(Some(&tr("Only the owner can change the group")));
     }
     combo
 }
@@ -1204,7 +1207,7 @@ fn emblems_page(dialog: &gtk::Dialog, files: &[gio::File], keywords: Vec<Vec<Str
         }
     }
     if emblems.is_empty() {
-        let l = value_label("The icon theme has no emblems.");
+        let l = value_label(&tr("The icon theme has no emblems."));
         l.set_margin_start(12);
         l.set_margin_top(12);
         return l.upcast();
@@ -1244,7 +1247,7 @@ fn emblems_page(dialog: &gtk::Dialog, files: &[gio::File], keywords: Vec<Vec<Str
                 }
                 writes.push((f.uri().to_string(), "emblems".to_string(), if k.is_empty() { Value::Unset } else { Value::List(k.clone()) }));
             }
-            crate::metadata::write(writes, report(&d, "Could not change the emblems"));
+            crate::metadata::write(writes, report(&d, tr("Could not change the emblems")));
             crate::window::refresh_everywhere(&files);
         });
         flow.add(&cb);
@@ -1276,7 +1279,7 @@ fn notes_page(dialog: &gtk::Dialog, file: &gio::File, note: &str) -> gtk::Widget
             }
             use crate::metadata::Value;
             let value = if text.trim().is_empty() { Value::Unset } else { Value::Text(text.clone()) };
-            crate::metadata::write(vec![(file.uri().to_string(), "annotation".to_string(), value)], report(&d, "Could not save the note"));
+            crate::metadata::write(vec![(file.uri().to_string(), "annotation".to_string(), value)], report(&d, tr("Could not save the note")));
             *saved.borrow_mut() = text;
             crate::window::refresh_everywhere(std::slice::from_ref(&file));
         })
@@ -1308,7 +1311,7 @@ fn notes_page(dialog: &gtk::Dialog, file: &gio::File, note: &str) -> gtk::Widget
     sw.add(&view);
     let page = gtk::Box::new(gtk::Orientation::Vertical, 8);
     page.set_border_width(12);
-    page.pack_start(&value_label("A note about this item, kept with it:"), false, false, 0);
+    page.pack_start(&value_label(&tr("A note about this item, kept with it:")), false, false, 0);
     page.pack_start(&sw, true, true, 0);
     page.upcast()
 }

@@ -9,6 +9,7 @@
 //! preferences, a setting shared with the desktop's own (see
 //! `DesktopMount`).
 
+use crate::i18n::{fill, n_, tr, trn};
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
@@ -71,7 +72,7 @@ fn notify_unmount_progress(op: &gtk::MountOperation) {
 }
 
 /// Section ids (what `sidebar_sections` stores) and headings.
-pub const SECTIONS: &[(&str, &str)] = &[("computer", "Computer"), ("devices", "Devices"), ("bookmarks", "Bookmarks")];
+pub const SECTIONS: &[(&str, &str)] = &[("computer", n_("Computer")), ("devices", n_("Devices")), ("bookmarks", n_("Bookmarks"))];
 
 const SECTION_TARGET: &str = "ARKHA_SIDEBAR_SECTION";
 const BOOKMARK_TARGET: &str = "ARKHA_SIDEBAR_BOOKMARK";
@@ -454,7 +455,7 @@ impl Sidebar {
         row.set_can_focus(false);
         let title = SECTIONS.iter().find(|(s, _)| *s == id).map_or(id, |(_, t)| t);
         let label = gtk::Label::new(None);
-        label.set_markup(&format!("<b>{}</b>", glib::markup_escape_text(title)));
+        label.set_markup(&format!("<b>{}</b>", glib::markup_escape_text(&tr(title))));
         label.set_xalign(0.0);
         label.set_hexpand(true);
         label.style_context().add_class("dim-label");
@@ -471,10 +472,10 @@ impl Sidebar {
         let ev = gtk::EventBox::new();
         ev.set_visible_window(false);
         ev.add(&hb);
-        ev.set_tooltip_text(Some(if collapsed {
-            "Click to show this section, drag onto another heading to move it there"
+        ev.set_tooltip_text(Some(&if collapsed {
+            tr("Click to show this section, drag onto another heading to move it there")
         } else {
-            "Click to hide this section's entries, drag onto another heading to move it there"
+            tr("Click to hide this section’s entries, drag onto another heading to move it there")
         }));
         // A click collapses or expands the section (in every window, and
         // it's remembered); a drag moves it.
@@ -543,10 +544,10 @@ impl Sidebar {
             // taller than the others.
             b.style_context().add_class("sidebar-button");
             b.set_valign(gtk::Align::Center);
-            b.set_tooltip_text(Some(match kind {
-                Removal::Unmount => "Unmount",
-                Removal::Stop => "Safely remove",
-                Removal::Eject => "Eject",
+            b.set_tooltip_text(Some(&match kind {
+                Removal::Unmount => tr("Unmount"),
+                Removal::Stop => tr("Safely remove"),
+                Removal::Eject => tr("Eject"),
             }));
             let w = Rc::downgrade(self);
             b.connect_clicked(move |_| {
@@ -658,7 +659,7 @@ impl Sidebar {
                         s.request(Request::Open(m.root(), how));
                     }
                 }
-                Err(e) => s.error(&format!("Unable to mount “{}”", vol.name()), &e),
+                Err(e) => s.error(&fill(&tr("Unable to mount “{name}”"), &[("name", &vol.name())]), &e),
             }
         });
     }
@@ -676,7 +677,8 @@ impl Sidebar {
         let op = gtk::MountOperation::new(self.parent_window().as_ref());
         let w = Rc::downgrade(self);
         let name = item.label.clone();
-        let done = move |res: Result<(), glib::Error>, verb: &str, ok: Option<String>| {
+        // `failed`: the message's title if it doesn't work, with {name}.
+        let done = move |res: Result<(), glib::Error>, failed: String, ok: Option<String>| {
             let Some(s) = w.upgrade() else { return };
             match res {
                 Ok(()) => {
@@ -684,7 +686,7 @@ impl Sidebar {
                         s.request(Request::Status(msg));
                     }
                 }
-                Err(e) => s.error(&format!("Unable to {verb} “{name}”"), &e),
+                Err(e) => s.error(&fill(&failed, &[("name", &name)]), &e),
             }
         };
         let flags = gio::MountUnmountFlags::NONE;
@@ -694,23 +696,23 @@ impl Sidebar {
         match how {
             Removal::Unmount => {
                 if let Some(m) = &item.mount {
-                    m.unmount_with_operation(flags, Some(&op), none, move |r| done(r, "unmount", None));
+                    m.unmount_with_operation(flags, Some(&op), none, move |r| done(r, tr("Unable to unmount “{name}”"), None));
                 }
             }
             Removal::Stop => {
                 if let Some(d) = &item.drive {
-                    let msg = format!("“{}” can be removed safely", d.name());
-                    d.stop(flags, Some(&op), none, move |r| done(r, "safely remove", Some(msg)));
+                    let msg = fill(&tr("“{name}” can be removed safely"), &[("name", &d.name())]);
+                    d.stop(flags, Some(&op), none, move |r| done(r, tr("Unable to safely remove “{name}”"), Some(msg)));
                 }
             }
             Removal::Eject => {
-                let msg = Some(format!("“{label}” was ejected"));
+                let msg = Some(fill(&tr("“{name}” was ejected"), &[("name", &label)]));
                 if let Some(d) = item.drive.as_ref().filter(|d| d.can_eject()) {
-                    d.eject_with_operation(flags, Some(&op), none, move |r| done(r, "eject", msg));
+                    d.eject_with_operation(flags, Some(&op), none, move |r| done(r, tr("Unable to eject “{name}”"), msg));
                 } else if let Some(v) = item.volume.as_ref().filter(|v| v.can_eject()) {
-                    v.eject_with_operation(flags, Some(&op), none, move |r| done(r, "eject", msg));
+                    v.eject_with_operation(flags, Some(&op), none, move |r| done(r, tr("Unable to eject “{name}”"), msg));
                 } else if let Some(m) = &item.mount {
-                    m.eject_with_operation(flags, Some(&op), none, move |r| done(r, "eject", msg));
+                    m.eject_with_operation(flags, Some(&op), none, move |r| done(r, tr("Unable to eject “{name}”"), msg));
                 }
             }
         }
@@ -720,7 +722,7 @@ impl Sidebar {
         let Some(item) = self.item_at(index as i32) else { return };
         let menu = gtk::Menu::new();
         let add = |label: &str, f: Box<dyn Fn()>| {
-            let mi = gtk::MenuItem::with_mnemonic(label);
+            let mi = gtk::MenuItem::with_mnemonic(&tr(label));
             mi.connect_activate(move |_| f());
             menu.append(&mi);
         };
@@ -736,16 +738,16 @@ impl Sidebar {
         };
         let openable = !matches!(item.target, Target::Drive(_));
         if openable {
-            add("_Open", act(OpenIn::Current));
-            add("Open in New _Tab", act(OpenIn::Tab));
-            add("Open in New _Window", act(OpenIn::Window));
+            add(n_("_Open"), act(OpenIn::Current));
+            add(n_("Open in New _Tab"), act(OpenIn::Tab));
+            add(n_("Open in New _Window"), act(OpenIn::Window));
         }
         // Devices.
         let mut device = vec![];
         if let Target::Volume(v) = &item.target {
             if v.can_mount() {
                 let (w, v) = (w.clone(), v.clone());
-                device.push(("_Mount", Box::new(move || {
+                device.push((n_("_Mount"), Box::new(move || {
                     if let Some(s) = w.upgrade() {
                         s.mount(&v, None);
                     }
@@ -761,18 +763,18 @@ impl Sidebar {
             })
         };
         if item.mount.as_ref().is_some_and(|m| m.can_unmount()) {
-            device.push(("_Unmount", ej(Removal::Unmount)));
+            device.push((n_("_Unmount"), ej(Removal::Unmount)));
         }
         // A drive that can be safely removed (a flash drive, a card reader)
         // only gets that: ejecting it would leave it powered on, so there's
         // one way to take it out. Eject is for the rest (discs).
         if removable(&item).is_some_and(|d| d.can_stop()) {
-            device.push(("_Safely Remove Drive", ej(Removal::Stop)));
+            device.push((n_("_Safely Remove Drive"), ej(Removal::Stop)));
         } else if can_eject(&item) {
-            device.push(("_Eject", ej(Removal::Eject)));
+            device.push((n_("_Eject"), ej(Removal::Eject)));
         }
         if let Target::Drive(_) = &item.target {
-            device.push(("_Check for Media", act(OpenIn::Current)));
+            device.push((n_("_Check for Media"), act(OpenIn::Current)));
         }
         if !device.is_empty() {
             if openable {
@@ -785,20 +787,20 @@ impl Sidebar {
         if let Some(uri) = &item.bookmark {
             sep();
             let (w1, u1, l1) = (w.clone(), uri.clone(), item.label.clone());
-            add("Re_name…", Box::new(move || {
+            add(n_("Re_name…"), Box::new(move || {
                 if let Some(s) = w1.upgrade() {
                     s.rename_bookmark(&u1, &l1);
                 }
             }));
             let u2 = uri.clone();
-            add("_Remove", Box::new(move || {
+            add(n_("_Remove"), Box::new(move || {
                 let _ = util::edit_bookmarks(|b| b.retain(|(u, _)| *u != u2));
             }));
         }
         if item.trash {
             sep();
             let w = w.clone();
-            add("_Empty Trash", Box::new(move || {
+            add(n_("_Empty Trash"), Box::new(move || {
                 let Some(s) = w.upgrade() else { return };
                 if let Some(a) = s
                     .parent_window()
@@ -812,7 +814,7 @@ impl Sidebar {
         if let Target::Location(f) = &item.target {
             sep();
             let (w, f) = (w.clone(), f.clone());
-            add("_Properties", Box::new(move || {
+            add(n_("_Properties"), Box::new(move || {
                 if let Some(s) = w.upgrade() {
                     if let Some(p) = s.parent_window() {
                         crate::props::show(&p, vec![f.clone()]);
@@ -829,10 +831,10 @@ impl Sidebar {
 
     fn rename_bookmark(&self, uri: &str, current: &str) {
         let d = gtk::Dialog::with_buttons(
-            Some("Rename Bookmark"),
+            Some(&tr("Rename Bookmark")),
             self.parent_window().as_ref(),
             gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
-            &[("_Cancel", gtk::ResponseType::Cancel), ("_Rename", gtk::ResponseType::Accept)],
+            &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Rename").as_str(), gtk::ResponseType::Accept)],
         );
         d.set_default_response(gtk::ResponseType::Accept);
         let e = gtk::Entry::new();
@@ -1124,7 +1126,7 @@ fn computer_items() -> Vec<Item> {
 /// The Computer entries in their usual order.
 fn usual_computer_items() -> Vec<Item> {
     let home = glib::home_dir();
-    let mut out = vec![place(gio::File::for_path(&home), "Home", "user-home-symbolic")];
+    let mut out = vec![place(gio::File::for_path(&home), &tr("Home"), "user-home-symbolic")];
     let mut seen = vec![home.clone()];
     let mut dir = |path: Option<std::path::PathBuf>, icon: Option<&str>, label: Option<&str>| {
         let Some(path) = path else { return };
@@ -1144,7 +1146,7 @@ fn usual_computer_items() -> Vec<Item> {
         out.push(item);
     };
     use glib::UserDirectory as U;
-    dir(glib::user_special_dir(U::Desktop), Some("user-desktop-symbolic"), Some("Desktop"));
+    dir(glib::user_special_dir(U::Desktop), Some("user-desktop-symbolic"), Some(&tr("Desktop")));
     for d in [U::Documents, U::Downloads, U::Music, U::Pictures, U::Videos] {
         dir(glib::user_special_dir(d), None, None);
     }
@@ -1153,14 +1155,14 @@ fn usual_computer_items() -> Vec<Item> {
     for p in extra_user_dirs() {
         dir(Some(p), None, None);
     }
-    out.push(place(gio::File::for_path("/"), "File System", "drive-harddisk-symbolic"));
+    out.push(place(gio::File::for_path("/"), &tr("File System"), "drive-harddisk-symbolic"));
     let trash = gio::File::for_uri("trash:///");
     let full = trash
         .query_info("trash::item-count", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
         .map(|i| i.attribute_uint32("trash::item-count") > 0)
         .unwrap_or(false);
-    let mut t = place(trash, "Trash", if full { "user-trash-full-symbolic" } else { "user-trash-symbolic" });
-    t.tooltip = Some("Trash".into());
+    let mut t = place(trash, &tr("Trash"), if full { "user-trash-full-symbolic" } else { "user-trash-symbolic" });
+    t.tooltip = Some(tr("Trash"));
     t.trash = true;
     out.push(t);
     out
@@ -1230,7 +1232,7 @@ fn volume_item(v: &gio::Volume, d: Option<&gio::Drive>) -> Item {
     let name = v.name().to_string();
     Item {
         icon: Some(v.symbolic_icon()),
-        tooltip: Some(format!("{name} (not mounted)")),
+        tooltip: Some(fill(&tr("{name} (not mounted)"), &[("name", &name)])),
         label: name,
         target: Target::Volume(v.clone()),
         volume: Some(v.clone()),
@@ -1628,22 +1630,23 @@ fn notice_automounters() {
         .into_iter()
         .filter_map(|w| w.downcast::<gtk::ApplicationWindow>().ok())
         .find(|w| w.is_visible());
-    let names = new.join(" and ");
-    let one = new.len() == 1;
+    // TRANSLATORS: joins the names of two programs: "udiskie and Thunar".
+    let names = new.join(&tr(" and "));
+    let n = new.len() as u64;
     let d = gtk::MessageDialog::new(
         parent.as_ref(),
         gtk::DialogFlags::DESTROY_WITH_PARENT,
         gtk::MessageType::Info,
         gtk::ButtonsType::Ok,
-        &format!("{names} {} mounting drives too", if one { "is" } else { "are" }),
+        &fill(&trn("{names} is mounting drives too", "{names} are mounting drives too", n), &[("names", &names)]),
     );
-    d.set_secondary_text(Some(&format!(
-        "{} separately from Arkha and {} inserted drives and media by {}, whatever Arkha's settings are, and Arkha can't switch {} off.\n\nTo leave mounting to Arkha, stop {names} from starting with your session (for example, remove {} from your window manager's autostart) and log in again.\n\nThis message isn't shown again.",
-        if one { "It runs" } else { "They run" },
-        if one { "mounts" } else { "mount" },
-        if one { "itself" } else { "themselves" },
-        if one { "it" } else { "them" },
-        if one { "it" } else { "them" },
+    d.set_secondary_text(Some(&fill(
+        &trn(
+            "It runs separately from Arkha and mounts inserted drives and media by itself, whatever Arkha’s settings are, and Arkha can’t switch it off.\n\nTo leave mounting to Arkha, stop {names} from starting with your session (for example, remove it from your window manager’s autostart) and log in again.\n\nThis message isn’t shown again.",
+            "They run separately from Arkha and mount inserted drives and media by themselves, whatever Arkha’s settings are, and Arkha can’t switch them off.\n\nTo leave mounting to Arkha, stop {names} from starting with your session (for example, remove them from your window manager’s autostart) and log in again.\n\nThis message isn’t shown again.",
+            n,
+        ),
+        &[("names", &names)],
     )));
     d.connect_response(|d, _| d.close());
     d.show();

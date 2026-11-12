@@ -40,21 +40,22 @@ A fast graphical file manager for Linux. It is modelled on Caja (MATE) and writt
 - **Info panel:** beside the files (View → Info Panel, F11, or its toolbar button), turned on per folder. It shows the selected item with a few details: a folder's cover picture (`folder.jpg`, `cover.jpg`, … — the names are a setting, matched ignoring case), an image itself, or a file's thumbnail (videos and the like); for several items their number and total size. Folder sizes are left out on network shares (SMB, NFS, SSHFS…), where adding them up would ask the server about every file. Custom icons set in Caja are shown too.
 - Bookmarks are shared with Caja and the GTK file chooser (`~/.config/gtk-3.0/bookmarks`). Includes a bookmark editor (Ctrl+B).
 - Preferences: single-click mode, default view and sorting, per-folder views, list columns, icon captions, zoom levels, icons in the list view, hidden files, file sizes in IEC units (KiB, MiB), the date format (informal, your language's, ISO), previews (thumbnails and their size limit, text in icons, folder item counts), confirmation before trashing, where new tabs go (after the current tab in the order opened, right after the current tab, or at the end), text on the toolbar buttons, an always-text location bar, the number of hidden items in the status bar (off by default), and which side pane entries to show and their row height.
+- **In English and German:** the system's language by default, or the one chosen in Preferences → Display (from the next start); GTK's own dialogs follow it. More languages come as `.po` files (see Translations below).
 - **Light on resources:** opens folders with less CPU than Caja and Nemo (big ones too: 20,000 files in about 1.8 s of CPU against Caja's 2.2 s), scrolls with less CPU than Caja (much less in big folders), uses the least memory of the three, and gives memory back when big tabs are closed. The window doesn't freeze when GVfs's metadata service is slow to answer (every image GTK decodes asks it, through the glycin loader's temporary file).
 
 Settings live in `~/.config/arkha/arkha.conf`; per-folder views in `~/.config/arkha/folders.conf`; custom context menu actions in `~/.config/arkha/actions.conf`; custom thumbnailers in `~/.config/arkha/thumbnailers.conf`.
 
 ## Building
 
-Needs Rust (1.82+) and the GTK 3 development files:
+Needs Rust (1.82+), the GTK 3 development files and gettext (for the translations; without it Arkha is built in English only):
 
 ```sh
 # Debian / Ubuntu / Mint
-sudo apt install build-essential libgtk-3-dev
+sudo apt install build-essential libgtk-3-dev gettext
 # Fedora
-sudo dnf install gtk3-devel
+sudo dnf install gtk3-devel gettext
 # Arch
-sudo pacman -S gtk3
+sudo pacman -S gtk3 gettext
 ```
 
 Then:
@@ -120,16 +121,28 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `bookmarks` | The bookmark editor shows paths, the bookmarks file keeps the URLs |
 | `properties` | An emblem ticked and a note typed in Properties, kept in GVfs metadata under Caja's keys |
 | `checksums` | The Checksums tab: only the chosen ones, in order; SHA-256 matches sha256sum, the other buttons wait meanwhile; Cancel; Calculate All; Copy |
+| `language` | German chosen in the settings: the status bar (with its plural) and side pane in German; the system's language: English again |
 | `tab-order` | Properties' and Rename All's tabs dragged into another order, which is kept |
 | `previews` | Thumbnails always (with a size limit) or never; folders' item counts always or never |
 
 `tools/bench/compare.sh` measures what the audits show: opening `/usr/lib` and 20,000 files (when the main thread stays idle, its CPU, all threads'), scrolling, memory and thumbnails, against Caja and Nemo where installed; `speed.sh` compares two builds of Arkha opening folders in the icon view, the list view and the list view with every column. `sample.sh` profiles without perf (gdb samples the main thread's stack), summarized by `sample-report.py`.
+
+## Translations
+
+Arkha's texts are translated with gettext. Each language is a file in `po/` (`po/de.po` is German); the build turns them into catalogs (`build.rs`, into `target/release/locale/`), and Preferences offers each by the name in its `X-Language-Name` header.
+
+- **A new language:** `msginit -i po/arkha.pot -o po/<code>.po -l <code>` (e.g. `fr`), add `"X-Language-Name: <the language's name in itself>\n"` to its header, translate it (by hand or with Poedit, Lokalize, …), check it with `msgfmt --check --statistics -o /dev/null po/<code>.po`, and build.
+- **After changing texts in the code:** `tools/update-po.sh` collects them again into `po/arkha.pot` and updates every `.po` file (new texts untranslated, changed ones marked fuzzy).
+- **In the code:** a text people see is written `tr("…")`, one with a number in it `trn("{n} file", "{n} files", n)`, a text in a table `n_("…")` (translated where it's shown); values go in named places filled by `fill()` (`fill(&tr("Copying “{name}”"), &[("name", &name)])`), so a translation can order the words its own way. A comment starting `TRANSLATORS:` right above it is shown to translators.
+- Keep each `{name}` and the `_` of a menu shortcut (`_File`) in a translation; `msgfmt --check` checks the places. The GUI tests always run in English.
 
 ## Code layout
 
 | File | What it does |
 |---|---|
 | `src/main.rs` | GtkApplication setup, command-line paths |
+| `src/i18n.rs` | Translations: `tr()`, `trn()`, `n_()`, `fill()`, the language chosen in Preferences |
+| `build.rs`, `po/` | The translations (`po/<language>.po`, template `po/arkha.pot`), built into catalogs; `tools/update-po.sh` refreshes them |
 | `src/window.rs` | Main window, toolbar, path bar, tabs, all commands |
 | `src/window/menus.rs` | The menu bar and the context menus |
 | `src/window/prefs.rs` | Preferences, and the editors for menus, places, bookmarks, shortcuts, thumbnailers and custom actions |

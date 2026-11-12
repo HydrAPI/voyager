@@ -16,6 +16,7 @@ same on X11 and Wayland, where window titles can't be read otherwise.
     a11y.py dialog-tabs the tab names of its first dialog, in order
     a11y.py buttons     its first dialog's buttons: "name|on" or "name|off"
     a11y.py labels      its first dialog's texts (labels), a line each
+    a11y.py window-labels  the main windows' texts (status bar, side pane, …)
     a11y.py focused-text  the text of the text field that has the focus
     a11y.py where-tab NAME  "x y", the middle of that dialog's tab NAME
     a11y.py focus ROLE  gives the dialog's first ROLE (e.g. text) the focus
@@ -153,6 +154,12 @@ def main():
                     elif x.get_name():
                         print(x.get_name())
             return
+    elif what == "window-labels":
+        # The labels shown in the main windows (status bar, side pane, …).
+        for w in windows(app):
+            for x in find(w, "label", []):
+                if x.get_name():
+                    print(x.get_name())
     elif what == "focused-text":
         for w in windows(app):
             for x in find(w, "text", []):

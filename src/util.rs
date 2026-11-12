@@ -1,5 +1,6 @@
 //! Small helpers: formatting, naming, dialogs, launching.
 
+use crate::i18n::{fill, tr};
 use gio::prelude::*;
 use gtk::prelude::*;
 
@@ -281,14 +282,26 @@ pub fn format_time(t: i64) -> String {
     let Some((today, yesterday)) = recent_days() else {
         return String::new();
     };
-    let fmt = if dt.ymd() == today {
-        "Today %H:%M"
+    thread_local! {
+        // Looked up once: a folder's listing formats thousands of dates.
+        static FORMATS: [String; 3] = [
+            // TRANSLATORS: a time today, in strftime's notation (%H hours, %M minutes).
+            tr("Today %H:%M"),
+            // TRANSLATORS: a time yesterday, in strftime's notation.
+            tr("Yesterday %H:%M"),
+            // TRANSLATORS: a date and time in strftime's notation: %-d the day,
+            // %b the month's short name, %Y the year. Order it as your language does.
+            tr("%-d %b %Y %H:%M"),
+        ];
+    }
+    let i = if dt.ymd() == today {
+        0
     } else if dt.ymd() == yesterday {
-        "Yesterday %H:%M"
+        1
     } else {
-        "%-d %b %Y %H:%M"
+        2
     };
-    dt.format(fmt).map(|s| s.trim().to_string()).unwrap_or_default()
+    FORMATS.with(|f| dt.format(&f[i]).map(|s| s.trim().to_string()).unwrap_or_default())
 }
 
 /// (year, month, day)
@@ -315,9 +328,11 @@ fn recent_days() -> Option<(Date, Date)> {
 pub fn format_time_long(t: i64) -> String {
     glib::DateTime::from_unix_local(t)
         .ok()
-        .and_then(|d| d.format("%A, %-d %B %Y, %H:%M:%S").ok())
+        // TRANSLATORS: a full date and time in strftime's notation: %A the
+        // weekday, %-d the day, %B the month, %Y the year.
+        .and_then(|d| d.format(&tr("%A, %-d %B %Y, %H:%M:%S")).ok())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| "Unknown".into())
+        .unwrap_or_else(|| tr("Unknown"))
 }
 
 /// Split "archive.tar.gz" into ("archive", ".tar.gz"), "photo.jpg" into ("photo", ".jpg").
@@ -343,7 +358,8 @@ pub fn unique_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
     }
     let (stem, ext) = if is_dir { (name, "") } else { split_ext(name) };
     for i in 2.. {
-        let cand = format!("{stem} ({i}){ext}");
+        // TRANSLATORS: the name for another item of the same name: "photo (2).jpg".
+        let cand = fill(&tr("{name} ({number}){extension}"), &[("name", &stem), ("number", &i), ("extension", &ext)]);
         if !dir.child(&cand).query_exists(gio::Cancellable::NONE) {
             return cand;
         }
@@ -354,12 +370,14 @@ pub fn unique_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
 /// Name for a copy pasted into the same folder: "a (copy).txt", "a (copy 2).txt", ...
 pub fn copy_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
     let (stem, ext) = if is_dir { (name, "") } else { split_ext(name) };
-    let first = format!("{stem} (copy){ext}");
+    // TRANSLATORS: the name of a copy pasted beside its original: "photo (copy).jpg".
+    let first = fill(&tr("{name} (copy){extension}"), &[("name", &stem), ("extension", &ext)]);
     if !dir.child(&first).query_exists(gio::Cancellable::NONE) {
         return first;
     }
     for i in 2.. {
-        let cand = format!("{stem} (copy {i}){ext}");
+        // TRANSLATORS: the name of a further copy: "photo (copy 2).jpg".
+        let cand = fill(&tr("{name} (copy {number}){extension}"), &[("name", &stem), ("number", &i), ("extension", &ext)]);
         if !dir.child(&cand).query_exists(gio::Cancellable::NONE) {
             return cand;
         }

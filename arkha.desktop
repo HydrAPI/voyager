@@ -2,7 +2,9 @@
 Type=Application
 Name=Arkha
 GenericName=File Manager
+GenericName[de]=Dateimanager
 Comment=Browse the file system
+Comment[de]=Das Dateisystem durchsuchen
 Exec=arkha %U
 Icon=arkha
 Terminal=false
@@ -10,8 +12,10 @@ StartupNotify=true
 Categories=GTK;Utility;Core;FileManager;
 MimeType=inode/directory;
 Keywords=folder;manager;explore;disk;filesystem;
+Keywords[de]=Ordner;Verwaltung;Dateien;Laufwerk;Dateisystem;
 Actions=new-window;
 
 [Desktop Action new-window]
 Name=New Window
+Name[de]=Neues Fenster
 Exec=arkha

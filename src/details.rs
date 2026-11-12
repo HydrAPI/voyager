@@ -4,6 +4,7 @@
 //! the names in the icon view. Each comes from the pane's model (pane.rs),
 //! which holds the values; the texts are made only for what's shown.
 
+use crate::i18n::n_;
 use std::cmp::Ordering;
 
 use gtk::prelude::*;
@@ -32,22 +33,23 @@ const fn d(id: &'static str, title: &'static str, menu: Option<&'static str>, xa
 /// Everything but the name, in the order the column chooser lists them. A
 /// detail's sort id (see sort_id) is its place here plus one, the name's
 /// is 0: the first three were Arkha's only ones, and stay as they were.
+// Titles and menu labels are translated where they're shown (tr()).
 pub const DETAILS: &[Detail] = &[
-    d("size", "Size", Some("By _Size"), 1.0, 90, true),
-    d("type", "Type", Some("By _Type"), 0.0, 130, false),
-    d("mtime", "Modified", Some("By Modification _Date"), 0.0, 150, true),
-    d("atime", "Accessed", Some("By _Access Date"), 0.0, 150, true),
-    d("btime", "Created", Some("By _Creation Date"), 0.0, 150, true),
-    d("owner", "Owner", Some("By _Owner"), 0.0, 90, false),
-    d("group", "Group", Some("By _Group"), 0.0, 90, false),
-    d("permissions", "Permissions", Some("By _Permissions"), 0.0, 110, false),
-    d("octal", "Octal Permissions", None, 1.0, 60, false),
-    d("mime", "MIME Type", Some("By _MIME Type"), 0.0, 140, false),
-    d("extension", "Extension", Some("By _Extension"), 0.0, 70, false),
-    d("location", "Location", Some("By _Location"), 0.0, 160, false),
-    d("disk", "Size on Disk", Some("By Size on Dis_k"), 1.0, 90, true),
-    Detail { id: "trashed", title: "Trashed On", menu: None, xalign: 0.0, min_width: 150, desc_first: true, trash: true },
-    Detail { id: "orig", title: "Original Location", menu: None, xalign: 0.0, min_width: 160, desc_first: false, trash: true },
+    d("size", n_("Size"), Some(n_("By _Size")), 1.0, 90, true),
+    d("type", n_("Type"), Some(n_("By _Type")), 0.0, 130, false),
+    d("mtime", n_("Modified"), Some(n_("By Modification _Date")), 0.0, 150, true),
+    d("atime", n_("Accessed"), Some(n_("By _Access Date")), 0.0, 150, true),
+    d("btime", n_("Created"), Some(n_("By _Creation Date")), 0.0, 150, true),
+    d("owner", n_("Owner"), Some(n_("By _Owner")), 0.0, 90, false),
+    d("group", n_("Group"), Some(n_("By _Group")), 0.0, 90, false),
+    d("permissions", n_("Permissions"), Some(n_("By _Permissions")), 0.0, 110, false),
+    d("octal", n_("Octal Permissions"), None, 1.0, 60, false),
+    d("mime", n_("MIME Type"), Some(n_("By _MIME Type")), 0.0, 140, false),
+    d("extension", n_("Extension"), Some(n_("By _Extension")), 0.0, 70, false),
+    d("location", n_("Location"), Some(n_("By _Location")), 0.0, 160, false),
+    d("disk", n_("Size on Disk"), Some(n_("By Size on Dis_k")), 1.0, 90, true),
+    Detail { id: "trashed", title: n_("Trashed On"), menu: None, xalign: 0.0, min_width: 150, desc_first: true, trash: true },
+    Detail { id: "orig", title: n_("Original Location"), menu: None, xalign: 0.0, min_width: 160, desc_first: false, trash: true },
 ];
 
 /// The list view's columns until chosen otherwise (Arkha's from the start).

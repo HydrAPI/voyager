@@ -35,7 +35,8 @@ gt_session() {
   OUT=$GT_ROOT/target/$runs/$GT_NAME-$BACKEND
   if [ -n "$GT_INNER" ]; then
     export HOME=$OUT/home XDG_CONFIG_HOME=$OUT/config XDG_CACHE_HOME=$OUT/home/.cache XDG_DATA_HOME=$OUT/home/.local/share
-    export XDG_DATA_DIRS=$GT_FIX/share-noapps GSETTINGS_BACKEND=memory GVFS_DISABLE_FUSE=1
+    # English, whatever the system's language: the checks look for its words.
+    export XDG_DATA_DIRS=$GT_FIX/share-noapps GSETTINGS_BACKEND=memory GVFS_DISABLE_FUSE=1 LANGUAGE=en
     if [ "$GT_A11Y" = 1 ]; then unset NO_AT_BRIDGE GTK_A11Y; else export NO_AT_BRIDGE=1 GTK_A11Y=none; fi
     cd "$OUT" || exit 1
     return 0

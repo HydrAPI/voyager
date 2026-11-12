@@ -15,7 +15,7 @@ impl AppWindow {
         let s = config::get();
         let d = gtk::Dialog::new();
         OPEN.with(|o| o.borrow().set(Some(&d)));
-        d.set_title("File Manager Preferences");
+        d.set_title(&tr("File Manager Preferences"));
         d.set_transient_for(Some(&self.window));
         d.set_destroy_with_parent(true);
         d.set_default_size(680, 480);
@@ -43,19 +43,19 @@ impl AppWindow {
             pages.add(&row);
         };
         let f = Form { dialog: d.clone(), labels: gtk::SizeGroup::new(gtk::SizeGroupMode::Horizontal) };
-        add_page("views", "Views", "view-grid-symbolic", &self.views_page(&f, &s));
-        add_page("behavior", "Behavior", "view-more-symbolic", &self.behavior_page(&f, &s));
-        add_page("display", "Display", "view-reveal-symbolic", &self.display_page(&f, &s));
-        add_page("columns", "List Columns", "view-list-symbolic", &self.columns_page(&f));
-        add_page("previews", "Previews", "image-x-generic-symbolic", &self.previews_page(&f, &s));
-        add_page("sidepane", "Side Pane", "view-list-symbolic", &self.side_pane_page(&f, &s));
-        add_page("media", "Media", "media-removable-symbolic", &self.media_page(&f, &s));
+        add_page("views", &tr("Views"), "view-grid-symbolic", &self.views_page(&f, &s));
+        add_page("behavior", &tr("Behavior"), "view-more-symbolic", &self.behavior_page(&f, &s));
+        add_page("display", &tr("Display"), "view-reveal-symbolic", &self.display_page(&f, &s));
+        add_page("columns", &tr("List Columns"), "view-list-symbolic", &self.columns_page(&f));
+        add_page("previews", &tr("Previews"), "image-x-generic-symbolic", &self.previews_page(&f, &s));
+        add_page("sidepane", &tr("Side Pane"), "view-list-symbolic", &self.side_pane_page(&f, &s));
+        add_page("media", &tr("Media"), "media-removable-symbolic", &self.media_page(&f, &s));
         let (cm, items_refresh, bg_refresh) = self.context_menu_page(&f);
-        add_page("contextmenu", "Context Menu", "open-menu-symbolic", &cm);
-        add_page("customactions", "Custom Actions", "system-run-symbolic", &self.custom_actions_page(&f));
-        add_page("checksums", "Checksums", "security-high-symbolic", &self.checksums_page(&f));
+        add_page("contextmenu", &tr("Context Menu"), "open-menu-symbolic", &cm);
+        add_page("customactions", &tr("Custom Actions"), "system-run-symbolic", &self.custom_actions_page(&f));
+        add_page("checksums", &tr("Checksums"), "security-high-symbolic", &self.checksums_page(&f));
         if let Some(app) = self.window.application() {
-            add_page("keyboard", "Keyboard", "input-keyboard-symbolic", &self.keyboard_page(&f, &app));
+            add_page("keyboard", &tr("Keyboard"), "input-keyboard-symbolic", &self.keyboard_page(&f, &app));
         }
 
         {
@@ -87,24 +87,24 @@ impl AppWindow {
     fn views_page(self: &Rc<Self>, f: &Form, s: &config::Settings) -> gtk::Box {
         // Views
         let v = Form::page();
-        f.head(&v, "Default View");
+        f.head(&v, &tr("Default View"));
         let view = gtk::ComboBoxText::new();
-        view.append(Some("icon"), "Icon View");
-        view.append(Some("list"), "List View");
-        view.append(Some("compact"), "Compact View");
-        view.append(Some("columns"), "Columns View");
+        view.append(Some("icon"), &tr("Icon View"));
+        view.append(Some("list"), &tr("List View"));
+        view.append(Some("compact"), &tr("Compact View"));
+        view.append(Some("columns"), &tr("Columns View"));
         view.set_active_id(Some(&s.default_view));
         view.connect_changed(|c| {
             if let Some(id) = c.active_id() {
                 config::update(|s| s.default_view = id.to_string());
             }
         });
-        f.option(&v, "View new folders using:", view.upcast_ref());
+        f.option(&v, &tr("View new folders using:"), view.upcast_ref());
         let arrange = gtk::ComboBoxText::new();
-        arrange.append(Some("name"), "By Name");
+        arrange.append(Some("name"), &tr("By Name"));
         for d in crate::details::DETAILS {
             if let Some(label) = d.menu {
-                arrange.append(Some(d.id), &label.replace('_', ""));
+                arrange.append(Some(d.id), &tr(label).replace('_', ""));
             }
         }
         arrange.set_active_id(Some(&s.sort_by));
@@ -114,30 +114,29 @@ impl AppWindow {
                 reapply_view_settings();
             }
         });
-        f.option(&v, "Arrange items:", arrange.upcast_ref());
-        let rev = setting_check("_Reverse sort", None, s.sort_desc, |s, v| s.sort_desc = v, |_| reapply_view_settings());
+        f.option(&v, &tr("Arrange items:"), arrange.upcast_ref());
+        let rev = setting_check(&tr("_Reverse sort"), None, s.sort_desc, |s, v| s.sort_desc = v, |_| reapply_view_settings());
         f.indent(&v, rev.upcast_ref());
-        let ff = f.check("Sort _folders before files");
+        let ff = f.check(&tr("Sort _folders before files"));
         ff.set_action_name(Some("win.folders-first"));
         f.indent(&v, ff.upcast_ref());
-        f.head(&v, "Individual Folders");
+        f.head(&v, &tr("Individual Folders"));
         let per = setting_check(
-            "Remember _view and sorting for each folder",
-            Some("Changing the view or sorting then only affects the folder you're in, and it's restored the next time you open that folder. Other folders use the defaults above."),
+            &tr("Remember _view and sorting for each folder"),
+            Some(&tr("Changing the view or sorting then only affects the folder you're in, and it's restored the next time you open that folder. Other folders use the defaults above.")),
             s.per_folder,
             |s, v| s.per_folder = v,
             |_| reapply_view_settings(),
         );
         f.indent(&v, per.upcast_ref());
         let remembered = |n: usize| match n {
-            0 => "No folders remembered".to_string(),
-            1 => "1 folder remembered".to_string(),
-            n => format!("{n} folders remembered"),
+            0 => tr("No folders remembered"),
+            n => crate::i18n::fill(&trn("{n} folder remembered", "{n} folders remembered", n as u64), &[("n", &n)]),
         };
         let count = gtk::Label::new(Some(&remembered(folders::count())));
         count.style_context().add_class("dim-label");
-        let forget = gtk::Button::with_mnemonic("_Forget All");
-        forget.set_tooltip_text(Some("Forget the view and sorting of every folder, so they all use the defaults again"));
+        let forget = gtk::Button::with_mnemonic(&tr("_Forget All"));
+        forget.set_tooltip_text(Some(&tr("Forget the view and sorting of every folder, so they all use the defaults again")));
         forget.set_sensitive(folders::count() > 0);
         {
             let count = count.clone();
@@ -162,10 +161,10 @@ impl AppWindow {
         hb.add(&count);
         hb.add(&forget);
         f.indent(&v, hb.upcast_ref());
-        f.head(&v, "Zoom");
+        f.head(&v, &tr("Zoom"));
         v.add(&self.zoom_table(f));
-        f.head(&v, "List View");
-        let list_icons = setting_check("Show _icons", Some("Icons beside the names in the list view"), s.list_icons, |s, v| s.list_icons = v, |_| for_all_panes(|p| p.apply_zoom()));
+        f.head(&v, &tr("List View"));
+        let list_icons = setting_check(&tr("Show _icons"), Some(&tr("Icons beside the names in the list view")), s.list_icons, |s, v| s.list_icons = v, |_| for_all_panes(|p| p.apply_zoom()));
         f.indent(&v, list_icons.upcast_ref());
         v
     }
@@ -180,8 +179,8 @@ impl AppWindow {
         zoom_grid.set_row_spacing(6);
         zoom_grid.set_column_spacing(12);
         zoom_grid.set_margin_start(40);
-        for (col, text) in [(1, "Zoom level"), (2, "Zoom levels to step through")] {
-            let l = gtk::Label::new(Some(text));
+        for (col, text) in [(1, tr("Zoom level")), (2, tr("Zoom levels to step through"))] {
+            let l = gtk::Label::new(Some(&text));
             l.set_xalign(0.0);
             l.style_context().add_class("dim-label");
             zoom_grid.attach(&l, col, 0, 1, 1);
@@ -223,9 +222,9 @@ impl AppWindow {
             let entry = gtk::Entry::new();
             entry.set_text(&config::format_levels(&get(&config::get()).0));
             entry.set_width_chars(26);
-            entry.set_tooltip_text(Some("Sizes in pixels (8–512) that Zoom In and Zoom Out step through, separated by commas"));
+            entry.set_tooltip_text(Some(&tr("Sizes in pixels (8–512) that Zoom In and Zoom Out step through, separated by commas")));
             let reset = gtk::Button::from_icon_name(Some("edit-undo-symbolic"), gtk::IconSize::Button);
-            reset.set_tooltip_text(Some("Restore the default zoom levels"));
+            reset.set_tooltip_text(Some(&tr("Restore the default zoom levels")));
             reset.set_sensitive(get(&config::get()).0 != defaults);
             let apply = {
                 let reset = reset.clone();
@@ -272,19 +271,19 @@ impl AppWindow {
             hb.add(&reset);
             zoom_grid.attach(&hb, 2, row, 1, 1);
         };
-        zoom_row(1, "Icon view", &config::ICON_SIZES, |s| (s.icon_levels.clone(), s.icon_size), |s, levels, size| {
+        zoom_row(1, &tr("Icon view"), &config::ICON_SIZES, |s| (s.icon_levels.clone(), s.icon_size), |s, levels, size| {
             if let Some(l) = levels {
                 s.icon_levels = l;
             }
             s.icon_size = size;
         });
-        zoom_row(2, "List view", &config::LIST_SIZES, |s| (s.list_levels.clone(), s.list_size), |s, levels, size| {
+        zoom_row(2, &tr("List view"), &config::LIST_SIZES, |s| (s.list_levels.clone(), s.list_size), |s, levels, size| {
             if let Some(l) = levels {
                 s.list_levels = l;
             }
             s.list_size = size;
         });
-        zoom_row(3, "Compact view", &config::COMPACT_SIZES, |s| (s.compact_levels.clone(), s.compact_size), |s, levels, size| {
+        zoom_row(3, &tr("Compact view"), &config::COMPACT_SIZES, |s| (s.compact_levels.clone(), s.compact_size), |s, levels, size| {
             if let Some(l) = levels {
                 s.compact_levels = l;
             }
@@ -297,13 +296,13 @@ impl AppWindow {
     fn behavior_page(self: &Rc<Self>, f: &Form, s: &config::Settings) -> gtk::Box {
         // Behavior
         let b = Form::page();
-        f.head(&b, "Opening");
-        let single = setting_check("_Single click to open items", None, s.single_click, |s, v| s.single_click = v, |_| for_all_panes(|p| p.apply_click_policy()));
+        f.head(&b, &tr("Opening"));
+        let single = setting_check(&tr("_Single click to open items"), None, s.single_click, |s, v| s.single_click = v, |_| for_all_panes(|p| p.apply_click_policy()));
         f.indent(&b, single.upcast_ref());
-        f.head(&b, "Tabs");
+        f.head(&b, &tr("Tabs"));
         let tabs = gtk::ComboBoxText::new();
-        for (id, name) in [("in-order", "After the current tab, in order"), ("after", "Right after the current tab"), ("end", "At the end")] {
-            tabs.append(Some(id), name);
+        for (id, name) in [("in-order", tr("After the current tab, in order")), ("after", tr("Right after the current tab")), ("end", tr("At the end"))] {
+            tabs.append(Some(id), &name);
         }
         tabs.set_active_id(Some(&s.new_tabs));
         tabs.set_tooltip_text(Some(
@@ -316,43 +315,43 @@ impl AppWindow {
                 config::update(|s| s.new_tabs = id.to_string());
             }
         });
-        f.option(&b, "New tabs go:", tabs.upcast_ref());
-        f.head(&b, "Split View");
-        let ffm = f.check("_Focus the pane under the mouse pointer");
-        ffm.set_tooltip_text(Some("With two panes open (F3), moving the pointer over a pane makes it the active one, without clicking (Shift+F3 switches this)"));
+        f.option(&b, &tr("New tabs go:"), tabs.upcast_ref());
+        f.head(&b, &tr("Split View"));
+        let ffm = f.check(&tr("_Focus the pane under the mouse pointer"));
+        ffm.set_tooltip_text(Some(&tr("With two panes open (F3), moving the pointer over a pane makes it the active one, without clicking (Shift+F3 switches this)")));
         ffm.set_action_name(Some("win.focus-follows-mouse"));
         f.indent(&b, ffm.upcast_ref());
         let delay = gtk::SpinButton::with_range(0.0, 2000.0, 50.0);
         delay.set_value(s.focus_follows_mouse_delay as f64);
-        delay.set_tooltip_text(Some("How long the pointer has to stay over a pane before it becomes the active one, so passing over it on the way elsewhere (the side pane, say) doesn't change the active pane"));
+        delay.set_tooltip_text(Some(&tr("How long the pointer has to stay over a pane before it becomes the active one, so passing over it on the way elsewhere (the side pane, say) doesn't change the active pane")));
         delay.connect_value_changed(|d| {
             let v = d.value_as_int();
             config::update(|s| s.focus_follows_mouse_delay = v);
         });
         ffm.bind_property("active", &delay, "sensitive").sync_create().build();
-        let after = f.inline(&b, "After the pointer rests on it for", &[delay.upcast_ref(), gtk::Label::new(Some("ms")).upcast_ref()]);
+        let after = f.inline(&b, &tr("After the pointer rests on it for"), &[delay.upcast_ref(), gtk::Label::new(Some("ms")).upcast_ref()]);
         after.set_margin_start(after.margin_start() + 24);
-        f.head(&b, "Trash");
-        let confirm = setting_check("Ask before moving files to the T_rash", None, s.confirm_trash, |s, v| s.confirm_trash = v, |_| {});
+        f.head(&b, &tr("Trash"));
+        let confirm = setting_check(&tr("Ask before moving files to the T_rash"), None, s.confirm_trash, |s, v| s.confirm_trash = v, |_| {});
         f.indent(&b, confirm.upcast_ref());
-        f.head(&b, "Other Programs");
-        let fm1 = f.check("Open folders when other programs _ask, also when Arkha isn't running");
-        fm1.set_tooltip_text(Some("“Show in folder” in web browsers, download lists and the like opens Arkha, with the file selected. While Arkha runs it does this anyway, unless another file manager that does it was there first; this lets programs start Arkha for it too."));
+        f.head(&b, &tr("Other Programs"));
+        let fm1 = f.check(&tr("Open folders when other programs _ask, also when Arkha isn't running"));
+        fm1.set_tooltip_text(Some(&tr("“Show in folder” in web browsers, download lists and the like opens Arkha, with the file selected. While Arkha runs it does this anyway, unless another file manager that does it was there first; this lets programs start Arkha for it too.")));
         fm1.set_active(crate::fm1::activation_on());
         {
             let d = f.dialog.clone();
             fm1.connect_toggled(move |c| {
                 if let Err(e) = crate::fm1::set_activation(c.is_active()) {
-                    util::error_dialog(Some(d.upcast_ref()), "Could not change it", &e.to_string());
+                    util::error_dialog(Some(d.upcast_ref()), &tr("Could not change it"), &e.to_string());
                     c.set_active(crate::fm1::activation_on());
                 }
             });
         }
         f.indent(&b, fm1.upcast_ref());
-        f.head(&b, "Scrolling");
+        f.head(&b, &tr("Scrolling"));
         let auto = setting_check(
-            "_Middle-click on empty space (or an item in the list view) to autoscroll",
-            Some("A marker appears where you clicked and the view scrolls towards the pointer, faster the further away it is. Click, press a key or use the wheel to stop (after dragging with the button held, letting go stops it). In the list view this works on files and folders too, if the list can scroll; otherwise, or with Shift, a middle-click opens them there (a folder in a new tab)."),
+            &tr("_Middle-click on empty space (or an item in the list view) to autoscroll"),
+            Some(&tr("A marker appears where you clicked and the view scrolls towards the pointer, faster the further away it is. Click, press a key or use the wheel to stop (after dragging with the button held, letting go stops it). In the list view this works on files and folders too, if the list can scroll; otherwise, or with Shift, a middle-click opens them there (a folder in a new tab).")),
             s.autoscroll,
             |s, v| s.autoscroll = v,
             |_| {},
@@ -365,22 +364,47 @@ impl AppWindow {
     fn display_page(self: &Rc<Self>, f: &Form, s: &config::Settings) -> gtk::Box {
         // Display
         let dp = Form::page();
-        f.head(&dp, "Files");
-        let hid = f.check("Show _hidden and backup files");
+        f.head(&dp, &tr("Language"));
+        // The system's, English, or a translation; each by its own name.
+        let lang = gtk::ComboBoxText::new();
+        lang.append(Some(""), &tr("System default"));
+        lang.append(Some("en"), "English");
+        for (code, name) in crate::i18n::LANGUAGES {
+            lang.append(Some(code), name);
+        }
+        if !lang.set_active_id(Some(&s.language)) {
+            lang.set_active_id(Some(""));
+        }
+        let restart = gtk::Label::new(Some(&tr("Applies the next time Arkha starts.")));
+        restart.set_xalign(0.0);
+        restart.style_context().add_class("dim-label");
+        restart.set_no_show_all(true);
+        {
+            let restart = restart.clone();
+            lang.connect_changed(move |c| {
+                let id = c.active_id().map(|i| i.to_string()).unwrap_or_default();
+                config::update(|s| s.language = id);
+                restart.show();
+            });
+        }
+        f.option(&dp, &tr("Language:"), lang.upcast_ref());
+        f.indent(&dp, restart.upcast_ref());
+        f.head(&dp, &tr("Files"));
+        let hid = f.check(&tr("Show _hidden and backup files"));
         hid.set_action_name(Some("win.show-hidden"));
         f.indent(&dp, hid.upcast_ref());
-        let stripes = setting_check("_List view", None, s.striped_rows, |s, v| s.striped_rows = v, |_| for_all_panes(|p| p.redraw()));
+        let stripes = setting_check(&tr("_List view"), None, s.striped_rows, |s, v| s.striped_rows = v, |_| for_all_panes(|p| p.redraw()));
         let rename_stripes = setting_check(
-            "_Bulk rename list",
-            Some("Shade every second row of the file list in the Rename All… window (applies the next time it opens)"),
+            &tr("_Bulk rename list"),
+            Some(&tr("Shade every second row of the file list in the Rename All… window (applies the next time it opens)")),
             s.rename_striped_rows,
             |s, v| s.rename_striped_rows = v,
             |_| {},
         );
-        f.inline(&dp, "Alternating row colors:", &[stripes.upcast_ref(), rename_stripes.upcast_ref()]);
+        f.inline(&dp, &tr("Alternating row colors:"), &[stripes.upcast_ref(), rename_stripes.upcast_ref()]);
         let iec = setting_check(
-            "Show file sizes in _IEC units (KiB, MiB, GiB)",
-            Some("Sizes in powers of 1024 (1 KiB = 1024 bytes) instead of powers of 1000 (1 kB = 1000 bytes)"),
+            &tr("Show file sizes in _IEC units (KiB, MiB, GiB)"),
+            Some(&tr("Sizes in powers of 1024 (1 KiB = 1024 bytes) instead of powers of 1000 (1 kB = 1000 bytes)")),
             s.iec_units,
             |s, v| s.iec_units = v,
             |v| {
@@ -393,9 +417,10 @@ impl AppWindow {
         // Each choice shows how a date looks with it, as in Caja.
         let dates = gtk::ComboBoxText::new();
         let now = glib::DateTime::now_local().map(|d| d.to_unix()).unwrap_or(0);
-        for (id, name) in [("informal", "Informal"), ("locale", "Your language's"), ("iso", "ISO")] {
+        for (id, name) in [("informal", tr("Informal")), ("locale", tr("Your language’s")), ("iso", tr("ISO"))] {
             util::set_date_format(id);
-            dates.append(Some(id), &format!("{name}: {}", util::format_time(now)));
+            // TRANSLATORS: a date format's name and how a date looks with it.
+            dates.append(Some(id), &crate::i18n::fill(&tr("{format}: {example}"), &[("format", &name), ("example", &util::format_time(now))]));
         }
         util::set_date_format(&s.date_format);
         dates.set_active_id(Some(&s.date_format));
@@ -407,18 +432,18 @@ impl AppWindow {
                 for_all_panes(|p| p.reload());
             }
         });
-        f.option(&dp, "Dates:", dates.upcast_ref());
-        f.head(&dp, "Icon Captions");
-        let about = gtk::Label::new(Some("What shows under the names in the icon view. More of it shows as you zoom in."));
+        f.option(&dp, &tr("Dates:"), dates.upcast_ref());
+        f.head(&dp, &tr("Icon Captions"));
+        let about = gtk::Label::new(Some(&tr("What shows under the names in the icon view. More of it shows as you zoom in.")));
         about.set_xalign(0.0);
         about.set_line_wrap(true);
         about.style_context().add_class("dim-label");
         f.indent(&dp, about.upcast_ref());
-        for (i, label) in ["First:", "Second:", "Third:"].iter().enumerate() {
+        for (i, label) in [tr("First:"), tr("Second:"), tr("Third:")].iter().enumerate() {
             let combo = gtk::ComboBoxText::new();
-            combo.append(Some("none"), "None");
+            combo.append(Some("none"), &tr("None"));
             for d in crate::details::choosable() {
-                combo.append(Some(d.id), d.title);
+                combo.append(Some(d.id), &tr(d.title));
             }
             combo.set_active_id(Some(s.icon_captions.get(i).map_or("none", |c| c.as_str())));
             combo.connect_changed(move |c| {
@@ -434,23 +459,23 @@ impl AppWindow {
             });
             f.option(&dp, label, combo.upcast_ref());
         }
-        f.head(&dp, "Window");
-        let side = f.check("Show the side _pane");
+        f.head(&dp, &tr("Window"));
+        let side = f.check(&tr("Show the side _pane"));
         side.set_action_name(Some("win.show-sidebar"));
         f.indent(&dp, side.upcast_ref());
-        let tb = f.check("Show the _main toolbar");
+        let tb = f.check(&tr("Show the _main toolbar"));
         tb.set_action_name(Some("win.show-toolbar"));
         f.indent(&dp, tb.upcast_ref());
-        let lb = f.check("Show the l_ocation bar");
-        lb.set_tooltip_text(Some("Hidden, it still shows while you type a location (Ctrl+L) or search (Ctrl+F)"));
+        let lb = f.check(&tr("Show the l_ocation bar"));
+        lb.set_tooltip_text(Some(&tr("Hidden, it still shows while you type a location (Ctrl+L) or search (Ctrl+F)")));
         lb.set_action_name(Some("win.show-locbar"));
         f.indent(&dp, lb.upcast_ref());
-        let status = f.check("Show the status_bar");
+        let status = f.check(&tr("Show the status_bar"));
         status.set_action_name(Some("win.show-statusbar"));
         f.indent(&dp, status.upcast_ref());
         let status_hidden = setting_check(
-            "Say how many items are _hidden",
-            Some("The status bar adds how many items of the folder are hidden, as in “12 items (3 hidden)”"),
+            &tr("Say how many items are _hidden"),
+            Some(&tr("The status bar adds how many items of the folder are hidden, as in “12 items (3 hidden)”")),
             s.status_hidden,
             |s, v| s.status_hidden = v,
             |_| {
@@ -466,16 +491,16 @@ impl AppWindow {
         f.indent(&dp, status_hidden.upcast_ref());
         status_hidden.set_margin_start(status_hidden.margin_start() + 24);
         let tabs = setting_check(
-            "Always show the _tab bar",
-            Some("Also show it when a window has only one tab, so that tab can be dragged to another window or out into a new one"),
+            &tr("Always show the _tab bar"),
+            Some(&tr("Also show it when a window has only one tab, so that tab can be dragged to another window or out into a new one")),
             s.always_show_tabs,
             |s, v| s.always_show_tabs = v,
             |_| all_windows().iter().for_each(|w| w.update_tabs_visibility()),
         );
         f.indent(&dp, tabs.upcast_ref());
         let text = setting_check(
-            "Show te_xt on toolbar buttons",
-            Some("The Back and Forward buttons show their name next to the icon"),
+            &tr("Show te_xt on toolbar buttons"),
+            Some(&tr("The Back and Forward buttons show their name next to the icon")),
             s.toolbar_text,
             |s, v| s.toolbar_text = v,
             |v| {
@@ -487,10 +512,10 @@ impl AppWindow {
             },
         );
         f.indent(&dp, text.upcast_ref());
-        f.head(&dp, "Location Bar");
+        f.head(&dp, &tr("Location Bar"));
         let as_text = setting_check(
-            "Always show the _location as text",
-            Some("Show the folder's path as editable text instead of buttons for each folder"),
+            &tr("Always show the _location as text"),
+            Some(&tr("Show the folder's path as editable text instead of buttons for each folder")),
             s.path_as_text,
             |s, v| s.path_as_text = v,
             |_| all_windows().iter().for_each(|w| w.apply_path_mode()),
@@ -499,15 +524,15 @@ impl AppWindow {
         let bar_button = |label: &str, tip: &str, on: bool, set: fn(&mut config::Settings, bool), widget: fn(&AppWindow) -> gtk::Widget| {
             setting_check(label, Some(tip), on, set, move |v| all_windows().iter().for_each(|w| widget(w).set_visible(v)))
         };
-        let zoom_b = bar_button("_Zoom", "Zoom in, zoom out and the zoom level", s.show_zoom_buttons, |s, v| s.show_zoom_buttons = v, |w| w.zoom_box.clone().upcast());
-        let view_b = bar_button("Vi_ew", "Icon, list and compact view", s.show_view_buttons, |s, v| s.show_view_buttons = v, |w| w.view_box.clone().upcast());
-        let split_b = bar_button("_Split view", "Show or hide the extra pane (F3)", s.show_split_button, |s, v| s.show_split_button = v, |w| w.split_box.clone().upcast());
+        let zoom_b = bar_button(&tr("_Zoom"), &tr("Zoom in, zoom out and the zoom level"), s.show_zoom_buttons, |s, v| s.show_zoom_buttons = v, |w| w.zoom_box.clone().upcast());
+        let view_b = bar_button(&tr("Vi_ew"), &tr("Icon, list and compact view"), s.show_view_buttons, |s, v| s.show_view_buttons = v, |w| w.view_box.clone().upcast());
+        let split_b = bar_button(&tr("_Split view"), &tr("Show or hide the extra pane (F3)"), s.show_split_button, |s, v| s.show_split_button = v, |w| w.split_box.clone().upcast());
         // Shown only while there are two panes to swap.
-        let swap_b = setting_check("S_wap panes", Some("Swap the two sides of split view (Ctrl+U); shown in split view"), s.show_swap_button, |s, v| s.show_swap_button = v, |v| {
+        let swap_b = setting_check(&tr("S_wap panes"), Some(&tr("Swap the two sides of split view (Ctrl+U); shown in split view")), s.show_swap_button, |s, v| s.show_swap_button = v, |v| {
             all_windows().iter().for_each(|w| w.swap_btn.set_visible(v && w.split_on()))
         });
-        let info_b = bar_button("_Info panel", "Show or hide the info panel in the folder you're in (F11)", s.show_info_button, |s, v| s.show_info_button = v, |w| w.info_btn.clone().upcast());
-        f.inline(&dp, "Buttons:", &[zoom_b.upcast_ref(), view_b.upcast_ref(), split_b.upcast_ref(), swap_b.upcast_ref(), info_b.upcast_ref()]);
+        let info_b = bar_button(&tr("_Info panel"), &tr("Show or hide the info panel in the folder you're in (F11)"), s.show_info_button, |s, v| s.show_info_button = v, |w| w.info_btn.clone().upcast());
+        f.inline(&dp, &tr("Buttons:"), &[zoom_b.upcast_ref(), view_b.upcast_ref(), split_b.upcast_ref(), swap_b.upcast_ref(), info_b.upcast_ref()]);
         dp
     }
 
@@ -515,8 +540,8 @@ impl AppWindow {
     fn columns_page(self: &Rc<Self>, f: &Form) -> gtk::Box {
         // List Columns, as in Caja.
         let lc = Form::page();
-        f.head(&lc, "List Columns");
-        let about = gtk::Label::new(Some("Choose the order of information to appear in the list view. Columns can also be dragged to another place, and a right click on the column headers shows or hides them."));
+        f.head(&lc, &tr("List Columns"));
+        let about = gtk::Label::new(Some(&tr("Choose the order of information to appear in the list view. Columns can also be dragged to another place, and a right click on the column headers shows or hides them.")));
         about.set_xalign(0.0);
         about.set_line_wrap(true);
         about.set_max_width_chars(60);
@@ -533,8 +558,8 @@ impl AppWindow {
         let pv = Form::page();
         let tradeoff = |b: &gtk::Box, label: &str, tip: &str, current: &str, set: fn(&mut config::Settings, String)| {
             let c = gtk::ComboBoxText::new();
-            for (id, name) in [("always", "Always"), ("local", "Local files only"), ("never", "Never")] {
-                c.append(Some(id), name);
+            for (id, name) in [("always", tr("Always")), ("local", tr("Local files only")), ("never", tr("Never"))] {
+                c.append(Some(id), &name);
             }
             c.set_active_id(Some(current));
             c.set_tooltip_text(Some(tip));
@@ -546,11 +571,13 @@ impl AppWindow {
             });
             f.option(b, label, c.upcast_ref());
         };
-        let local_tip = "Local files: those on this computer's drives, network shares the system mounts included; not places opened through GVfs (smb://, sftp://, phones), which can be slow";
-        f.head(&pv, "Text Files");
-        tradeoff(&pv, "Show text in icons:", &format!("At bigger icon sizes a text file's icon shows its first lines. {local_tip}"), &s.text_in_icons, |s, v| s.text_in_icons = v);
-        f.head(&pv, "Other Previewable Files");
-        tradeoff(&pv, "Show thumbnails:", &format!("Images get thumbnails built in; other file types through the custom thumbnailers below, or the ones installed on the system. {local_tip}"), &s.show_thumbnails, |s, v| s.show_thumbnails = v);
+        let local_tip = tr("Local files: those on this computer’s drives, network shares the system mounts included; not places opened through GVfs (smb://, sftp://, phones), which can be slow");
+        // TRANSLATORS: a setting's explanation, then what “local files” are.
+        let with_local = |text: String| crate::i18n::fill(&tr("{text} {local_files}"), &[("text", &text), ("local_files", &local_tip)]);
+        f.head(&pv, &tr("Text Files"));
+        tradeoff(&pv, &tr("Show text in icons:"), &with_local(tr("At bigger icon sizes a text file’s icon shows its first lines.")), &s.text_in_icons, |s, v| s.text_in_icons = v);
+        f.head(&pv, &tr("Other Previewable Files"));
+        tradeoff(&pv, &tr("Show thumbnails:"), &with_local(tr("Images get thumbnails built in; other file types through the custom thumbnailers below, or the ones installed on the system.")), &s.show_thumbnails, |s, v| s.show_thumbnails = v);
         let limit = gtk::ComboBoxText::new();
         for (bytes, name) in [(100u64 << 10, "100 KB"), (500 << 10, "500 KB"), (1 << 20, "1 MB"), (3 << 20, "3 MB"), (5 << 20, "5 MB"), (10 << 20, "10 MB"), (100 << 20, "100 MB"), (1 << 30, "1 GB"), (2 << 30, "2 GB"), (4 << 30, "4 GB")] {
             limit.append(Some(&bytes.to_string()), name);
@@ -560,35 +587,35 @@ impl AppWindow {
             limit.append(Some(&s.thumbnail_limit.to_string()), &util::format_size(s.thumbnail_limit));
             limit.set_active_id(Some(&s.thumbnail_limit.to_string()));
         }
-        limit.set_tooltip_text(Some("Bigger images get no thumbnail: decoding them takes long. Other files' thumbnailers decide for themselves."));
+        limit.set_tooltip_text(Some(&tr("Bigger images get no thumbnail: decoding them takes long. Other files' thumbnailers decide for themselves.")));
         limit.connect_changed(|c| {
             if let Some(bytes) = c.active_id().and_then(|id| id.parse::<u64>().ok()) {
                 config::update(|s| s.thumbnail_limit = bytes);
                 for_all_panes(|p| p.reload());
             }
         });
-        f.option(&pv, "Only for files smaller than:", limit.upcast_ref());
+        f.option(&pv, &tr("Only for files smaller than:"), limit.upcast_ref());
         let thumbs = thumbnailers_editor(f.dialog.upcast_ref());
         thumbs.set_margin_start(40);
         pv.add(&thumbs);
-        f.head(&pv, "Folders");
-        tradeoff(&pv, "Count number of items:", &format!("A folder's size is how many items it has. {local_tip}"), &s.count_items, |s, v| s.count_items = v);
-        f.head(&pv, "Media Info");
+        f.head(&pv, &tr("Folders"));
+        tradeoff(&pv, &tr("Count number of items:"), &with_local(tr("A folder’s size is how many items it has.")), &s.count_items, |s, v| s.count_items = v);
+        f.head(&pv, &tr("Media Info"));
         let mi = setting_check(
-            "Show a _Media Info tab in file properties",
-            Some("Shows what the mediainfo program reports about a file: codecs, resolution, duration, bit rate and more"),
+            &tr("Show a _Media Info tab in file properties"),
+            Some(&tr("Shows what the mediainfo program reports about a file: codecs, resolution, duration, bit rate and more")),
             s.media_info,
             |s, v| s.media_info = v,
             |_| {},
         );
         f.indent(&pv, mi.upcast_ref());
         let kinds = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        kinds.add(&gtk::Label::new(Some("For:")));
+        kinds.add(&gtk::Label::new(Some(&tr("For:"))));
         let kind = |label: &str, on: bool, set: fn(&mut config::Settings, bool)| kinds.add(&setting_check(label, None, on, set, |_| {}));
-        kind("_Videos", s.media_info_video, |s, v| s.media_info_video = v);
-        kind("_Audio", s.media_info_audio, |s, v| s.media_info_audio = v);
-        kind("_Images", s.media_info_image, |s, v| s.media_info_image = v);
-        kind("_Other files", s.media_info_other, |s, v| s.media_info_other = v);
+        kind(&tr("_Videos"), s.media_info_video, |s, v| s.media_info_video = v);
+        kind(&tr("_Audio"), s.media_info_audio, |s, v| s.media_info_audio = v);
+        kind(&tr("_Images"), s.media_info_image, |s, v| s.media_info_image = v);
+        kind(&tr("_Other files"), s.media_info_other, |s, v| s.media_info_other = v);
         kinds.set_sensitive(s.media_info);
         {
             let kinds = kinds.clone();
@@ -600,16 +627,16 @@ impl AppWindow {
         if !props::mediainfo_available() {
             mi.set_sensitive(false);
             kinds.set_sensitive(false);
-            let note = hint_label("Install mediainfo to use this: the tab shows codecs, resolution, duration, bit rate and more.");
+            let note = hint_label(&tr("Install mediainfo to use this: the tab shows codecs, resolution, duration, bit rate and more."));
             f.indent(&pv, note.upcast_ref());
         }
-        f.head(&pv, "Info Panel");
-        let note = hint_label("Beside the files (View → Info Panel, F11, or its toolbar button), in the folders where you turn it on. It shows the selected item: a folder's cover picture, an image, or a file's thumbnail. Only local folders are searched for covers.");
+        f.head(&pv, &tr("Info Panel"));
+        let note = hint_label(&tr("Beside the files (View → Info Panel, F11, or its toolbar button), in the folders where you turn it on. It shows the selected item: a folder's cover picture, an image, or a file's thumbnail. Only local folders are searched for covers."));
         f.indent(&pv, note.upcast_ref());
         let names = gtk::Entry::new();
         names.set_text(&s.cover_names);
         names.set_width_chars(36);
-        names.set_tooltip_text(Some("File names to use as a folder's cover, separated by semicolons, in order of preference. Upper and lower case don't matter."));
+        names.set_tooltip_text(Some(&tr("File names to use as a folder's cover, separated by semicolons, in order of preference. Upper and lower case don't matter.")));
         let apply_names = |e: &gtk::Entry| {
             let mut v = e.text().trim().to_string();
             if v.is_empty() {
@@ -626,11 +653,11 @@ impl AppWindow {
             apply_names(e);
             glib::Propagation::Proceed
         });
-        f.option(&pv, "Cover file names:", names.upcast_ref());
+        f.option(&pv, &tr("Cover file names:"), names.upcast_ref());
         let choice = |items: &[(&str, &str)], current: &str, set: fn(&mut config::Settings, String)| {
             let c = gtk::ComboBoxText::new();
             for (id, label) in items {
-                c.append(Some(id), label);
+                c.append(Some(id), &tr(label));
             }
             c.set_active_id(Some(current));
             c.connect_changed(move |c| {
@@ -641,11 +668,11 @@ impl AppWindow {
             });
             c
         };
-        let other = choice(&[("summary", "Show their number and total size"), ("last", "Keep showing the last item"), ("current", "Show the open folder"), ("hide", "Hide the panel")], &s.info_several, |s, v| s.info_several = v);
-        f.option(&pv, "With several items selected:", other.upcast_ref());
-        let missing = choice(&[("icon", "Show its icon and the details"), ("none", "Show nothing")], &s.info_no_cover, |s, v| s.info_no_cover = v);
-        f.option(&pv, "Folders without a cover:", missing.upcast_ref());
-        let details = setting_check("Show the _details (type, size, date, …)", None, s.info_details, |s, v| s.info_details = v, |_| for_all_panes(|p| p.refresh_info()));
+        let other = choice(&[("summary", n_("Show their number and total size")), ("last", n_("Keep showing the last item")), ("current", n_("Show the open folder")), ("hide", n_("Hide the panel"))], &s.info_several, |s, v| s.info_several = v);
+        f.option(&pv, &tr("With several items selected:"), other.upcast_ref());
+        let missing = choice(&[("icon", n_("Show its icon and the details")), ("none", n_("Show nothing"))], &s.info_no_cover, |s, v| s.info_no_cover = v);
+        f.option(&pv, &tr("Folders without a cover:"), missing.upcast_ref());
+        let details = setting_check(&tr("Show the _details (type, size, date, …)"), None, s.info_details, |s, v| s.info_details = v, |_| for_all_panes(|p| p.refresh_info()));
         f.indent(&pv, details.upcast_ref());
         pv
     }
@@ -654,8 +681,8 @@ impl AppWindow {
     fn side_pane_page(self: &Rc<Self>, f: &Form, s: &config::Settings) -> gtk::Box {
         // Side Pane
         let sp = Form::page();
-        f.head(&sp, "Computer Entries");
-        let hint = hint_label("Unchecked entries are hidden. Drag an entry by its handle, or select it and use the arrows, to move it; they can also be dragged in the side pane itself.");
+        f.head(&sp, &tr("Computer Entries"));
+        let hint = hint_label(&tr("Unchecked entries are hidden. Drag an entry by its handle, or select it and use the arrows, to move it; they can also be dragged in the side pane itself."));
         f.indent(&sp, hint.upcast_ref());
         let sidebar = self.sidebar.clone();
         let (places, places_refresh) = places_editor(move || sidebar.places());
@@ -665,8 +692,8 @@ impl AppWindow {
             places_refresh();
             glib::Propagation::Proceed
         });
-        f.head(&sp, "Appearance");
-        let custom = f.check("Custom _row height:");
+        f.head(&sp, &tr("Appearance"));
+        let custom = f.check(&tr("Custom _row height:"));
         let height = gtk::SpinButton::with_range(16.0, 80.0, 1.0);
         height.set_value(if s.sidebar_row_height > 0 { s.sidebar_row_height } else { 36 } as f64);
         custom.set_active(s.sidebar_row_height > 0);
@@ -698,11 +725,11 @@ impl AppWindow {
         // Media: mounting first, then what happens with what's mounted.
         let media = crate::autorun::preferences_page();
         let removable = Form::page();
-        f.head(&removable, "Removable Media");
-        let automount = f.check("Mount drives and media when they're _inserted");
+        f.head(&removable, &tr("Removable Media"));
+        let automount = f.check(&tr("Mount drives and media when they're _inserted"));
         automount.set_tooltip_text(Some(&match crate::sidebar::automount_desktop() {
-            Some(desktop) => format!("Flash drives, memory cards, discs… are mounted right away. This is {desktop}'s own setting: changing it here changes it there too. Turned off, they're mounted when you click them in the side pane."),
-            None => "Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they're mounted when you click them in the side pane.".to_string(),
+            Some(desktop) => crate::i18n::fill(&tr("Flash drives, memory cards, discs… are mounted right away. This is {desktop}’s own setting: changing it here changes it there too. Turned off, they’re mounted when you click them in the side pane."), &[("desktop", &desktop)]),
+            None => tr("Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they’re mounted when you click them in the side pane."),
         }));
         automount.set_active(crate::sidebar::automount_on());
         automount.connect_toggled(|c| crate::sidebar::set_automount(c.is_active()));
@@ -716,8 +743,8 @@ impl AppWindow {
         }));
         f.indent(&removable, automount.upcast_ref());
         let unmount_only = setting_check(
-            "The eject button only _unmounts",
-            Some("Clicking the button next to a drive in the side pane unmounts it, but doesn't eject it or power it off (the drive stays in the list, ready to be mounted again)"),
+            &tr("The eject button only _unmounts"),
+            Some(&tr("Clicking the button next to a drive in the side pane unmounts it, but doesn't eject it or power it off (the drive stays in the list, ready to be mounted again)")),
             s.unmount_only,
             |s, v| s.unmount_only = v,
             |_| crate::sidebar::refresh_all(),
@@ -736,14 +763,14 @@ impl AppWindow {
     fn context_menu_page(self: &Rc<Self>, f: &Form) -> (gtk::Box, Refill, Refill) {
         // Context Menu: order and visibility of the entries, per menu
         let cm = Form::page();
-        f.head(&cm, "Context Menu Entries");
-        let hint = hint_label("Drag an entry by its handle, or select it and use the arrows, to move it. Unchecked entries are hidden. Entries that don't apply are left out of the menu (Restore outside the Trash, say).");
+        f.head(&cm, &tr("Context Menu Entries"));
+        let hint = hint_label(&tr("Drag an entry by its handle, or select it and use the arrows, to move it. Unchecked entries are hidden. Entries that don't apply are left out of the menu (Restore outside the Trash, say)."));
         f.indent(&cm, hint.upcast_ref());
         let menus = gtk::Stack::new();
         let (items_editor, items_refresh) = menu_order_editor(false);
         let (bg_editor, bg_refresh) = menu_order_editor(true);
-        menus.add_titled(&items_editor, "items", "Files and Folders");
-        menus.add_titled(&bg_editor, "background", "A Folder's Empty Space");
+        menus.add_titled(&items_editor, "items", &tr("Files and Folders"));
+        menus.add_titled(&bg_editor, "background", &tr("A Folder’s Empty Space"));
         let switcher = gtk::StackSwitcher::new();
         switcher.set_stack(Some(&menus));
         switcher.set_halign(gtk::Align::Start);
@@ -756,7 +783,7 @@ impl AppWindow {
     fn custom_actions_page(self: &Rc<Self>, f: &Form) -> gtk::Box {
         // Custom Actions (in the context menus)
         let ca = Form::page();
-        f.head(&ca, "Custom Actions in the Context Menu");
+        f.head(&ca, &tr("Custom Actions in the Context Menu"));
         let editor = custom_actions_editor(f.dialog.upcast_ref());
         editor.set_margin_start(40);
         ca.add(&editor);
@@ -766,8 +793,8 @@ impl AppWindow {
     /// The checksums Properties' Checksums tab offers, and their order.
     fn checksums_page(self: &Rc<Self>, f: &Form) -> gtk::Box {
         let page = Form::page();
-        f.head(&page, "Checksums in Properties");
-        let hint = hint_label("Unchecked ones aren't offered. Drag one by its handle, or select it and use the arrows, to move it.");
+        f.head(&page, &tr("Checksums in Properties"));
+        let hint = hint_label(&tr("Unchecked ones aren't offered. Drag one by its handle, or select it and use the arrows, to move it."));
         f.indent(&page, hint.upcast_ref());
         let editor = checksums_editor();
         editor.set_margin_start(40);
@@ -778,7 +805,7 @@ impl AppWindow {
     /// Keyboard shortcuts.
     fn keyboard_page(self: &Rc<Self>, f: &Form, app: &gtk::Application) -> gtk::Box {
         let kb = Form::page();
-        f.head(&kb, "Keyboard Shortcuts");
+        f.head(&kb, &tr("Keyboard Shortcuts"));
         let editor = keybindings_editor(f.dialog.upcast_ref(), app);
         editor.set_margin_start(40);
         kb.pack_start(&editor, true, true, 0);
@@ -895,9 +922,9 @@ impl OrderList {
     /// Buttons moving the selected entry up and down.
     fn arrows(self: &Rc<Self>) -> (gtk::Button, gtk::Button) {
         let up = gtk::Button::from_icon_name(Some("go-up-symbolic"), gtk::IconSize::Button);
-        up.set_tooltip_text(Some("Move up"));
+        up.set_tooltip_text(Some(&tr("Move up")));
         let down = gtk::Button::from_icon_name(Some("go-down-symbolic"), gtk::IconSize::Button);
-        down.set_tooltip_text(Some("Move down"));
+        down.set_tooltip_text(Some(&tr("Move down")));
         let ol = self.clone();
         up.connect_clicked(move |_| {
             if let Some(i) = ol.selected().filter(|i| *i > 0) {
@@ -941,7 +968,7 @@ fn order_list(target: &'static str, content: impl Fn(&str) -> gtk::Widget + 'sta
                 hb.set_margin_end(8);
                 let handle = gtk::EventBox::new();
                 handle.add(&gtk::Image::from_icon_name(Some(handle_icon), gtk::IconSize::Menu));
-                handle.set_tooltip_text(Some("Drag to move"));
+                handle.set_tooltip_text(Some(&tr("Drag to move")));
                 let targets = [gtk::TargetEntry::new(target, gtk::TargetFlags::SAME_APP, 0)];
                 handle.drag_source_set(gdk::ModifierType::BUTTON1_MASK, &targets, gdk::DragAction::MOVE);
                 handle.connect_drag_begin(|h, ctx| {
@@ -1081,7 +1108,7 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
     let row = move |k: &str| -> gtk::Widget {
         let hb = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         if k == actions::SEPARATOR {
-            let l = gtk::Label::new(Some("Separator"));
+            let l = gtk::Label::new(Some(&tr("Separator")));
             l.style_context().add_class("dim-label");
             hb.add(&l);
             let line = gtk::Separator::new(gtk::Orientation::Horizontal);
@@ -1093,11 +1120,11 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
         let action = actions::load().into_iter().find(|a| actions::custom_key(a) == k);
         let label = match &action {
             Some(a) => a.name.clone(),
-            None => labels.iter().find(|(key, _)| *key == k).map_or(k.to_string(), |(_, l)| l.to_string()),
+            None => labels.iter().find(|(key, _)| *key == k).map_or(k.to_string(), |(_, l)| tr(l)),
         };
         hb.add(&shown_check(gtk::Label::new(Some(&label)).upcast_ref(), k, |s| &mut s.hidden_menu_items, || {}));
         if action.is_some() {
-            let l = gtk::Label::new(Some("custom action"));
+            let l = gtk::Label::new(Some(&tr("custom action")));
             l.style_context().add_class("dim-label");
             hb.add(&l);
         }
@@ -1117,12 +1144,12 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
     };
     refresh();
     let (up, down) = ol.arrows();
-    let add_sep = gtk::Button::with_mnemonic("Add _Separator");
-    add_sep.set_tooltip_text(Some("Add a separator below the selected entry"));
-    let remove_sep = gtk::Button::with_mnemonic("Re_move Separator");
+    let add_sep = gtk::Button::with_mnemonic(&tr("Add _Separator"));
+    add_sep.set_tooltip_text(Some(&tr("Add a separator below the selected entry")));
+    let remove_sep = gtk::Button::with_mnemonic(&tr("Re_move Separator"));
     remove_sep.set_sensitive(false);
-    let reset = gtk::Button::with_mnemonic("Reset _Order");
-    reset.set_tooltip_text(Some("Put every entry back in its original place (which entries are hidden stays as it is)"));
+    let reset = gtk::Button::with_mnemonic(&tr("Reset _Order"));
+    reset.set_tooltip_text(Some(&tr("Put every entry back in its original place (which entries are hidden stays as it is)")));
     {
         let ol = ol.clone();
         add_sep.connect_clicked(move |_| {
@@ -1169,15 +1196,16 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
     // The View submenu keeps its own order; its entries can be hidden.
     if bg {
         let hb = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        hb.add(&gtk::Label::new(Some("View submenu:")));
+        hb.add(&gtk::Label::new(Some(&tr("View submenu:"))));
         let flow = gtk::FlowBox::new();
         flow.set_selection_mode(gtk::SelectionMode::None);
         flow.set_max_children_per_line(4);
         flow.set_column_spacing(12);
         flow.set_hexpand(true);
         for key in actions::VIEW_SUBMENU {
-            let label = labels.iter().find(|(k, _)| k == key).map_or(*key, |(_, l)| l);
-            let l = gtk::Label::new(Some(label.trim_start_matches("View › ")));
+            let label = labels.iter().find(|(k, _)| k == key).map_or(key.to_string(), |(_, l)| tr(l));
+            // Just what follows "View › ", in any language.
+            let l = gtk::Label::new(Some(label.rsplit(" › ").next().unwrap_or(&label)));
             flow.add(&shown_check(l.upcast_ref(), key, |s| &mut s.hidden_menu_items, || {}));
         }
         hb.add(&flow);
@@ -1241,8 +1269,8 @@ fn places_editor(places: impl Fn() -> Vec<crate::sidebar::Place> + 'static) -> (
     };
     refresh();
     let (up, down) = ol.arrows();
-    let reset = gtk::Button::with_mnemonic("Reset _Order");
-    reset.set_tooltip_text(Some("Put every entry back in its usual place (which entries are hidden stays as it is)"));
+    let reset = gtk::Button::with_mnemonic(&tr("Reset _Order"));
+    reset.set_tooltip_text(Some(&tr("Put every entry back in its usual place (which entries are hidden stays as it is)")));
     {
         let refresh = refresh.clone();
         reset.connect_clicked(move |_| {
@@ -1278,8 +1306,8 @@ fn checksums_editor() -> gtk::Box {
     (ol.rebuild)(None);
     outer.add(&ol.widget);
     let (up, down) = ol.arrows();
-    let reset = gtk::Button::with_mnemonic("Reset _Order");
-    reset.set_tooltip_text(Some("Put every checksum back in its usual place (which are offered stays as it is)"));
+    let reset = gtk::Button::with_mnemonic(&tr("Reset _Order"));
+    reset.set_tooltip_text(Some(&tr("Put every checksum back in its usual place (which are offered stays as it is)")));
     {
         let ol = ol.clone();
         reset.connect_clicked(move |_| {
@@ -1309,14 +1337,14 @@ pub(super) fn bookmark_editor(parent: &gtk::Window) -> gtk::Box {
     let name_r = gtk::CellRendererText::new();
     name_r.set_editable(true);
     let c1 = gtk::TreeViewColumn::new();
-    c1.set_title("Name");
+    c1.set_title(&tr("Name"));
     CellLayoutExt::pack_start(&c1, &name_r, true);
     CellLayoutExt::add_attribute(&c1, &name_r, "text", 0);
     c1.set_expand(true);
     let c2 = gtk::TreeViewColumn::new();
     let loc_r = gtk::CellRendererText::new();
     loc_r.set_property("ellipsize", pango::EllipsizeMode::Middle);
-    c2.set_title("Location");
+    c2.set_title(&tr("Location"));
     CellLayoutExt::pack_start(&c2, &loc_r, true);
     // Kept as URLs (as the bookmarks file has them), shown as people know
     // them: a folder's path, another place's address without its escapes.
@@ -1354,7 +1382,7 @@ pub(super) fn bookmark_editor(parent: &gtk::Window) -> gtk::Box {
     sw.set_shadow_type(gtk::ShadowType::In);
     sw.add(&tv);
     sw.set_vexpand(true);
-    let rm = gtk::Button::with_mnemonic("_Remove");
+    let rm = gtk::Button::with_mnemonic(&tr("_Remove"));
     {
         let tv = tv.clone();
         let store = store.clone();
@@ -1364,19 +1392,19 @@ pub(super) fn bookmark_editor(parent: &gtk::Window) -> gtk::Box {
             }
         });
     }
-    let hint = gtk::Label::new(Some("Drag to reorder. Double-click a name to rename it."));
+    let hint = gtk::Label::new(Some(&tr("Drag to reorder. Double-click a name to rename it.")));
     hint.style_context().add_class("dim-label");
     hint.set_xalign(0.0);
-    let add = gtk::Button::with_mnemonic("_Add…");
+    let add = gtk::Button::with_mnemonic(&tr("_Add…"));
     {
         let store = store.clone();
         let parent = parent.clone();
         add.connect_clicked(move |_| {
             let fc = gtk::FileChooserDialog::with_buttons(
-                Some("Add Bookmark"),
+                Some(&tr("Add Bookmark")),
                 Some(&parent),
                 gtk::FileChooserAction::SelectFolder,
-                &[("_Cancel", gtk::ResponseType::Cancel), ("_Add", gtk::ResponseType::Accept)],
+                &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Add").as_str(), gtk::ResponseType::Accept)],
             );
             if fc.run() == gtk::ResponseType::Accept {
                 if let Some(f) = fc.file() {
@@ -1423,7 +1451,7 @@ fn keybindings_editor(parent: &gtk::Window, app: &gtk::Application) -> gtk::Box 
             let mut group: Option<(&str, gtk::TreeIter)> = None;
             for b in keys::BINDINGS {
                 if group.as_ref().map(|(g, _)| *g) != Some(b.group) {
-                    let it = store.insert_with_values(None, None, &[(0, &b.group), (1, &""), (2, &""), (3, &700)]);
+                    let it = store.insert_with_values(None, None, &[(0, &tr(b.group)), (1, &""), (2, &""), (3, &700)]);
                     group = Some((b.group, it));
                 }
                 let parent = group.as_ref().map(|(_, it)| *it);
@@ -1431,7 +1459,7 @@ fn keybindings_editor(parent: &gtk::Window, app: &gtk::Application) -> gtk::Box 
                 let weight = if keys::is_default(b.action) { 400 } else { 700 };
                 let current = keys::current(b.action);
                 let text = if current.is_empty() { "—".to_string() } else { keys::labels(&current) };
-                store.insert_with_values(parent.as_ref(), None, &[(0, &b.label), (1, &text), (2, &b.action), (3, &weight)]);
+                store.insert_with_values(parent.as_ref(), None, &[(0, &tr(b.label)), (1, &text), (2, &b.action), (3, &weight)]);
             }
         }
     };
@@ -1441,10 +1469,10 @@ fn keybindings_editor(parent: &gtk::Window, app: &gtk::Application) -> gtk::Box 
     tv.set_level_indentation(0);
     tv.set_enable_search(true);
     tv.set_search_column(0);
-    for (i, title) in ["Action", "Shortcut"].into_iter().enumerate() {
+    for (i, title) in [n_("Action"), n_("Shortcut")].into_iter().enumerate() {
         let r = gtk::CellRendererText::new();
         let c = gtk::TreeViewColumn::new();
-        c.set_title(title);
+        c.set_title(&tr(title));
         c.set_expand(true);
         CellLayoutExt::pack_start(&c, &r, true);
         CellLayoutExt::add_attribute(&c, &r, "text", i as i32);
@@ -1483,18 +1511,18 @@ fn keybindings_editor(parent: &gtk::Window, app: &gtk::Application) -> gtk::Box 
         move || {
             let Some(action) = selected() else { return };
             let Some(b) = keys::BINDINGS.iter().find(|b| b.action == action) else { return };
-            let Some(accel) = capture_shortcut(&parent, b.label) else { return };
+            let Some(accel) = capture_shortcut(&parent, &tr(b.label)) else { return };
             if let Some(other) = keys::used_by(&accel, &action) {
                 let q = gtk::MessageDialog::new(
                     Some(&parent),
                     gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
                     gtk::MessageType::Question,
                     gtk::ButtonsType::None,
-                    &format!("“{}” is already the shortcut for “{}”", keys::labels(std::slice::from_ref(&accel)), other.label),
+                    &crate::i18n::fill(&tr("“{shortcut}” is already the shortcut for “{action}”"), &[("shortcut", &keys::labels(std::slice::from_ref(&accel))), ("action", &tr(other.label))]),
                 );
-                q.set_secondary_text(Some(&format!("Use it for “{}” instead? “{}” will no longer have it.", b.label, other.label)));
-                q.add_button("_Cancel", gtk::ResponseType::Cancel);
-                q.add_button("_Reassign", gtk::ResponseType::Accept);
+                q.set_secondary_text(Some(&crate::i18n::fill(&tr("Use it for “{action}” instead? “{other}” will no longer have it."), &[("action", &tr(b.label)), ("other", &tr(other.label))])));
+                q.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
+                q.add_button(&tr("_Reassign"), gtk::ResponseType::Accept);
                 let ok = q.run() == gtk::ResponseType::Accept;
                 q.close();
                 if !ok {
@@ -1509,13 +1537,13 @@ fn keybindings_editor(parent: &gtk::Window, app: &gtk::Application) -> gtk::Box 
         }
     };
     let change = Rc::new(change);
-    let btn_change = gtk::Button::with_mnemonic("C_hange…");
-    let btn_clear = gtk::Button::with_mnemonic("C_lear");
-    btn_clear.set_tooltip_text(Some("Remove the shortcut"));
-    let btn_reset = gtk::Button::with_mnemonic("R_eset");
-    btn_reset.set_tooltip_text(Some("Go back to the default shortcut"));
-    let btn_reset_all = gtk::Button::with_mnemonic("Reset _All");
-    btn_reset_all.set_tooltip_text(Some("Go back to the default shortcuts for every action"));
+    let btn_change = gtk::Button::with_mnemonic(&tr("C_hange…"));
+    let btn_clear = gtk::Button::with_mnemonic(&tr("C_lear"));
+    btn_clear.set_tooltip_text(Some(&tr("Remove the shortcut")));
+    let btn_reset = gtk::Button::with_mnemonic(&tr("R_eset"));
+    btn_reset.set_tooltip_text(Some(&tr("Go back to the default shortcut")));
+    let btn_reset_all = gtk::Button::with_mnemonic(&tr("Reset _All"));
+    btn_reset_all.set_tooltip_text(Some(&tr("Go back to the default shortcuts for every action")));
     {
         let change = change.clone();
         btn_change.connect_clicked(move |_| change());
@@ -1558,7 +1586,7 @@ fn keybindings_editor(parent: &gtk::Window, app: &gtk::Application) -> gtk::Box 
     buttons.pack_start(&btn_clear, false, false, 0);
     buttons.pack_start(&btn_reset, false, false, 0);
     buttons.pack_end(&btn_reset_all, false, false, 0);
-    let hint = gtk::Label::new(Some("Double-click an action to give it a new shortcut. Changed shortcuts are shown in bold."));
+    let hint = gtk::Label::new(Some(&tr("Double-click an action to give it a new shortcut. Changed shortcuts are shown in bold.")));
     hint.set_xalign(0.0);
     hint.set_line_wrap(true);
     hint.style_context().add_class("dim-label");
@@ -1573,9 +1601,10 @@ fn keybindings_editor(parent: &gtk::Window, app: &gtk::Application) -> gtk::Box 
 
 /// Waits for a key combination; None if cancelled with Escape or Cancel.
 fn capture_shortcut(parent: &gtk::Window, label: &str) -> Option<String> {
-    let d = gtk::Dialog::with_buttons(Some("Set Shortcut"), Some(parent), gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT, &[("_Cancel", gtk::ResponseType::Cancel)]);
+    let d = gtk::Dialog::with_buttons(Some(&tr("Set Shortcut")), Some(parent), gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT, &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel)]);
     let msg = gtk::Label::new(None);
-    msg.set_markup(&format!("Press the new shortcut for <b>{}</b>,\nor Escape to cancel.", glib::markup_escape_text(label)));
+    // TRANSLATORS: keep <b>{action}</b>: the action's name is shown in bold.
+    msg.set_markup(&crate::i18n::fill(&tr("Press the new shortcut for <b>{action}</b>,\nor Escape to cancel."), &[("action", &glib::markup_escape_text(label))]));
     msg.set_justify(gtk::Justification::Center);
     let note = gtk::Label::new(None);
     note.style_context().add_class("dim-label");
@@ -1601,7 +1630,7 @@ fn capture_shortcut(parent: &gtk::Window, label: &str) -> Option<String> {
             let typing = key.to_unicode().is_some_and(|c| !c.is_control())
                 && !mods.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::MOD1_MASK | gdk::ModifierType::SUPER_MASK);
             if typing || !gtk::accelerator_valid(*key, mods) {
-                note.set_text("That key needs Ctrl, Alt or Super with it.");
+                note.set_text(&tr("That key needs Ctrl, Alt or Super with it."));
                 return glib::Propagation::Stop;
             }
             *result.borrow_mut() = Some(gtk::accelerator_name(*key, mods).map(|n| n.to_string()).unwrap_or_default());
@@ -1620,16 +1649,16 @@ fn capture_shortcut(parent: &gtk::Window, label: &str) -> Option<String> {
 /// thumbnailer doesn't do) with Add / Edit / Remove; saved straight away.
 fn thumbnailers_editor(parent: &gtk::Window) -> gtk::Box {
     let spec = ListSpec {
-        columns: &["Name", "File types", "Command"],
+        columns: const { &[n_("Name"), n_("File types"), n_("Command")] },
         // Ones whose program is missing are skipped when making thumbnails.
         row: |t: &thumbnailers::Thumbnailer| {
-            let name = if thumbnailers::installed(t) { t.name.clone() } else { format!("{} (not installed)", t.name) };
+            let name = if thumbnailers::installed(t) { t.name.clone() } else { crate::i18n::fill(&tr("{name} (not installed)"), &[("name", &t.name)]) };
             vec![name, t.types.clone(), t.command.clone()]
         },
         blank: thumbnailers::Thumbnailer::default,
         edit: edit_thumbnailer,
-        add_title: "Add Thumbnailer",
-        edit_title: "Edit Thumbnailer",
+        add_title: n_("Add Thumbnailer"),
+        edit_title: n_("Edit Thumbnailer"),
         reorder: false,
         min_height: 90,
     };
@@ -1639,7 +1668,7 @@ fn thumbnailers_editor(parent: &gtk::Window) -> gtk::Box {
         icons::reload_thumbnailers();
         for_all_panes(|p| p.reload());
     });
-    bx.add(&hint_label("Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used. File types none of them handles use the thumbnailers installed on the system: PDF with Evince, office documents, audio cover art and so on."));
+    bx.add(&hint_label(&tr("Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used. File types none of them handles use the thumbnailers installed on the system: PDF with Evince, office documents, audio cover art and so on.")));
     bx
 }
 
@@ -1682,7 +1711,7 @@ fn list_editor<T: Clone + 'static>(parent: &gtk::Window, items: Vec<T>, spec: Li
         let r = gtk::CellRendererText::new();
         r.set_property("ellipsize", pango::EllipsizeMode::End);
         let c = gtk::TreeViewColumn::new();
-        c.set_title(title);
+        c.set_title(&tr(title));
         c.set_expand(true);
         c.set_resizable(true);
         CellLayoutExt::pack_start(&c, &r, true);
@@ -1709,17 +1738,17 @@ fn list_editor<T: Clone + 'static>(parent: &gtk::Window, items: Vec<T>, spec: Li
             }
         }
     });
-    let add = gtk::Button::with_mnemonic("_Add…");
-    let edit = gtk::Button::with_mnemonic("_Edit…");
-    let remove = gtk::Button::with_mnemonic("_Remove");
+    let add = gtk::Button::with_mnemonic(&tr("_Add…"));
+    let edit = gtk::Button::with_mnemonic(&tr("_Edit…"));
+    let remove = gtk::Button::with_mnemonic(&tr("_Remove"));
     let up = gtk::Button::from_icon_name(Some("go-up-symbolic"), gtk::IconSize::Button);
-    up.set_tooltip_text(Some("Move up"));
+    up.set_tooltip_text(Some(&tr("Move up")));
     let down = gtk::Button::from_icon_name(Some("go-down-symbolic"), gtk::IconSize::Button);
-    down.set_tooltip_text(Some("Move down"));
+    down.set_tooltip_text(Some(&tr("Move down")));
     {
         let (list, changed, parent) = (list.clone(), changed.clone(), parent.clone());
         add.connect_clicked(move |_| {
-            if let Some(item) = (spec.edit)(&parent, spec.add_title, &(spec.blank)()) {
+            if let Some(item) = (spec.edit)(&parent, &tr(spec.add_title), &(spec.blank)()) {
                 list.borrow_mut().push(item);
                 let n = list.borrow().len();
                 changed(Some(n - 1));
@@ -1731,7 +1760,7 @@ fn list_editor<T: Clone + 'static>(parent: &gtk::Window, items: Vec<T>, spec: Li
         move || {
             let Some(i) = selected() else { return };
             let cur = list.borrow()[i].clone();
-            if let Some(item) = (spec.edit)(&parent, spec.edit_title, &cur) {
+            if let Some(item) = (spec.edit)(&parent, &tr(spec.edit_title), &cur) {
                 list.borrow_mut()[i] = item;
                 changed(Some(i));
             }
@@ -1796,7 +1825,7 @@ fn edit_thumbnailer(parent: &gtk::Window, title: &str, cur: &thumbnailers::Thumb
         Some(title),
         Some(parent),
         gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
-        &[("_Cancel", gtk::ResponseType::Cancel), ("_Save", gtk::ResponseType::Ok)],
+        &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Save").as_str(), gtk::ResponseType::Ok)],
     );
     d.set_default_response(gtk::ResponseType::Ok);
     let grid = gtk::Grid::new();
@@ -1811,18 +1840,18 @@ fn edit_thumbnailer(parent: &gtk::Window, title: &str, cur: &thumbnailers::Thumb
         e.set_hexpand(true);
         e
     };
-    let name = entry(&cur.name, "e.g. Videos");
-    let types = entry(&cur.types, "e.g. video/*");
-    let command = entry(&cur.command, "e.g. ffmpegthumbnailer -i %i -o %o -s %s -f");
+    let name = entry(&cur.name, &tr("e.g. Videos"));
+    let types = entry(&cur.types, &tr("e.g. video/*"));
+    let command = entry(&cur.command, &tr("e.g. ffmpegthumbnailer -i %i -o %o -s %s -f"));
     command.set_width_chars(56);
-    let help = gtk::Label::new(Some("File types are MIME types, separated by “;” (“*” matches anything). In the command, %i is the file, %o the image to write (PNG or JPEG) and %s the size in pixels. It runs with sh and may take up to 30 seconds."));
+    let help = gtk::Label::new(Some(&tr("File types are MIME types, separated by “;” (“*” matches anything). In the command, %i is the file, %o the image to write (PNG or JPEG) and %s the size in pixels. It runs with sh and may take up to 30 seconds.")));
     help.set_line_wrap(true);
     help.set_max_width_chars(56);
     help.set_xalign(0.0);
     help.style_context().add_class("dim-label");
-    let rows: [(&str, &gtk::Widget); 4] = [("_Name:", name.upcast_ref()), ("File _types:", types.upcast_ref()), ("_Command:", command.upcast_ref()), ("", help.upcast_ref())];
+    let rows: [(&str, &gtk::Widget); 4] = [(n_("_Name:"), name.upcast_ref()), (n_("File _types:"), types.upcast_ref()), (n_("_Command:"), command.upcast_ref()), ("", help.upcast_ref())];
     for (i, (t, w)) in rows.iter().enumerate() {
-        let l = gtk::Label::with_mnemonic(t);
+        let l = gtk::Label::with_mnemonic(&tr(t));
         l.set_xalign(0.0);
         l.set_mnemonic_widget(Some(*w));
         grid.attach(&l, 0, i as i32, 1, 1);
@@ -1855,23 +1884,23 @@ fn edit_thumbnailer(parent: &gtk::Window, title: &str, cur: &thumbnailers::Thumb
 /// every change is saved straight away.
 fn custom_actions_editor(parent: &gtk::Window) -> gtk::Box {
     let spec = ListSpec {
-        columns: &["Name", "Command"],
+        columns: const { &[n_("Name"), n_("Command")] },
         row: |a: &actions::CustomAction| vec![a.name.clone(), a.command.clone()],
         blank: || actions::CustomAction { id: actions::new_id(), files: true, folders: true, ..Default::default() },
         edit: edit_custom_action,
-        add_title: "Add Custom Action",
-        edit_title: "Edit Custom Action",
+        add_title: n_("Add Custom Action"),
+        edit_title: n_("Edit Custom Action"),
         reorder: true,
         min_height: 130,
     };
     let bx = list_editor(parent, actions::load(), spec, actions::save);
-    let hint = hint_label("Commands run in the current folder. %f selected file, %F all selected files, %n / %N their names, %d current folder.");
+    let hint = hint_label(&tr("Commands run in the current folder. %f selected file, %F all selected files, %n / %N their names, %d current folder."));
     // The shell commands run with, as `<shell> -c <command>`.
     let shell = gtk::Entry::new();
     shell.set_text(&config::get().action_shell);
     shell.set_placeholder_text(Some("sh"));
     shell.set_width_chars(16);
-    shell.set_tooltip_text(Some("A shell that accepts -c, such as sh, bash, zsh or fish, or its full path. Empty means sh."));
+    shell.set_tooltip_text(Some(&tr("A shell that accepts -c, such as sh, bash, zsh or fish, or its full path. Empty means sh.")));
     let check_shell = |e: &gtk::Entry| {
         if actions::shell_found(&actions::shell()) {
             e.style_context().remove_class("error");
@@ -1886,7 +1915,7 @@ fn custom_actions_editor(parent: &gtk::Window) -> gtk::Box {
         check_shell(e);
     });
     let shell_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let shell_label = gtk::Label::with_mnemonic("Run commands _with:");
+    let shell_label = gtk::Label::with_mnemonic(&tr("Run commands _with:"));
     shell_label.set_mnemonic_widget(Some(&shell));
     shell_row.add(&shell_label);
     shell_row.add(&shell);
@@ -1901,7 +1930,7 @@ fn edit_custom_action(parent: &gtk::Window, title: &str, cur: &actions::CustomAc
         Some(title),
         Some(parent),
         gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
-        &[("_Cancel", gtk::ResponseType::Cancel), ("_Save", gtk::ResponseType::Ok)],
+        &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Save").as_str(), gtk::ResponseType::Ok)],
     );
     d.set_default_response(gtk::ResponseType::Ok);
     let grid = gtk::Grid::new();
@@ -1909,7 +1938,7 @@ fn edit_custom_action(parent: &gtk::Window, title: &str, cur: &actions::CustomAc
     grid.set_column_spacing(12);
     grid.set_border_width(12);
     let label = |t: &str| {
-        let l = gtk::Label::with_mnemonic(t);
+        let l = gtk::Label::with_mnemonic(&tr(t));
         l.set_xalign(0.0);
         l
     };
@@ -1921,17 +1950,17 @@ fn edit_custom_action(parent: &gtk::Window, title: &str, cur: &actions::CustomAc
     command.set_text(&cur.command);
     command.set_activates_default(true);
     command.set_width_chars(40);
-    command.set_placeholder_text(Some("e.g. gimp %F"));
-    let help = gtk::Label::new(Some("%f first selected file, %F all selected files, %n / %N their names, %d current folder, %% a % sign. Paths are quoted for you."));
+    command.set_placeholder_text(Some(&tr("e.g. gimp %F")));
+    let help = gtk::Label::new(Some(&tr("%f first selected file, %F all selected files, %n / %N their names, %d current folder, %% a % sign. Paths are quoted for you.")));
     help.set_line_wrap(true);
     help.set_max_width_chars(50);
     help.set_xalign(0.0);
     help.style_context().add_class("dim-label");
-    let files = gtk::CheckButton::with_mnemonic("_Files");
+    let files = gtk::CheckButton::with_mnemonic(&tr("_Files"));
     files.set_active(cur.files);
-    let folders = gtk::CheckButton::with_mnemonic("F_olders");
+    let folders = gtk::CheckButton::with_mnemonic(&tr("F_olders"));
     folders.set_active(cur.folders);
-    let background = gtk::CheckButton::with_mnemonic("Empty space in a _folder");
+    let background = gtk::CheckButton::with_mnemonic(&tr("Empty space in a _folder"));
     background.set_active(cur.background);
     let show = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     show.add(&files);
@@ -1946,7 +1975,7 @@ fn edit_custom_action(parent: &gtk::Window, title: &str, cur: &actions::CustomAc
     let type_checks: Vec<(&'static str, gtk::CheckButton)> = actions::FILE_TYPES
         .iter()
         .map(|(id, label)| {
-            let c = gtk::CheckButton::with_label(label);
+            let c = gtk::CheckButton::with_label(&tr(label));
             c.set_active(chosen.contains(id));
             types.add(&c);
             (*id, c)
@@ -1955,8 +1984,8 @@ fn edit_custom_action(parent: &gtk::Window, title: &str, cur: &actions::CustomAc
     let patterns = gtk::Entry::new();
     patterns.set_text(&cur.patterns);
     patterns.set_activates_default(true);
-    patterns.set_placeholder_text(Some("e.g. *.srt; *.nfo"));
-    let which = gtk::Label::new(Some("A file needs one of the checked types or a name matching a pattern; with neither set, the action is offered for any file. Folders only go by the patterns."));
+    patterns.set_placeholder_text(Some(&tr("e.g. *.srt; *.nfo")));
+    let which = gtk::Label::new(Some(&tr("A file needs one of the checked types or a name matching a pattern; with neither set, the action is offered for any file. Folders only go by the patterns.")));
     which.set_line_wrap(true);
     which.set_max_width_chars(50);
     which.set_xalign(0.0);
@@ -1968,12 +1997,12 @@ fn edit_custom_action(parent: &gtk::Window, title: &str, cur: &actions::CustomAc
         files.connect_toggled(move |c| types.set_sensitive(c.is_active()));
     }
     let rows: [(&str, &gtk::Widget); 7] = [
-        ("_Name:", name.upcast_ref()),
-        ("_Command:", command.upcast_ref()),
+        (n_("_Name:"), name.upcast_ref()),
+        (n_("_Command:"), command.upcast_ref()),
         ("", help.upcast_ref()),
-        ("Show for:", show.upcast_ref()),
-        ("File types:", types.upcast_ref()),
-        ("Name _patterns:", patterns.upcast_ref()),
+        (n_("Show for:"), show.upcast_ref()),
+        (n_("File types:"), types.upcast_ref()),
+        (n_("Name _patterns:"), patterns.upcast_ref()),
         ("", which.upcast_ref()),
     ];
     for (i, (t, w)) in rows.iter().enumerate() {

@@ -7,11 +7,11 @@ use super::*;
 fn sort_section(more: bool) -> gio::Menu {
     let menu = gio::Menu::new();
     if !more {
-        menu.append(Some("By _Name"), Some("win.sort-by::name"));
+        menu.append(Some(&tr("By _Name")), Some("win.sort-by::name"));
     }
     for (i, d) in crate::details::DETAILS.iter().enumerate() {
         if let Some(label) = d.menu.filter(|_| (i >= 3) == more) {
-            menu.append(Some(label), Some(&format!("win.sort-by::{}", d.id)));
+            menu.append(Some(&tr(label)), Some(&format!("win.sort-by::{}", d.id)));
         }
     }
     menu
@@ -22,67 +22,67 @@ impl AppWindow {
         let section = |items: &[(&str, &str)]| {
             let m = gio::Menu::new();
             for (label, action) in items {
-                m.append(Some(label), Some(action));
+                m.append(Some(&tr(label)), Some(action));
             }
             m
         };
         let file = gio::Menu::new();
-        file.append_section(None, &section(&[("New _Tab", "win.new-tab"), ("New _Window", "win.new-window")]));
+        file.append_section(None, &section(&[(n_("New _Tab"), "win.new-tab"), (n_("New _Window"), "win.new-window")]));
         let create = gio::Menu::new();
-        create.append(Some("Create _Folder"), Some("win.new-folder"));
-        create.append_submenu(Some("Create _Document"), &self.templates_menu);
+        create.append(Some(&tr("Create _Folder")), Some("win.new-folder"));
+        create.append_submenu(Some(&tr("Create _Document")), &self.templates_menu);
         file.append_section(None, &create);
-        file.append_section(None, &section(&[("Open in _Terminal", "win.terminal"), ("_Properties", "win.properties")]));
-        file.append_section(None, &section(&[("_Empty Trash", "win.empty-trash")]));
-        file.append_section(None, &section(&[("Move Tab _Left", "win.tab-left"), ("Move Tab Ri_ght", "win.tab-right")]));
-        file.append_section(None, &section(&[("_Close Tab", "win.close-tab"), ("_Reopen Closed Tab", "win.reopen-tab"), ("Close _Window", "win.close-window"), ("Close _All Windows", "win.close-all-windows"), ("_Quit", "app.quit")]));
-        bar.append_submenu(Some("_File"), &file);
+        file.append_section(None, &section(&[(n_("Open in _Terminal"), "win.terminal"), (n_("_Properties"), "win.properties")]));
+        file.append_section(None, &section(&[(n_("_Empty Trash"), "win.empty-trash")]));
+        file.append_section(None, &section(&[(n_("Move Tab _Left"), "win.tab-left"), (n_("Move Tab Ri_ght"), "win.tab-right")]));
+        file.append_section(None, &section(&[(n_("_Close Tab"), "win.close-tab"), (n_("_Reopen Closed Tab"), "win.reopen-tab"), (n_("Close _Window"), "win.close-window"), (n_("Close _All Windows"), "win.close-all-windows"), (n_("_Quit"), "app.quit")]));
+        bar.append_submenu(Some(&tr("_File")), &file);
 
         let edit = gio::Menu::new();
-        self.undo_menu.append(Some("_Undo"), Some("win.undo"));
-        self.undo_menu.append(Some("_Redo"), Some("win.redo"));
+        self.undo_menu.append(Some(&tr("_Undo")), Some("win.undo"));
+        self.undo_menu.append(Some(&tr("_Redo")), Some("win.redo"));
         edit.append_section(None, &self.undo_menu);
-        edit.append_section(None, &section(&[("Cu_t", "win.cut"), ("_Copy", "win.copy"), ("_Paste", "win.paste"), ("Paste and C_heck", "win.paste-check"), ("Paste _Into Folder", "win.paste-into")]));
-        edit.append_section(None, &section(&[("Select _All", "win.select-all"), ("Select I_tems Matching…", "win.select-pattern"), ("_Invert Selection", "win.invert-selection")]));
-        edit.append_section(None, &section(&[("Dup_licate", "win.duplicate"), ("Ma_ke Link", "win.make-link"), ("_Rename…", "win.rename"), ("Copy T_o…", "win.copy-to"), ("_Move To…", "win.move-to")]));
-        edit.append_section(None, &section(&[("Copy to Other _Pane", "win.copy-to-pane"), ("Move to Other Pa_ne", "win.move-to-pane")]));
-        edit.append_section(None, &section(&[("Mo_ve to Trash", "win.trash"), ("_Delete", "win.delete"), ("_Restore", "win.restore")]));
-        edit.append_section(None, &section(&[("_Backgrounds and Emblems…", "win.backgrounds"), ("Pr_eferences", "win.preferences")]));
-        bar.append_submenu(Some("_Edit"), &edit);
+        edit.append_section(None, &section(&[(n_("Cu_t"), "win.cut"), (n_("_Copy"), "win.copy"), (n_("_Paste"), "win.paste"), (n_("Paste and C_heck"), "win.paste-check"), (n_("Paste _Into Folder"), "win.paste-into")]));
+        edit.append_section(None, &section(&[(n_("Select _All"), "win.select-all"), (n_("Select I_tems Matching…"), "win.select-pattern"), (n_("_Invert Selection"), "win.invert-selection")]));
+        edit.append_section(None, &section(&[(n_("Dup_licate"), "win.duplicate"), (n_("Ma_ke Link"), "win.make-link"), (n_("_Rename…"), "win.rename"), (n_("Copy T_o…"), "win.copy-to"), (n_("_Move To…"), "win.move-to")]));
+        edit.append_section(None, &section(&[(n_("Copy to Other _Pane"), "win.copy-to-pane"), (n_("Move to Other Pa_ne"), "win.move-to-pane")]));
+        edit.append_section(None, &section(&[(n_("Mo_ve to Trash"), "win.trash"), (n_("_Delete"), "win.delete"), (n_("_Restore"), "win.restore")]));
+        edit.append_section(None, &section(&[(n_("_Backgrounds and Emblems…"), "win.backgrounds"), (n_("Pr_eferences"), "win.preferences")]));
+        bar.append_submenu(Some(&tr("_Edit")), &edit);
 
         let view = gio::Menu::new();
-        view.append_section(None, &section(&[("_Reload", "win.reload"), ("Sto_p", "win.stop")]));
-        view.append_section(None, &section(&[("_Icons", "win.view-mode::icon"), ("_List", "win.view-mode::list"), ("_Compact", "win.view-mode::compact"), ("C_olumns", "win.view-mode::columns")]));
-        view.append_section(None, &section(&[("Show _Hidden Files", "win.show-hidden"), ("_Side Pane", "win.show-sidebar"), ("E_xtra Pane", "win.split-view"), ("St_atusbar", "win.show-statusbar"), ("_Info Panel", "win.info-panel")]));
-        view.append_section(None, &section(&[("Swap Pa_nes", "win.swap-panes"), ("S_witch to Other Pane", "win.switch-pane"), ("Same Location as O_ther Pane", "win.same-location")]));
-        view.append_section(None, &section(&[("_Main Toolbar", "win.show-toolbar"), ("Location _Bar", "win.show-locbar")]));
+        view.append_section(None, &section(&[(n_("_Reload"), "win.reload"), (n_("Sto_p"), "win.stop")]));
+        view.append_section(None, &section(&[(n_("_Icons"), "win.view-mode::icon"), (n_("_List"), "win.view-mode::list"), (n_("_Compact"), "win.view-mode::compact"), (n_("C_olumns"), "win.view-mode::columns")]));
+        view.append_section(None, &section(&[(n_("Show _Hidden Files"), "win.show-hidden"), (n_("_Side Pane"), "win.show-sidebar"), (n_("E_xtra Pane"), "win.split-view"), (n_("St_atusbar"), "win.show-statusbar"), (n_("_Info Panel"), "win.info-panel")]));
+        view.append_section(None, &section(&[(n_("Swap Pa_nes"), "win.swap-panes"), (n_("S_witch to Other Pane"), "win.switch-pane"), (n_("Same Location as O_ther Pane"), "win.same-location")]));
+        view.append_section(None, &section(&[(n_("_Main Toolbar"), "win.show-toolbar"), (n_("Location _Bar"), "win.show-locbar")]));
         let sort = gio::Menu::new();
         sort.append_section(None, &sort_section(false));
         sort.append_section(None, &sort_section(true));
-        sort.append_section(None, &section(&[("_Reversed Order", "win.sort-desc"), ("_Folders Before Files", "win.folders-first")]));
-        view.append_submenu(Some("Arrange _Items"), &sort);
-        view.append_section(None, &section(&[("_Visible Columns…", "win.visible-columns")]));
-        view.append_section(None, &section(&[("Reset View to _Defaults", "win.reset-view")]));
-        view.append_section(None, &section(&[("Zoom _In", "win.zoom-in"), ("Zoom _Out", "win.zoom-out"), ("Normal Si_ze", "win.zoom-normal")]));
-        view.append_section(None, &section(&[("Loc_k Toolbar", "win.lock-bar")]));
-        bar.append_submenu(Some("_View"), &view);
+        sort.append_section(None, &section(&[(n_("_Reversed Order"), "win.sort-desc"), (n_("_Folders Before Files"), "win.folders-first")]));
+        view.append_submenu(Some(&tr("Arrange _Items")), &sort);
+        view.append_section(None, &section(&[(n_("_Visible Columns…"), "win.visible-columns")]));
+        view.append_section(None, &section(&[(n_("Reset View to _Defaults"), "win.reset-view")]));
+        view.append_section(None, &section(&[(n_("Zoom _In"), "win.zoom-in"), (n_("Zoom _Out"), "win.zoom-out"), (n_("Normal Si_ze"), "win.zoom-normal")]));
+        view.append_section(None, &section(&[(n_("Loc_k Toolbar"), "win.lock-bar")]));
+        bar.append_submenu(Some(&tr("_View")), &view);
 
         let go = gio::Menu::new();
-        go.append_section(None, &section(&[("_Back", "win.back"), ("_Forward", "win.forward"), ("_Open Parent", "win.up")]));
-        go.append_section(None, &section(&[("_Home Folder", "win.home"), ("_Desktop", "win.go-desktop"), ("File _System", "win.go-root"), ("_Trash", "win.go-trash")]));
-        go.append_section(None, &section(&[("_Location…", "win.location"), ("_Filter…", "win.filter")]));
-        go.append_section(None, &section(&[("Clea_r History", "win.clear-history")]));
-        bar.append_submenu(Some("_Go"), &go);
+        go.append_section(None, &section(&[(n_("_Back"), "win.back"), (n_("_Forward"), "win.forward"), (n_("_Open Parent"), "win.up")]));
+        go.append_section(None, &section(&[(n_("_Home Folder"), "win.home"), (n_("_Desktop"), "win.go-desktop"), (n_("File _System"), "win.go-root"), (n_("_Trash"), "win.go-trash")]));
+        go.append_section(None, &section(&[(n_("_Location…"), "win.location"), (n_("_Filter…"), "win.filter")]));
+        go.append_section(None, &section(&[(n_("Clea_r History"), "win.clear-history")]));
+        bar.append_submenu(Some(&tr("_Go")), &go);
 
         let bm = gio::Menu::new();
-        bm.append_section(None, &section(&[("_Add Bookmark", "win.add-bookmark"), ("_Edit Bookmarks…", "win.edit-bookmarks")]));
+        bm.append_section(None, &section(&[(n_("_Add Bookmark"), "win.add-bookmark"), (n_("_Edit Bookmarks…"), "win.edit-bookmarks")]));
         bm.append_section(None, &self.bookmarks_menu);
-        bar.append_submenu(Some("_Bookmarks"), &bm);
+        bar.append_submenu(Some(&tr("_Bookmarks")), &bm);
 
         let help = gio::Menu::new();
-        help.append(Some("_Keyboard Shortcuts"), Some("win.shortcuts"));
-        help.append(Some("_About"), Some("win.about"));
-        bar.append_submenu(Some("_Help"), &help);
+        help.append(Some(&tr("_Keyboard Shortcuts")), Some("win.shortcuts"));
+        help.append(Some(&tr("_About")), Some("win.about"));
+        bar.append_submenu(Some(&tr("_Help")), &help);
     }
 
     pub(super) fn refresh_bookmarks(&self) {
@@ -98,7 +98,7 @@ impl AppWindow {
     pub(super) fn refresh_templates(&self) {
         self.templates_menu.remove_all();
         let empty = gio::Menu::new();
-        empty.append(Some("_Empty Document"), Some("win.new-file"));
+        empty.append(Some(&tr("_Empty Document")), Some("win.new-file"));
         self.templates_menu.append_section(None, &empty);
         let tm = gio::Menu::new();
         if let Some(dir) = glib::user_special_dir(glib::UserDirectory::Templates) {
@@ -138,7 +138,7 @@ impl AppWindow {
             }
         }
         let other = gio::Menu::new();
-        other.append(Some("Other _Application…"), Some("win.open-with-other"));
+        other.append(Some(&tr("Other _Application…")), Some("win.open-with-other"));
         m.append_section(None, &other);
         m
     }
@@ -151,7 +151,7 @@ impl AppWindow {
             let m = gio::Menu::new();
             for (k, l, a) in items {
                 if shown(k) {
-                    m.append(Some(l), Some(a));
+                    m.append(Some(&tr(l)), Some(a));
                 }
             }
             m
@@ -163,81 +163,81 @@ impl AppWindow {
         // preferences (actions::menu_order) then lays them out.
         let mut entries: std::collections::HashMap<String, gio::MenuItem> = Default::default();
         let mut add = |k: &str, label: &str, action: &str| {
-            entries.insert(k.to_string(), gio::MenuItem::new(Some(label), Some(action)));
+            entries.insert(k.to_string(), gio::MenuItem::new(Some(&tr(label)), Some(action)));
         };
         let mut submenus: Vec<(&str, &str, gio::Menu)> = vec![];
         if on_sel {
             let all_dirs = sel.iter().all(|r| r.is_dir);
             if in_trash {
-                add("restore", "_Restore", "win.restore");
-                add("cut", "Cu_t", "win.cut");
-                add("copy", "_Copy", "win.copy");
-                add("delete", "_Delete Permanently", "win.delete");
+                add("restore", n_("_Restore"), "win.restore");
+                add("cut", n_("Cu_t"), "win.cut");
+                add("copy", n_("_Copy"), "win.copy");
+                add("delete", n_("_Delete Permanently"), "win.delete");
             } else {
                 if all_dirs {
-                    add("open", "_Open", "win.open");
-                    add("open-new-tab", "Open in New _Tab", "win.open-new-tab");
-                    add("open-new-window", "Open in New _Window", "win.open-new-window");
+                    add("open", n_("_Open"), "win.open");
+                    add("open-new-tab", n_("Open in New _Tab"), "win.open-new-tab");
+                    add("open-new-window", n_("Open in New _Window"), "win.open-new-window");
                 } else {
                     let label = gio::AppInfo::default_for_type(&sel[0].ctype, false)
                         .filter(|_| sel.iter().all(|r| r.ctype == sel[0].ctype))
-                        .map(|a| format!("_Open With {}", a.display_name().replace('_', "__")))
-                        .unwrap_or_else(|| "_Open".into());
+                        .map(|a| fill(&tr("_Open With {program}"), &[("program", &a.display_name().replace('_', "__"))]))
+                        .unwrap_or_else(|| n_("_Open").into());
                     add("open", &label, "win.open");
                 }
                 // Caja's entry in search results.
                 if pane.is_searching() && sel.len() == 1 {
-                    add("open-parent", "Open parent location", "win.open-parent");
+                    add("open-parent", n_("Open parent location"), "win.open-parent");
                 }
                 if shown("open-with") {
-                    submenus.push(("open-with", "Open Wit_h", self.open_with_menu(&sel)));
+                    submenus.push(("open-with", n_("Open Wit_h"), self.open_with_menu(&sel)));
                 }
-                add("cut", "Cu_t", "win.cut");
-                add("copy", "_Copy", "win.copy");
+                add("cut", n_("Cu_t"), "win.cut");
+                add("copy", n_("_Copy"), "win.copy");
                 if sel.len() == 1 && all_dirs {
-                    add("paste-into", "Paste _Into Folder", "win.paste-into");
+                    add("paste-into", n_("Paste _Into Folder"), "win.paste-into");
                 }
-                add("duplicate", "D_uplicate", "win.duplicate");
-                add("make-link", "Ma_ke Link", "win.make-link");
-                add("rename", "_Rename…", "win.rename");
+                add("duplicate", n_("D_uplicate"), "win.duplicate");
+                add("make-link", n_("Ma_ke Link"), "win.make-link");
+                add("rename", n_("_Rename…"), "win.rename");
                 // The bulk rename window: "Rename All…" for several items
                 // (as in Caja's caja-rename), "Advanced Rename…" for one.
-                add("rename-all", if sel.len() > 1 { "Rename _All…" } else { "Advanced Re_name…" }, "win.rename-all");
-                add("copy-to", "Copy T_o…", "win.copy-to");
-                add("move-to", "_Move To…", "win.move-to");
-                add("trash", "Mo_ve to Trash", "win.trash");
-                add("delete", "_Delete", "win.delete");
+                add("rename-all", if sel.len() > 1 { n_("Rename _All…") } else { n_("Advanced Re_name…") }, "win.rename-all");
+                add("copy-to", n_("Copy T_o…"), "win.copy-to");
+                add("move-to", n_("_Move To…"), "win.move-to");
+                add("trash", n_("Mo_ve to Trash"), "win.trash");
+                add("delete", n_("_Delete"), "win.delete");
                 if util::archiver_command().is_some() {
                     if sel.iter().all(|r| util::is_archive(&r.ctype)) {
-                        add("extract", "E_xtract Here", "win.extract");
+                        add("extract", n_("E_xtract Here"), "win.extract");
                     }
-                    add("compress", "_Compress…", "win.compress");
+                    add("compress", n_("_Compress…"), "win.compress");
                 }
                 if sel.len() == 1 && all_dirs {
-                    add("terminal", "Open in _Terminal", "win.terminal");
+                    add("terminal", n_("Open in _Terminal"), "win.terminal");
                 }
             }
-            add("properties", "_Properties", "win.properties");
+            add("properties", n_("_Properties"), "win.properties");
         } else {
             if in_trash {
-                add("bg:empty-trash", "_Empty Trash", "win.empty-trash");
+                add("bg:empty-trash", n_("_Empty Trash"), "win.empty-trash");
             } else {
-                add("bg:new-folder", "Create _Folder", "win.new-folder");
+                add("bg:new-folder", n_("Create _Folder"), "win.new-folder");
                 if shown("bg:new-document") {
-                    submenus.push(("bg:new-document", "Create _Document", self.templates_menu.clone()));
+                    submenus.push(("bg:new-document", n_("Create _Document"), self.templates_menu.clone()));
                 }
-                add("bg:terminal", "Open in _Terminal", "win.terminal");
-                add("bg:paste", "_Paste", "win.paste");
-                add("bg:paste-check", "Paste and C_heck", "win.paste-check");
+                add("bg:terminal", n_("Open in _Terminal"), "win.terminal");
+                add("bg:paste", n_("_Paste"), "win.paste");
+                add("bg:paste-check", n_("Paste and C_heck"), "win.paste-check");
                 // The menu bar's View menu without Reload, zooming and
                 // Arrange Items (their own entries); each entry can be hidden.
                 if shown("bg:view") {
                     let sub = gio::Menu::new();
-                    sub.append_section(None, &sec(&[("bg:view-icons", "_Icons", "win.view-mode::icon"), ("bg:view-list", "_List", "win.view-mode::list"), ("bg:view-compact", "_Compact", "win.view-mode::compact"), ("bg:view-columns", "C_olumns", "win.view-mode::columns")]));
-                    sub.append_section(None, &sec(&[("bg:show-hidden", "Show _Hidden Files", "win.show-hidden"), ("bg:view-sidepane", "_Side Pane", "win.show-sidebar"), ("bg:view-extrapane", "E_xtra Pane", "win.split-view"), ("bg:view-statusbar", "St_atusbar", "win.show-statusbar")]));
+                    sub.append_section(None, &sec(&[("bg:view-icons", n_("_Icons"), "win.view-mode::icon"), ("bg:view-list", n_("_List"), "win.view-mode::list"), ("bg:view-compact", n_("_Compact"), "win.view-mode::compact"), ("bg:view-columns", n_("C_olumns"), "win.view-mode::columns")]));
+                    sub.append_section(None, &sec(&[("bg:show-hidden", n_("Show _Hidden Files"), "win.show-hidden"), ("bg:view-sidepane", n_("_Side Pane"), "win.show-sidebar"), ("bg:view-extrapane", n_("E_xtra Pane"), "win.split-view"), ("bg:view-statusbar", n_("St_atusbar"), "win.show-statusbar")]));
                     // Left out if every entry in it is hidden.
                     if (0..sub.n_items()).any(|i| sub.item_link(i, "section").is_some_and(|m| m.n_items() > 0)) {
-                        submenus.push(("bg:view", "_View", sub));
+                        submenus.push(("bg:view", n_("_View"), sub));
                     }
                 }
                 if shown("bg:arrange") {
@@ -245,19 +245,19 @@ impl AppWindow {
                     arrange.append_section(None, &sort_section(false));
                     arrange.append_section(None, &sort_section(true));
                     let more = gio::Menu::new();
-                    more.append(Some("_Reversed Order"), Some("win.sort-desc"));
-                    more.append(Some("_Folders Before Files"), Some("win.folders-first"));
+                    more.append(Some(&tr("_Reversed Order")), Some("win.sort-desc"));
+                    more.append(Some(&tr("_Folders Before Files")), Some("win.folders-first"));
                     arrange.append_section(None, &more);
-                    submenus.push(("bg:arrange", "Arrange _Items", arrange));
+                    submenus.push(("bg:arrange", n_("Arrange _Items"), arrange));
                 }
-                add("bg:add-bookmark", "Add _Bookmark", "win.add-bookmark");
+                add("bg:add-bookmark", n_("Add _Bookmark"), "win.add-bookmark");
             }
-            add("bg:select-all", "Select _All", "win.select-all");
-            add("bg:reload", "_Reload", "win.reload");
-            add("bg:properties", "_Properties", "win.properties");
+            add("bg:select-all", n_("Select _All"), "win.select-all");
+            add("bg:reload", n_("_Reload"), "win.reload");
+            add("bg:properties", n_("_Properties"), "win.properties");
         }
         for (k, label, sub) in submenus {
-            entries.insert(k.to_string(), gio::MenuItem::new_submenu(Some(label), &sub));
+            entries.insert(k.to_string(), gio::MenuItem::new_submenu(Some(&tr(label)), &sub));
         }
         // Custom actions, only for local folders: their commands get paths.
         let custom = actions::load();
@@ -344,7 +344,7 @@ impl AppWindow {
         let sel: Vec<std::path::PathBuf> = if bg { vec![] } else { p.selected_files().iter().filter_map(|f| f.path()).collect() };
         let cmd = actions::expand(&a.command, &sel, &dir);
         if let Err(e) = util::spawn_in_dir(&[actions::shell(), "-c".into(), cmd], Some(&dir)) {
-            util::error_dialog(Some(self.window.upcast_ref()), &format!("Could not run “{}”", a.name), &e);
+            util::error_dialog(Some(self.window.upcast_ref()), &fill(&tr("Could not run “{name}”"), &[("name", &a.name)]), &e);
         }
     }
 }

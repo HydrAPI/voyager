@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
+use crate::i18n::{fill, n_, tr, trn};
 use crate::util;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -178,13 +179,27 @@ const RELIABLE_RATE_AFTER: Duration = Duration::from_secs(15);
 /// A time left as Caja words it: "40 seconds", "3 minutes", "1 hour, 20
 /// minutes", "approximately 5 hours".
 fn format_time_left(secs: u64) -> String {
-    let plural = |n: u64, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    let seconds = |n: u64| fill(&trn("{n} second", "{n} seconds", n), &[("n", &n)]);
+    let minutes = |n: u64| fill(&trn("{n} minute", "{n} minutes", n), &[("n", &n)]);
+    let hours = |n: u64| fill(&trn("{n} hour", "{n} hours", n), &[("n", &n)]);
     match secs {
-        0..60 => plural(secs, "second", "seconds"),
-        60..3600 => plural(secs / 60, "minute", "minutes"),
-        3600..14400 => format!("{}, {}", plural(secs / 3600, "hour", "hours"), plural(secs % 3600 / 60, "minute", "minutes")),
-        _ => format!("approximately {}", plural(secs / 3600, "hour", "hours")),
+        0..60 => seconds(secs),
+        60..3600 => minutes(secs / 60),
+        // TRANSLATORS: "2 hours, 5 minutes".
+        3600..14400 => fill(&tr("{hours}, {minutes}"), &[("hours", &hours(secs / 3600)), ("minutes", &minutes(secs % 3600 / 60))]),
+        _ => fill(&tr("approximately {hours}"), &[("hours", &hours(secs / 3600))]),
     }
+}
+
+/// "Copying “a.txt”", "Moving …", "Linking …" for the progress: `verb` is
+/// the worker's (or its copy_verb()).
+fn doing(verb: &str, name: &str) -> String {
+    let template = match verb {
+        "Moving" => tr("Moving “{name}”"),
+        "Linking" => tr("Linking “{name}”"),
+        _ => tr("Copying “{name}”"),
+    };
+    fill(&template, &[("name", &name)])
 }
 
 /// Caja's progress details for a job counted in bytes: "4 MB of 10 MB",
@@ -192,11 +207,12 @@ fn format_time_left(secs: u64) -> String {
 /// (1 MB/sec)".
 pub fn bytes_detail(done: u64, total: u64, working: Duration) -> String {
     let total = total.max(done);
-    let mut s = format!("{} of {}", util::format_size(done), util::format_size(total));
+    let mut s = fill(&tr("{done} of {total}"), &[("done", &util::format_size(done)), ("total", &util::format_size(total))]);
     if working >= RELIABLE_RATE_AFTER && done > 0 {
         let rate = done as f64 / working.as_secs_f64();
         let left = ((total - done) as f64 / rate) as u64;
-        s.push_str(&format!(" \u{2014} {} left ({}/sec)", format_time_left(left), util::format_size(rate as u64)));
+        // TRANSLATORS: after "4 MB of 10 MB": " — 2 minutes left (1 MB/sec)".
+        s.push_str(&fill(&tr(" — {time} left ({rate}/sec)"), &[("time", &format_time_left(left)), ("rate", &util::format_size(rate as u64))]));
     }
     s
 }
@@ -204,10 +220,10 @@ pub fn bytes_detail(done: u64, total: u64, working: Duration) -> String {
 /// The same for a job counted in items: "40 of 120 items — 1 minute left".
 fn items_detail(done: u64, total: u64, working: Duration) -> String {
     let total = total.max(done);
-    let mut s = format!("{done} of {total} items");
+    let mut s = fill(&trn("{done} of {total} item", "{done} of {total} items", total), &[("done", &done), ("total", &total)]);
     if working >= RELIABLE_RATE_AFTER && done > 0 {
         let rate = done as f64 / working.as_secs_f64();
-        s.push_str(&format!(" \u{2014} {} left", format_time_left(((total - done) as f64 / rate) as u64)));
+        s.push_str(&fill(&tr(" — {time} left"), &[("time", &format_time_left(((total - done) as f64 / rate) as u64))]));
     }
     s
 }
@@ -229,9 +245,9 @@ fn describe(f: &gio::File) -> String {
         Ok(i) => {
             let when = util::format_time(i.attribute_uint64("time::modified") as i64);
             if i.file_type() == gio::FileType::Directory {
-                format!("Folder, modified {when}")
+                fill(&tr("Folder, modified {date}"), &[("date", &when)])
             } else {
-                format!("{}, modified {when}", util::format_size(i.size() as u64))
+                fill(&tr("{size}, modified {date}"), &[("size", &util::format_size(i.size() as u64)), ("date", &when)])
             }
         }
         Err(_) => String::new(),
@@ -392,7 +408,8 @@ impl Worker {
     /// Entries of folder `f`. Read errors go through the error dialog: Retry reads
     /// the folder again, Skip gives None and counts as skipped, so a move that
     /// couldn't copy everything keeps its source.
-    fn list_children(&mut self, f: &gio::File, what: &str) -> Result<Option<Vec<std::path::PathBuf>>, Cancelled> {
+    /// `failed`: the error's title, with {name} (marked with n_()).
+    fn list_children(&mut self, f: &gio::File, failed: &str) -> Result<Option<Vec<std::path::PathBuf>>, Cancelled> {
         loop {
             if self.cancelled() {
                 return Err(Cancelled);
@@ -410,7 +427,7 @@ impl Worker {
                 }
                 Err(e) => e,
             };
-            match self.ask_error(format!("Error while {what} “{}”", base_name(f)), &err, false) {
+            match self.ask_error(fill(&tr(failed), &[("name", &base_name(f))]), &err, false) {
                 ErrChoice::Retry => continue,
                 ErrChoice::Cancel => return Err(Cancelled),
                 _ => return Ok(None),
@@ -447,7 +464,7 @@ impl Worker {
         self.by_bytes = true;
         self.moves.sizes = Some(sizes);
         let name = self.moves.srcs.get(at).map(base_name).unwrap_or_default();
-        self.progress(&format!("{} “{name}”", self.verb), true);
+        self.progress(&doing(self.verb, &name), true);
     }
 
     fn scan(&self, f: &gio::File, bytes: &mut u64, items: &mut u64) {
@@ -490,11 +507,11 @@ impl Worker {
             match remove(f, &self.cancel) {
                 Ok(()) => {
                     self.done_items += 1;
-                    self.progress(&format!("Deleting “{}”", base_name(f)), false);
+                    self.progress(&fill(&tr("Deleting “{name}”"), &[("name", &base_name(f))]), false);
                     return Ok(());
                 }
                 Err(e) if e.matches(gio::IOErrorEnum::NotEmpty) => {
-                    let Some(children) = self.list_children(f, "deleting")? else {
+                    let Some(children) = self.list_children(f, n_("Error while deleting “{name}”"))? else {
                         return Ok(());
                     };
                     let before = self.skipped;
@@ -511,7 +528,7 @@ impl Worker {
                             return Ok(());
                         }
                         Err(e) => {
-                            return match self.ask_error(format!("Error while deleting “{}”", base_name(f)), &e, false) {
+                            return match self.ask_error(fill(&tr("Error while deleting “{name}”"), &[("name", &base_name(f))]), &e, false) {
                                 ErrChoice::Retry => continue,
                                 ErrChoice::Cancel => Err(Cancelled),
                                 _ => Ok(()),
@@ -521,7 +538,7 @@ impl Worker {
                 }
                 Err(e) if e.matches(gio::IOErrorEnum::NotFound) => return Ok(()),
                 Err(e) => {
-                    match self.ask_error(format!("Error while deleting “{}”", base_name(f)), &e, false) {
+                    match self.ask_error(fill(&tr("Error while deleting “{name}”"), &[("name", &base_name(f))]), &e, false) {
                         ErrChoice::Retry => continue,
                         ErrChoice::Cancel => return Err(Cancelled),
                         _ => return Ok(()),
@@ -547,7 +564,7 @@ impl Worker {
         let info = loop {
             match src.query_info("standard::type,standard::size,unix::mode", NOFOLLOW, Some(&self.cancel)) {
                 Ok(i) => break i,
-                Err(e) => match self.ask_error(format!("Error while copying “{}”", base_name(src)), &e, false) {
+                Err(e) => match self.ask_error(fill(&tr("Error while copying “{name}”"), &[("name", &base_name(src))]), &e, false) {
                     ErrChoice::Retry => continue,
                     ErrChoice::Cancel => return Err(Cancelled),
                     _ => return Ok(()),
@@ -591,7 +608,7 @@ impl Worker {
                             Resolution::Cancel => return Err(Cancelled),
                         }
                     }
-                    Err(e) => match self.ask_error(format!("Error while copying “{}”", base_name(src)), &e, false) {
+                    Err(e) => match self.ask_error(fill(&tr("Error while copying “{name}”"), &[("name", &base_name(src))]), &e, false) {
                         ErrChoice::Retry => continue,
                         ErrChoice::Cancel => return Err(Cancelled),
                         _ => return Ok(()),
@@ -606,7 +623,7 @@ impl Worker {
                 self.record(src, &dst, replaced);
             }
             self.done_items += 1;
-            let Some(children) = self.list_children(src, "reading")? else {
+            let Some(children) = self.list_children(src, n_("Error while reading “{name}”"))? else {
                 return Ok(());
             };
             let mut none = None;
@@ -636,7 +653,7 @@ impl Worker {
             let total = self.total_bytes;
             let tx = self.tx.clone();
             let mut last = Instant::now();
-            let label = format!("{} “{name}”", self.copy_verb());
+            let label = doing(self.copy_verb(), &name);
             let (paused, cancel, clock) = (self.paused.clone(), self.cancel.clone(), self.clock.clone());
             let mut cb = |cur: i64, _tot: i64| {
                 // Pausing in the middle of a big file stops the copy here.
@@ -694,10 +711,10 @@ impl Worker {
                         let failure = match self.verify(src, &dst, size) {
                             Ok(true) => None,
                             Ok(false) => Some((
-                                format!("“{name}” is different after copying"),
-                                glib::Error::new(gio::IOErrorEnum::Failed, "The copy doesn't match the original (their CRC32 checksums differ): it was changed on the way. Retry copies it again; Skip keeps it as it is (and a moved file's original too)."),
+                                fill(&tr("“{name}” is different after copying"), &[("name", &name)]),
+                                glib::Error::new(gio::IOErrorEnum::Failed, &tr("The copy doesn’t match the original (their CRC32 checksums differ): it was changed on the way. Retry copies it again; Skip keeps it as it is (and a moved file’s original too).")),
                             )),
-                            Err(e) => Some((format!("Error while checking “{name}”"), e)),
+                            Err(e) => Some((fill(&tr("Error while checking “{name}”"), &[("name", &name)]), e)),
                         };
                         if let Some((title, e)) = failure {
                             match self.ask_error(title, &e, false) {
@@ -727,7 +744,7 @@ impl Worker {
                     if record {
                         self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
                     }
-                    self.progress(&format!("{} “{name}”", self.copy_verb()), false);
+                    self.progress(&doing(self.copy_verb(), &name), false);
                     return Ok(());
                 }
                 Err(e) if e.matches(gio::IOErrorEnum::Exists) => {
@@ -757,7 +774,7 @@ impl Worker {
                         Resolution::Cancel => return Err(Cancelled),
                     }
                 }
-                Err(e) => match self.ask_error(format!("Error while copying “{name}”"), &e, false) {
+                Err(e) => match self.ask_error(fill(&tr("Error while copying “{name}”"), &[("name", &name)]), &e, false) {
                     ErrChoice::Retry => continue,
                     ErrChoice::Cancel => return Err(Cancelled),
                     _ => {
@@ -773,7 +790,7 @@ impl Worker {
     /// disk or share, not from memory) and their CRC32s compared. `size`:
     /// the file's, for the progress (counted after the copy's own bytes).
     fn verify(&mut self, src: &gio::File, dst: &gio::File, size: u64) -> Result<bool, glib::Error> {
-        let label = format!("Checking “{}”", base_name(src));
+        let label = fill(&tr("Checking “{name}”"), &[("name", &base_name(src))]);
         let base = self.done_bytes + size;
         let a = self.crc32(src, false, base, &label)?;
         #[cfg(test)]
@@ -828,7 +845,7 @@ impl Worker {
                     if created.is_none() {
                         *created = Some(dst.uri().to_string());
                     }
-                    self.progress(&format!("Moving “{name}”"), false);
+                    self.progress(&fill(&tr("Moving “{name}”"), &[("name", &name)]), false);
                     return Ok(());
                 }
                 Err(e) if e.matches(gio::IOErrorEnum::Exists) => {
@@ -843,7 +860,7 @@ impl Worker {
                         Resolution::Replace => {
                             if src_dir && dst_dir {
                                 // merge: move children one by one, then remove src
-                                let Some(children) = self.list_children(src, "reading")? else {
+                                let Some(children) = self.list_children(src, n_("Error while reading “{name}”"))? else {
                                     return Ok(());
                                 };
                                 let before = self.skipped;
@@ -890,7 +907,7 @@ impl Worker {
                     }
                     return Ok(());
                 }
-                Err(e) => match self.ask_error(format!("Error while moving “{name}”"), &e, false) {
+                Err(e) => match self.ask_error(fill(&tr("Error while moving “{name}”"), &[("name", &name)]), &e, false) {
                     ErrChoice::Retry => continue,
                     ErrChoice::Cancel => return Err(Cancelled),
                     _ => return Ok(()),
@@ -923,7 +940,7 @@ impl Worker {
                 if kind == Kind::Move {
                     self.moves.srcs = items.iter().map(|it| gio::File::for_uri(&it.src)).collect();
                 }
-                self.progress("Preparing…", true);
+                self.progress(&tr("Preparing…"), true);
                 for (at, it) in items.into_iter().enumerate() {
                     self.moves.at = at;
                     let src = gio::File::for_uri(&it.src);
@@ -932,9 +949,10 @@ impl Worker {
                     if kind != Kind::Link && (dest_dir.has_prefix(&src) || src.equal(&dest_dir)) {
                         let e = glib::Error::new(
                             gio::IOErrorEnum::InvalidArgument,
-                            "The destination is inside the source folder.",
+                            &tr("The destination is inside the source folder."),
                         );
-                        if self.ask_error(format!("Cannot {} “{}” into itself", if kind == Kind::Move { "move" } else { "copy" }, base_name(&src)), &e, false) == ErrChoice::Cancel {
+                        let failed = if kind == Kind::Move { tr("Cannot move “{name}” into itself") } else { tr("Cannot copy “{name}” into itself") };
+                        if self.ask_error(fill(&failed, &[("name", &base_name(&src))]), &e, false) == ErrChoice::Cancel {
                             break;
                         }
                         continue;
@@ -960,7 +978,8 @@ impl Worker {
                             }
                         }
                         Kind::Link => {
-                            let name = if same_dir { format!("Link to {name}") } else { name };
+                            // TRANSLATORS: the name of a link made beside its target.
+                            let name = if same_dir { fill(&tr("Link to {name}"), &[("name", &name)]) } else { name };
                             let name = util::unique_name(&dest_dir, &name, src_is_dir);
                             let dst = dest_dir.child(&name);
                             let target = src
@@ -974,7 +993,7 @@ impl Worker {
                                     self.done_items += 1;
                                     Ok(())
                                 }
-                                Err(e) => match self.ask_error(format!("Cannot create link to “{name}”"), &e, false) {
+                                Err(e) => match self.ask_error(fill(&tr("Cannot create link to “{name}”"), &[("name", &name)]), &e, false) {
                                     ErrChoice::Cancel => Err(Cancelled),
                                     _ => Ok(()),
                                 },
@@ -997,7 +1016,7 @@ impl Worker {
             Job::Trash(uris) => {
                 self.verb = "Moving to Trash";
                 self.total_items = uris.len() as u64;
-                self.progress("Preparing…", true);
+                self.progress(&tr("Preparing…"), true);
                 for u in uris {
                     let f = gio::File::for_uri(&u);
                     loop {
@@ -1009,11 +1028,11 @@ impl Worker {
                                 // For Undo: brought back out of the trash.
                                 self.undo.push(Moved { src: u.clone(), dst: String::new(), replaced: false });
                                 self.done_items += 1;
-                                self.progress(&format!("Trashing “{}”", base_name(&f)), false);
+                                self.progress(&fill(&tr("Trashing “{name}”"), &[("name", &base_name(&f))]), false);
                                 break;
                             }
                             Err(e) => match self.ask_error(
-                                format!("“{}” can't be put in the trash. Delete it permanently?", base_name(&f)),
+                                fill(&tr("“{name}” can’t be put in the trash. Delete it permanently?"), &[("name", &base_name(&f))]),
                                 &e,
                                 true,
                             ) {
@@ -1038,7 +1057,7 @@ impl Worker {
                     self.scan(&gio::File::for_uri(u), &mut b, &mut n);
                     self.total_items += n;
                 }
-                self.progress("Preparing…", true);
+                self.progress(&tr("Preparing…"), true);
                 for u in uris {
                     if self.delete_rec(&gio::File::for_uri(&u), false).is_err() {
                         break;
@@ -1059,7 +1078,7 @@ impl Worker {
                     })
                     .unwrap_or_default();
                 self.total_items = kids.len() as u64;
-                self.progress("Preparing…", true);
+                self.progress(&tr("Preparing…"), true);
                 for k in kids {
                     if self.delete_rec(&k, false).is_err() {
                         break;
@@ -1116,7 +1135,7 @@ struct View {
 /// The progress line under the bar, marked while the job is paused.
 fn progress_text(detail: &str, paused: bool) -> String {
     if paused {
-        format!("Paused — {}", detail.replace('\n', " — "))
+        fill(&tr("Paused — {progress}"), &[("progress", &detail.replace('\n', " — "))])
     } else {
         detail.to_string()
     }
@@ -1151,7 +1170,7 @@ pub fn open_window() {
         w.borrow_mut()
             .get_or_insert_with(|| {
                 let win = gtk::Window::new(gtk::WindowType::Toplevel);
-                win.set_title("File Operations");
+                win.set_title(&tr("File Operations"));
                 win.set_default_size(440, -1);
                 win.set_resizable(false);
                 win.set_icon_name(Some(crate::util::app_icon()));
@@ -1276,7 +1295,7 @@ fn update_row(op: &Op, r: &Row) {
     }
     let icon = if paused { "media-playback-start-symbolic" } else { "media-playback-pause-symbolic" };
     r.pause_img.set_from_icon_name(Some(icon), gtk::IconSize::Button);
-    r.pause.set_tooltip_text(Some(if paused { "Resume" } else { "Pause" }));
+    r.pause.set_tooltip_text(Some(&if paused { tr("Resume") } else { tr("Pause") }));
     // A cancelled job can't be paused or cancelled any more.
     r.pause.set_sensitive(!op.cancelled.get());
     r.cancel.set_sensitive(!op.cancelled.get());
@@ -1301,14 +1320,14 @@ fn build_row(op: &Rc<Op>) -> Row {
     let pause = gtk::ToggleButton::new();
     pause.add(&pause_img);
     let cancel = gtk::Button::from_icon_name(Some("process-stop-symbolic"), gtk::IconSize::Button);
-    cancel.set_tooltip_text(Some("Cancel"));
+    cancel.set_tooltip_text(Some(&tr("Cancel")));
     let id = op.id;
     match op.state {
         OpState::Waiting => {
-            detail.set_text("Waiting for other operations…");
+            detail.set_text(&tr("Waiting for other operations…"));
             detail.set_hexpand(true);
             let go = gtk::Button::from_icon_name(Some("media-skip-forward-symbolic"), gtk::IconSize::Button);
-            go.set_tooltip_text(Some("Start now, alongside the running operations"));
+            go.set_tooltip_text(Some(&tr("Start now, alongside the running operations")));
             go.connect_clicked(move |_| {
                 if let Some(w) = take_waiting(id) {
                     (w.start)();
@@ -1364,24 +1383,25 @@ pub fn title_for(job: &Job) -> String {
     match job {
         Job::Transfer { kind, items, .. } => {
             let n = items.len();
+            // TRANSLATORS: {what} is a name in quotes or a number of items: "3 items".
             let what = if n == 1 {
                 format!("“{}”", gio::File::for_uri(&items[0].src).basename().map(|b| b.to_string_lossy().to_string()).unwrap_or_default())
             } else {
-                format!("{n} items")
+                fill(&trn("{n} item", "{n} items", n as u64), &[("n", &n)])
             };
             let to = items
                 .first()
                 .map(|i| util::display_name(&gio::File::for_uri(&i.dest_dir)))
                 .unwrap_or_default();
             match kind {
-                Kind::Copy => format!("Copying {what} to “{to}”"),
-                Kind::Move => format!("Moving {what} to “{to}”"),
-                Kind::Link => format!("Creating links to {what}"),
+                Kind::Copy => fill(&tr("Copying {what} to “{folder}”"), &[("what", &what), ("folder", &to)]),
+                Kind::Move => fill(&tr("Moving {what} to “{folder}”"), &[("what", &what), ("folder", &to)]),
+                Kind::Link => fill(&tr("Creating links to {what}"), &[("what", &what)]),
             }
         }
-        Job::Trash(v) => format!("Moving {} item{} to the Trash", v.len(), if v.len() == 1 { "" } else { "s" }),
-        Job::Delete(v) => format!("Deleting {} item{}", v.len(), if v.len() == 1 { "" } else { "s" }),
-        Job::EmptyTrash => "Emptying the Trash".into(),
+        Job::Trash(v) => fill(&trn("Moving {n} item to the Trash", "Moving {n} items to the Trash", v.len() as u64), &[("n", &v.len())]),
+        Job::Delete(v) => fill(&trn("Deleting {n} item", "Deleting {n} items", v.len() as u64), &[("n", &v.len())]),
+        Job::EmptyTrash => tr("Emptying the Trash"),
     }
 }
 
@@ -1488,7 +1508,7 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
         id: next_id(),
         title: title_for(&job),
         state: OpState::Running,
-        detail: RefCell::new("Preparing…".into()),
+        detail: RefCell::new(tr("Preparing…")),
         fraction: std::cell::Cell::new(0.0),
         paused: Arc::new(AtomicBool::new(false)),
         cancel: gio::Cancellable::new(),
@@ -1736,37 +1756,40 @@ pub fn note_chowns(items: Vec<(gio::File, Ids, Ids)>) {
 /// they'd take back or do again (underscores doubled for the menu).
 fn action_text(a: &Action) -> String {
     let name = |uri: &str| format!("“{}”", base_name(&gio::File::for_uri(uri)).replace('_', "__"));
+    // TRANSLATORS: in "_Undo Copy of 3 Items" and the like.
     let what = |uris: Vec<&str>| match uris.as_slice() {
         [one] => name(one),
-        many => format!("{} Items", many.len()),
+        many => fill(&trn("{n} Item", "{n} Items", many.len() as u64), &[("n", &many.len())]),
     };
+    // TRANSLATORS: these follow "_Undo " or "_Redo "; {what} is a name in quotes or "3 Items".
+    let text = |template: &str, what: String| fill(&tr(template), &[("what", &what)]);
     match a {
         Action::Transfer { kind, items } => {
-            let verb = match kind {
-                Kind::Copy => "Copy",
-                Kind::Move => "Move",
-                Kind::Link => "Link",
+            let template = match kind {
+                Kind::Copy => n_("Copy of {what}"),
+                Kind::Move => n_("Move of {what}"),
+                Kind::Link => n_("Link of {what}"),
             };
-            format!("{verb} of {}", what(items.iter().map(|m| m.dst.as_str()).collect()))
+            text(template, what(items.iter().map(|m| m.dst.as_str()).collect()))
         }
-        Action::Trash { uris, .. } => format!("Move to Trash of {}", what(uris.iter().map(String::as_str).collect())),
-        Action::Restore { uris, .. } => format!("Restore of {}", what(uris.iter().map(String::as_str).collect())),
-        Action::Rename { items } => format!("Rename of {}", what(items.iter().map(|(_, to)| to.as_str()).collect())),
-        Action::Create { uri, folder, .. } => format!("Creation of {}{}", if *folder { "Folder " } else { "" }, name(uri)),
-        Action::Mode { items } => format!("Change of Permissions of {}", what(items.iter().map(|i| i.0.as_str()).collect())),
-        Action::Chown { items } => format!("Change of Owner or Group of {}", what(items.iter().map(|i| i.0.as_str()).collect())),
+        Action::Trash { uris, .. } => text(n_("Move to Trash of {what}"), what(uris.iter().map(String::as_str).collect())),
+        Action::Restore { uris, .. } => text(n_("Restore of {what}"), what(uris.iter().map(String::as_str).collect())),
+        Action::Rename { items } => text(n_("Rename of {what}"), what(items.iter().map(|(_, to)| to.as_str()).collect())),
+        Action::Create { uri, folder, .. } => text(if *folder { n_("Creation of Folder {what}") } else { n_("Creation of {what}") }, name(uri)),
+        Action::Mode { items } => text(n_("Change of Permissions of {what}"), what(items.iter().map(|i| i.0.as_str()).collect())),
+        Action::Chown { items } => text(n_("Change of Owner or Group of {what}"), what(items.iter().map(|i| i.0.as_str()).collect())),
     }
 }
 
 /// The Edit menu's label for Undo ("_Undo Copy of “a.txt”"), or None if
 /// there's nothing to undo.
 pub fn undo_label() -> Option<String> {
-    UNDO.with(|u| u.borrow().last().map(|a| format!("_Undo {}", action_text(a))))
+    UNDO.with(|u| u.borrow().last().map(|a| fill(&tr("_Undo {action}"), &[("action", &action_text(a))])))
 }
 
 /// The same for Redo.
 pub fn redo_label() -> Option<String> {
-    REDO.with(|u| u.borrow().last().map(|a| format!("_Redo {}", action_text(a))))
+    REDO.with(|u| u.borrow().last().map(|a| fill(&tr("_Redo {action}"), &[("action", &action_text(a))])))
 }
 
 /// Whether `uri` may still be there (only local files are checked: asking
@@ -1778,7 +1801,7 @@ fn may_exist(uri: &str) -> bool {
 /// Takes back the last thing done. Err: why there was nothing to do.
 pub fn undo(parent: Option<gtk::Window>) -> Result<(), String> {
     let Some(a) = UNDO.with(|u| u.borrow_mut().pop()) else {
-        return Err("There is nothing to undo.".into());
+        return Err(tr("There is nothing to undo."));
     };
     changed();
     perform(parent, a, true)
@@ -1787,7 +1810,7 @@ pub fn undo(parent: Option<gtk::Window>) -> Result<(), String> {
 /// Does again the last thing undone. Err: why there was nothing to do.
 pub fn redo(parent: Option<gtk::Window>) -> Result<(), String> {
     let Some(a) = REDO.with(|u| u.borrow_mut().pop()) else {
-        return Err("There is nothing to redo.".into());
+        return Err(tr("There is nothing to redo."));
     };
     changed();
     perform(parent, a, false)
@@ -1807,7 +1830,7 @@ fn perform(parent: Option<gtk::Window>, a: Action, back: bool) -> Result<(), Str
         (false, Action::Trash { uris, .. }) | (true, Action::Restore { uris, .. }) => {
             let uris: Vec<String> = uris.into_iter().filter(|u| may_exist(u)).collect();
             if uris.is_empty() {
-                return Err("Nothing to do: the items are gone.".into());
+                return Err(tr("Nothing to do: the items are gone."));
             }
             // Undoing a restore: found in the trash from now on to redo it.
             let a = match a {
@@ -1818,7 +1841,7 @@ fn perform(parent: Option<gtk::Window>, a: Action, back: bool) -> Result<(), Str
         }
         (true, Action::Create { uri, .. }) => {
             if !may_exist(&uri) {
-                return Err("Nothing to undo: the item is gone.".into());
+                return Err(tr("Nothing to undo: the item is gone."));
             }
             run_with(parent, Job::Trash(vec![uri]), record(a), |_| {})
         }
@@ -1840,7 +1863,7 @@ fn perform(parent: Option<gtk::Window>, a: Action, back: bool) -> Result<(), Str
             for (from, to) in &steps {
                 let (from, to) = (gio::File::for_uri(from), gio::File::for_uri(to));
                 if to.query_exists(gio::Cancellable::NONE) {
-                    return Err(format!("“{}” is already used.", util::display_name(&to)));
+                    return Err(fill(&tr("“{name}” is already used."), &[("name", &util::display_name(&to))]));
                 }
                 from.set_display_name(&base_name(&to), gio::Cancellable::NONE).map_err(|e| e.message().to_string())?;
             }
@@ -1856,7 +1879,7 @@ fn perform(parent: Option<gtk::Window>, a: Action, back: bool) -> Result<(), Str
         (_, Action::Chown { items }) => {
             for (uri, before, after) in &items {
                 let (uid, gid) = if back { before } else { after };
-                let path = gio::File::for_uri(uri).path().ok_or("Only local files can change owner or group.")?;
+                let path = gio::File::for_uri(uri).path().ok_or_else(|| tr("Only local files can change owner or group."))?;
                 std::os::unix::fs::chown(path, Some(*uid), Some(*gid)).map_err(|e| e.to_string())?;
             }
             push(if back { &REDO } else { &UNDO }, a);
@@ -1873,13 +1896,13 @@ fn undo_transfer(kind: Kind, items: Vec<Moved>) -> Result<Job, String> {
         Kind::Copy | Kind::Link => {
             let uris: Vec<String> = items.into_iter().filter(|m| !m.replaced).map(|m| m.dst).collect();
             if uris.is_empty() {
-                return Err("Nothing to undo: the copies are gone or replaced other files.".into());
+                return Err(tr("Nothing to undo: the copies are gone or replaced other files."));
             }
             Job::Trash(uris)
         }
         Kind::Move => {
             if items.is_empty() {
-                return Err("Nothing to undo: the moved items are gone.".into());
+                return Err(tr("Nothing to undo: the moved items are gone."));
             }
             // A target name makes the job recreate a missing folder (one
             // emptied by moving into a folder of the same name).
@@ -1915,7 +1938,7 @@ fn redo_transfer(kind: Kind, items: Vec<Moved>) -> Result<Job, String> {
         })
         .collect();
     if items.is_empty() {
-        return Err("Nothing to redo: the items are gone.".into());
+        return Err(tr("Nothing to redo: the items are gone."));
     }
     Ok(Job::Transfer { kind, items, check: false })
 }
@@ -1926,7 +1949,7 @@ fn restore_job(uris: &[String], since: i64) -> Result<Job, String> {
     let paths: Vec<String> = uris.iter().filter_map(|u| gio::File::for_uri(u).path().map(|p| p.to_string_lossy().to_string())).collect();
     let found = find_in_trash(&paths, since);
     if found.is_empty() {
-        return Err("Nothing to do: the items are no longer in the Trash.".into());
+        return Err(tr("Nothing to do: the items are no longer in the Trash."));
     }
     let items = found
         .into_iter()
@@ -1976,20 +1999,28 @@ fn find_in_trash(paths: &[String], since: i64) -> Vec<(String, String)> {
 /// original, a message listing those that didn't.
 fn check_report(parent: Option<&gtk::Window>, matched: u64, failed: &[String]) {
     if failed.is_empty() {
-        let files = if matched == 1 { "1 file".to_string() } else { format!("{matched} files") };
-        util::notify("Arkha", &format!("Checked {files}: every copy matches its original."));
+        let files = fill(&trn("{n} file", "{n} files", matched), &[("n", &matched)]);
+        util::notify("Arkha", &fill(&tr("Checked {files}: every copy matches its original."), &[("files", &files)]));
         return;
     }
     let list = failed.iter().take(20).map(|n| format!("• {n}")).collect::<Vec<_>>().join("\n");
-    let more = if failed.len() > 20 { format!("\n… and {} more", failed.len() - 20) } else { String::new() };
+    let more = if failed.len() > 20 { format!("\n{}", fill(&tr("… and {n} more"), &[("n", &(failed.len() - 20))])) } else { String::new() };
     let d = gtk::MessageDialog::new(
         parent,
         gtk::DialogFlags::DESTROY_WITH_PARENT,
         gtk::MessageType::Warning,
         gtk::ButtonsType::Close,
-        &if failed.len() == 1 { "1 copy doesn't match its original".to_string() } else { format!("{} copies don't match their originals", failed.len()) },
+        &fill(&trn("{n} copy doesn’t match its original", "{n} copies don’t match their originals", failed.len() as u64), &[("n", &failed.len())]),
     );
-    d.set_secondary_text(Some(&format!("{list}{more}\n\nThey were kept as they are, and the originals of moved files were kept too. {matched} other {} matched.", if matched == 1 { "file" } else { "files" })));
+    let kept = fill(
+        &trn(
+            "They were kept as they are, and the originals of moved files were kept too. {n} other file matched.",
+            "They were kept as they are, and the originals of moved files were kept too. {n} other files matched.",
+            matched,
+        ),
+        &[("n", &matched)],
+    );
+    d.set_secondary_text(Some(&format!("{list}{more}\n\n{kept}")));
     d.connect_response(|d, _| d.close());
     d.show();
 }
@@ -1997,7 +2028,7 @@ fn check_report(parent: Option<&gtk::Window>, matched: u64, failed: &[String]) {
 fn notify_done(parent: &Option<gtk::Window>) {
     let watched = |w: &gtk::Window| w.is_visible() && w.is_active();
     if !parent.as_ref().is_some_and(watched) && !OPS_WINDOW.with(|w| w.borrow().as_ref().is_some_and(watched)) {
-        util::notify("Arkha", "Process completed");
+        util::notify("Arkha", &tr("Process completed"));
     }
 }
 
@@ -2014,23 +2045,18 @@ fn dialog_parent(parent: &Option<gtk::Window>) -> Option<gtk::Window> {
 async fn conflict_dialog(parent: Option<&gtk::Window>, req: &ConflictReq) -> (Resolution, bool, Option<String>) {
     let merge = req.src_is_dir && req.dest_is_dir;
     let primary = if merge {
-        format!("Merge folder “{}”?", req.name)
+        fill(&tr("Merge folder “{name}”?"), &[("name", &req.name)])
     } else if req.dest_is_dir {
-        format!("Replace folder “{}”?", req.name)
+        fill(&tr("Replace folder “{name}”?"), &[("name", &req.name)])
     } else {
-        format!("Replace file “{}”?", req.name)
+        fill(&tr("Replace file “{name}”?"), &[("name", &req.name)])
     };
     let secondary = if merge {
-        format!(
-            "A folder with the same name already exists in “{}”.\nMerging will ask before replacing any files in it that conflict.",
-            req.dest_dir
-        )
+        fill(&tr("A folder with the same name already exists in “{folder}”.\nMerging will ask before replacing any files in it that conflict."), &[("folder", &req.dest_dir)])
+    } else if req.dest_is_dir {
+        fill(&tr("Another folder with the same name already exists in “{folder}”.\nReplacing it will overwrite its content."), &[("folder", &req.dest_dir)])
     } else {
-        format!(
-            "Another {} with the same name already exists in “{}”.\nReplacing it will overwrite its content.",
-            if req.dest_is_dir { "folder" } else { "file" },
-            req.dest_dir
-        )
+        fill(&tr("Another file with the same name already exists in “{folder}”.\nReplacing it will overwrite its content."), &[("folder", &req.dest_dir)])
     };
     let d = gtk::MessageDialog::new(
         parent,
@@ -2039,12 +2065,12 @@ async fn conflict_dialog(parent: Option<&gtk::Window>, req: &ConflictReq) -> (Re
         gtk::ButtonsType::None,
         &primary,
     );
-    d.set_title("File conflict");
+    d.set_title(&tr("File conflict"));
     d.set_secondary_text(Some(&format!(
-        "{secondary}\n\nOriginal: {}\nReplace with: {}",
-        req.dest_desc, req.src_desc
+        "{secondary}\n\n{}",
+        fill(&tr("Original: {original}\nReplace with: {new}"), &[("original", &req.dest_desc), ("new", &req.src_desc)])
     )));
-    let all = gtk::CheckButton::with_label("Apply this action to all conflicts");
+    let all = gtk::CheckButton::with_label(&tr("Apply this action to all conflicts"));
     d.message_area()
         .downcast::<gtk::Box>()
         .unwrap()
@@ -2052,13 +2078,13 @@ async fn conflict_dialog(parent: Option<&gtk::Window>, req: &ConflictReq) -> (Re
     all.show();
     // A name of your own for the new item, as in Caja: Replace (or Merge)
     // becomes Rename once one is typed.
-    let rename = gtk::Expander::with_mnemonic("Select a _new name for the destination");
+    let rename = gtk::Expander::with_mnemonic(&tr("Select a _new name for the destination"));
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     let entry = gtk::Entry::new();
     entry.set_text(&req.name);
     entry.set_activates_default(true);
     entry.set_hexpand(true);
-    let reset = gtk::Button::with_mnemonic("R_eset");
+    let reset = gtk::Button::with_mnemonic(&tr("R_eset"));
     row.pack_start(&entry, true, true, 0);
     row.pack_start(&reset, false, false, 0);
     row.set_margin_top(6);
@@ -2068,11 +2094,11 @@ async fn conflict_dialog(parent: Option<&gtk::Window>, req: &ConflictReq) -> (Re
         .unwrap()
         .pack_start(&rename, false, false, 0);
     rename.show_all();
-    d.add_button("_Cancel", gtk::ResponseType::Cancel);
-    d.add_button("_Skip", gtk::ResponseType::Other(1));
-    d.add_button("_Keep Both", gtk::ResponseType::Other(2));
-    let replace_label = if merge { "_Merge" } else { "_Replace" };
-    let replace = d.add_button(replace_label, gtk::ResponseType::Other(3));
+    d.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
+    d.add_button(&tr("_Skip"), gtk::ResponseType::Other(1));
+    d.add_button(&tr("_Keep Both"), gtk::ResponseType::Other(2));
+    let replace_label = if merge { tr("_Merge") } else { tr("_Replace") };
+    let replace = d.add_button(&replace_label, gtk::ResponseType::Other(3));
     d.set_default_response(gtk::ResponseType::Other(3));
     // The typed name, if it's a usable one other than the item's own.
     let original = req.name.clone();
@@ -2085,7 +2111,7 @@ async fn conflict_dialog(parent: Option<&gtk::Window>, req: &ConflictReq) -> (Re
         entry.connect_changed(move |e| {
             let renaming = typed(e).is_some();
             if let Some(b) = replace.downcast_ref::<gtk::Button>() {
-                b.set_label(if renaming { "_Rename" } else { replace_label });
+                b.set_label(&if renaming { tr("_Rename") } else { replace_label.clone() });
             }
             // A name is for this item only.
             all.set_sensitive(!renaming);
@@ -2132,13 +2158,13 @@ async fn error_dialog(parent: Option<&gtk::Window>, title: &str, detail: &str, o
         title,
     );
     d.set_secondary_text(Some(detail));
-    d.add_button("_Cancel", gtk::ResponseType::Cancel);
-    d.add_button("S_kip All", gtk::ResponseType::Other(2));
-    d.add_button("_Skip", gtk::ResponseType::Other(1));
+    d.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
+    d.add_button(&tr("S_kip All"), gtk::ResponseType::Other(2));
+    d.add_button(&tr("_Skip"), gtk::ResponseType::Other(1));
     if offer_delete {
-        d.add_button("_Delete Permanently", gtk::ResponseType::Other(4));
+        d.add_button(&tr("_Delete Permanently"), gtk::ResponseType::Other(4));
     } else {
-        d.add_button("_Retry", gtk::ResponseType::Other(3));
+        d.add_button(&tr("_Retry"), gtk::ResponseType::Other(3));
     }
     let resp = d.run_future().await;
     d.close();
@@ -2209,7 +2235,7 @@ fn remove_path(path: &std::path::Path) -> Result<(), glib::Error> {
     removed.map_err(|e| {
         let reason = e.to_string();
         let reason = reason.split(" (os error").next().unwrap_or(&reason);
-        io_error_with(&e, &format!("Error removing file {}: {reason}", path.display()))
+        io_error_with(&e, &fill(&tr("Error removing file {path}: {reason}"), &[("path", &path.display()), ("reason", &reason)]))
     })
 }
 

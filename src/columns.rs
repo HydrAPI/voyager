@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use gio::prelude::*;
 use glib::translate::IntoGlib;
+use crate::i18n::tr;
 use gtk::prelude::*;
 
 use crate::pane::ModelGet;
@@ -50,7 +51,7 @@ pub fn style_column(w: &gtk::ScrolledWindow, on: bool) {
 
 /// Draws "Empty folder" in a column whose folder has nothing in it.
 pub fn draw_empty_hint(view: &gtk::TreeView, cr: &gtk::cairo::Context) {
-    let layout = view.create_pango_layout(Some("Empty folder"));
+    let layout = view.create_pango_layout(Some(&tr("Empty folder")));
     let (w, _) = layout.pixel_size();
     // In the theme's colour for dimmed text.
     let ctx = view.style_context();

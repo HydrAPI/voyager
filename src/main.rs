@@ -14,6 +14,7 @@ mod iconview;
 mod info;
 mod fm1;
 mod folders;
+mod i18n;
 mod icons;
 mod imagesize;
 mod keys;
@@ -36,6 +37,8 @@ use gio::prelude::*;
 use gtk::prelude::*;
 
 fn main() -> glib::ExitCode {
+    // First: it may set LANGUAGE, which threads mustn't see change.
+    i18n::init(&config::with(|s| s.language.clone()));
     pane::quiet_header_drags();
     // Before any window: they load icons (see there).
     util::tell_metadata_store_in_background();

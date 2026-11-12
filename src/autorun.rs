@@ -8,6 +8,7 @@
 //! Cinnamon and MATE (so Caja's are Arkha's and the other way round), and
 //! Arkha's own otherwise.
 
+use crate::i18n::{fill, n_, tr};
 use gio::prelude::*;
 use gtk::prelude::*;
 
@@ -190,7 +191,7 @@ fn start_app(medium: &Medium, app: Option<gio::AppInfo>) {
     let Some(app) = app else { return };
     let ctx = gdk::Display::default().and_then(|d| d.app_launch_context());
     if let Err(e) = app.launch_uris(&[medium.root.uri().as_str()], ctx.as_ref()) {
-        crate::util::error_dialog(None, &format!("Could not open “{}”", medium.name), e.message());
+        crate::util::error_dialog(None, &fill(&tr("Could not open “{name}”"), &[("name", &medium.name)]), e.message());
     }
 }
 
@@ -201,23 +202,23 @@ fn open_folder(root: &gio::File) {
 }
 
 /// Caja's words for the well-known kinds of media.
-fn greeting(ctype: &str) -> &'static str {
+fn greeting(ctype: &str) -> String {
     match ctype {
-        "x-content/audio-cdda" => "You have just inserted an Audio CD.",
-        "x-content/audio-dvd" => "You have just inserted an Audio DVD.",
-        "x-content/video-dvd" => "You have just inserted a Video DVD.",
-        "x-content/video-vcd" => "You have just inserted a Video CD.",
-        "x-content/video-svcd" => "You have just inserted a Super Video CD.",
-        "x-content/blank-cd" => "You have just inserted a blank CD.",
-        "x-content/blank-dvd" => "You have just inserted a blank DVD.",
-        "x-content/blank-bd" => "You have just inserted a blank Blu-Ray disc.",
-        "x-content/blank-hddvd" => "You have just inserted a blank HD DVD.",
-        "x-content/image-photocd" => "You have just inserted a Photo CD.",
-        "x-content/image-picturecd" => "You have just inserted a Picture CD.",
-        "x-content/image-dcf" => "You have just inserted a medium with digital photos.",
-        "x-content/audio-player" => "You have just inserted a digital audio player.",
-        t if gio::content_type_is_a(t, "x-content/software") => "You have just inserted a medium with software intended to be automatically started.",
-        _ => "You have just inserted a medium.",
+        "x-content/audio-cdda" => tr("You have just inserted an Audio CD."),
+        "x-content/audio-dvd" => tr("You have just inserted an Audio DVD."),
+        "x-content/video-dvd" => tr("You have just inserted a Video DVD."),
+        "x-content/video-vcd" => tr("You have just inserted a Video CD."),
+        "x-content/video-svcd" => tr("You have just inserted a Super Video CD."),
+        "x-content/blank-cd" => tr("You have just inserted a blank CD."),
+        "x-content/blank-dvd" => tr("You have just inserted a blank DVD."),
+        "x-content/blank-bd" => tr("You have just inserted a blank Blu-Ray disc."),
+        "x-content/blank-hddvd" => tr("You have just inserted a blank HD DVD."),
+        "x-content/image-photocd" => tr("You have just inserted a Photo CD."),
+        "x-content/image-picturecd" => tr("You have just inserted a Picture CD."),
+        "x-content/image-dcf" => tr("You have just inserted a medium with digital photos."),
+        "x-content/audio-player" => tr("You have just inserted a digital audio player."),
+        t if gio::content_type_is_a(t, "x-content/software") => tr("You have just inserted a medium with software intended to be automatically started."),
+        _ => tr("You have just inserted a medium."),
     }
 }
 
@@ -230,10 +231,10 @@ fn greeting(ctype: &str) -> &'static str {
 pub fn choices(ctype: &str, with_ask: bool) -> gtk::ComboBoxText {
     let c = gtk::ComboBoxText::new();
     if with_ask {
-        c.append(Some("ask"), "Ask what to do");
+        c.append(Some("ask"), &tr("Ask what to do"));
     }
-    c.append(Some("nothing"), "Do Nothing");
-    c.append(Some("folder"), "Open Folder");
+    c.append(Some("nothing"), &tr("Do Nothing"));
+    c.append(Some("folder"), &tr("Open Folder"));
     let default = gio::AppInfo::default_for_type(ctype, false);
     let mut apps = gio::AppInfo::all_for_type(ctype);
     if let Some(d) = &default {
@@ -242,10 +243,11 @@ pub fn choices(ctype: &str, with_ask: bool) -> gtk::ComboBoxText {
     }
     for a in &apps {
         if let Some(id) = a.id() {
-            c.append(Some(&format!("app:{id}")), &format!("Open {}", a.display_name()));
+            // TRANSLATORS: what to do with a medium: "Open Rhythmbox".
+            c.append(Some(&format!("app:{id}")), &fill(&tr("Open {program}"), &[("program", &a.display_name())]));
         }
     }
-    c.append(Some("other"), "Open with Other Application…");
+    c.append(Some("other"), &tr("Open with Other Application…"));
     // What it does now.
     let current = match action_for(ctype) {
         Action::Ask if with_ask => "ask".to_string(),
@@ -268,7 +270,7 @@ fn pick_other(combo: &gtk::ComboBoxText, ctype: &str, previous: Option<String>) 
         Some((id, name)) => {
             let key = format!("app:{id}");
             if !combo.set_active_id(Some(&key)) {
-                combo.append(Some(&key), &format!("Open {name}"));
+                combo.append(Some(&key), &fill(&tr("Open {program}"), &[("program", &name)]));
                 combo.set_active_id(Some(&key));
             }
         }
@@ -309,11 +311,12 @@ fn ask(medium: &Medium, ctype: &str) {
     hb.pack_start(&img, false, false, 0);
     let vb = gtk::Box::new(gtk::Orientation::Vertical, 12);
     let title = gtk::Label::new(None);
-    title.set_markup(&format!("<big><b>{} Choose what application to launch.</b></big>", glib::markup_escape_text(greeting(ctype))));
-    let text = gtk::Label::new(Some(&format!(
-        "Select how to open “{}” and whether to perform this action in the future for other media of type “{}”.",
-        medium.name,
-        gio::content_type_get_description(ctype)
+    // TRANSLATORS: after "You have just inserted an Audio CD." and the like.
+    let question = format!("{} {}", greeting(ctype), tr("Choose what application to launch."));
+    title.set_markup(&format!("<big><b>{}</b></big>", glib::markup_escape_text(&question)));
+    let text = gtk::Label::new(Some(&fill(
+        &tr("Select how to open “{name}” and whether to perform this action in the future for other media of type “{type}”."),
+        &[("name", &medium.name), ("type", &gio::content_type_get_description(ctype))],
     )));
     for l in [&title, &text] {
         l.set_line_wrap(true);
@@ -330,20 +333,20 @@ fn ask(medium: &Medium, ctype: &str) {
         }
     }
     vb.pack_start(&combo, false, false, 0);
-    let always = gtk::CheckButton::with_mnemonic("_Always perform this action");
+    let always = gtk::CheckButton::with_mnemonic(&tr("_Always perform this action"));
     vb.pack_start(&always, false, false, 0);
     hb.pack_start(&vb, true, true, 0);
     d.content_area().pack_start(&hb, true, true, 0);
     let can_eject = medium.mount.as_ref().is_some_and(|m| m.can_eject());
-    let eject = d.add_button(if can_eject { "_Eject" } else { "_Unmount" }, gtk::ResponseType::Other(1));
+    let eject = d.add_button(&if can_eject { tr("_Eject") } else { tr("_Unmount") }, gtk::ResponseType::Other(1));
     if medium.mount.is_none() {
         eject.set_sensitive(false);
     }
     if let Some(bb) = eject.parent().and_downcast::<gtk::ButtonBox>() {
         bb.set_child_secondary(&eject, true);
     }
-    d.add_button("_Cancel", gtk::ResponseType::Cancel);
-    d.add_button("_OK", gtk::ResponseType::Ok);
+    d.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
+    d.add_button(&tr("_OK"), gtk::ResponseType::Ok);
     d.set_default_response(gtk::ResponseType::Ok);
     {
         let ctype = ctype.to_string();
@@ -398,11 +401,11 @@ fn ask(medium: &Medium, ctype: &str) {
 
 /// The media Caja's Media tab lists by name, then the less common ones.
 const COMMON: [(&str, &str); 5] = [
-    ("x-content/audio-cdda", "CD _Audio:"),
-    ("x-content/video-dvd", "_DVD Video:"),
-    ("x-content/audio-player", "_Music Player:"),
-    ("x-content/image-dcf", "_Photos:"),
-    ("x-content/unix-software", "_Software:"),
+    ("x-content/audio-cdda", n_("CD _Audio:")),
+    ("x-content/video-dvd", n_("_DVD Video:")),
+    ("x-content/audio-player", n_("_Music Player:")),
+    ("x-content/image-dcf", n_("_Photos:")),
+    ("x-content/unix-software", n_("_Software:")),
 ];
 
 /// Preferences → Media, as Caja's tab: a choice for each kind of medium,
@@ -429,10 +432,11 @@ pub fn preferences_page() -> gtk::Box {
         l
     };
     // Under the Removable Media section Preferences puts above.
-    b.add(&head("Media Handling", false));
+    b.add(&head(&tr("Media Handling"), false));
     let where_ = match crate::sidebar::automount_desktop().filter(|_| crate::sidebar::media_settings().is_some()) {
-        Some(desktop) => format!("What happens when you insert media or connect devices that Arkha mounts. These are {desktop}'s own settings."),
-        None => "What happens when you insert media or connect devices that Arkha mounts.".to_string(),
+        // TRANSLATORS: {desktop} is a desktop's name, such as MATE or GNOME.
+        Some(desktop) => fill(&tr("What happens when you insert media or connect devices that Arkha mounts. These are {desktop}’s own settings."), &[("desktop", &desktop)]),
+        None => tr("What happens when you insert media or connect devices that Arkha mounts."),
     };
     b.add(&note(&where_));
     let grid = gtk::Grid::new();
@@ -455,7 +459,7 @@ pub fn preferences_page() -> gtk::Box {
         });
     };
     for (r, (ctype, label)) in COMMON.iter().enumerate() {
-        let l = gtk::Label::with_mnemonic(label);
+        let l = gtk::Label::with_mnemonic(&tr(label));
         l.set_xalign(0.0);
         let c = choices(ctype, true);
         c.set_hexpand(true);
@@ -466,8 +470,8 @@ pub fn preferences_page() -> gtk::Box {
     }
     b.add(&grid);
     // Other media: pick the kind, then what to do with it.
-    b.add(&head("Other Media", false));
-    b.add(&note("Less common media formats can be configured here."));
+    b.add(&head(&tr("Other Media"), false));
+    b.add(&note(&tr("Less common media formats can be configured here.")));
     let others = gtk::Grid::new();
     others.set_row_spacing(6);
     others.set_column_spacing(12);
@@ -512,24 +516,24 @@ pub fn preferences_page() -> gtk::Box {
             rebuild(&t);
         }
     });
-    let tl = gtk::Label::with_mnemonic("_Type:");
+    let tl = gtk::Label::with_mnemonic(&tr("_Type:"));
     tl.set_xalign(0.0);
     tl.set_mnemonic_widget(Some(&kinds));
-    let al = gtk::Label::new(Some("Action:"));
+    let al = gtk::Label::new(Some(&tr("Action:")));
     al.set_xalign(0.0);
     others.attach(&tl, 0, 0, 1, 1);
     others.attach(&kinds, 1, 0, 1, 1);
     others.attach(&al, 0, 1, 1, 1);
     others.attach(&action_box, 1, 1, 1, 1);
     b.add(&others);
-    b.add(&head("When Media Are Inserted", false));
-    let never_cb = gtk::CheckButton::with_mnemonic("_Never prompt or start programs on media insertion");
+    b.add(&head(&tr("When Media Are Inserted"), false));
+    let never_cb = gtk::CheckButton::with_mnemonic(&tr("_Never prompt or start programs on media insertion"));
     never_cb.set_active(never());
     never_cb.connect_toggled(|c| set_never(c.is_active()));
     never_cb.set_margin_start(40);
     b.add(&never_cb);
-    let browse_cb = gtk::CheckButton::with_mnemonic("B_rowse media when inserted");
-    browse_cb.set_tooltip_text(Some("Open a window for media that hold nothing in particular (no photos, music, video…)"));
+    let browse_cb = gtk::CheckButton::with_mnemonic(&tr("B_rowse media when inserted"));
+    browse_cb.set_tooltip_text(Some(&tr("Open a window for media that hold nothing in particular (no photos, music, video…)")));
     browse_cb.set_active(browse());
     browse_cb.connect_toggled(|c| set_browse(c.is_active()));
     browse_cb.set_margin_start(40);

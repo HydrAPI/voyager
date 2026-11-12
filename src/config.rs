@@ -140,6 +140,9 @@ pub struct Settings {
     pub iec_units: bool,
     /// How dates are shown: "informal" (Today 14:00), "locale" or "iso".
     pub date_format: String,
+    /// The language of Arkha's texts (a translation's code, "en"), or ""
+    /// for the system's; applies when Arkha starts (see i18n).
+    pub language: String,
     /// Folder covers (see info.rs): the file names looked for, ';'-separated
     /// and in order of preference, matched ignoring case.
     pub cover_names: String,
@@ -305,6 +308,7 @@ impl Default for Settings {
             rename_striped_rows: true,
             iec_units: false,
             date_format: "informal".into(),
+            language: String::new(),
             cover_names: "folder.jpg; folder.png; cover.jpg; cover.png; front.jpg".into(),
             info_several: "summary".into(),
             info_no_cover: "icon".into(),
@@ -513,6 +517,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     b!(rename_striped_rows);
     b!(iec_units);
     st!(date_format);
+    st!(language);
     st!(cover_names);
     st!(info_several);
     st!(info_no_cover);
@@ -669,6 +674,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_boolean(g, "rename_striped_rows", s.rename_striped_rows);
     kf.set_boolean(g, "iec_units", s.iec_units);
     kf.set_string(g, "date_format", &s.date_format);
+    kf.set_string(g, "language", &s.language);
     kf.set_string(g, "cover_names", &s.cover_names);
     kf.set_string(g, "info_several", &s.info_several);
     kf.set_string(g, "info_no_cover", &s.info_no_cover);

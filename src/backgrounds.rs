@@ -7,6 +7,7 @@
 //! added: emblems where Caja puts them (~/.icons/hicolor/48x48/emblems),
 //! so both show them.
 
+use crate::i18n::{n_, tr};
 use gdk_pixbuf::Pixbuf;
 use gio::prelude::*;
 use gtk::prelude::*;
@@ -171,7 +172,8 @@ fn swatch(picture: Option<Pixbuf>, name: &str, drop: Drop, remove: Option<Box<dy
     b.pack_start(&l, false, false, 0);
     let ev = gtk::EventBox::new();
     ev.add(&b);
-    ev.set_tooltip_text(Some(&format!("{name}: drag it onto {}", if matches!(drop, Drop::Emblem(_)) { "an item" } else { "a folder's background or the side pane" })));
+    let tip = if matches!(drop, Drop::Emblem(_)) { tr("{name}: drag it onto an item") } else { tr("{name}: drag it onto a folder’s background or the side pane") };
+    ev.set_tooltip_text(Some(&crate::i18n::fill(&tip, &[("name", &name)])));
     let (kind, _) = encode(&drop);
     ev.drag_source_set(gdk::ModifierType::BUTTON1_MASK, &[gtk::TargetEntry::new(kind, gtk::TargetFlags::empty(), 0)], gdk::DragAction::COPY);
     if let Some(p) = &picture {
@@ -189,7 +191,7 @@ fn swatch(picture: Option<Pixbuf>, name: &str, drop: Drop, remove: Option<Box<dy
                 return glib::Propagation::Proceed;
             }
             let menu = gtk::Menu::new();
-            let item = gtk::MenuItem::with_mnemonic("_Remove");
+            let item = gtk::MenuItem::with_mnemonic(&tr("_Remove"));
             let remove = remove.clone();
             item.connect_activate(move |_| remove());
             menu.append(&item);
@@ -225,7 +227,7 @@ pub fn show(parent: &gtk::Window) {
         return;
     }
     // A dialog (not modal) with Close, as Caja's: Escape closes it too.
-    let dialog = gtk::Dialog::with_buttons(Some("Backgrounds and Emblems"), Some(parent), gtk::DialogFlags::DESTROY_WITH_PARENT, &[("_Close", gtk::ResponseType::Close)]);
+    let dialog = gtk::Dialog::with_buttons(Some(&tr("Backgrounds and Emblems")), Some(parent), gtk::DialogFlags::DESTROY_WITH_PARENT, &[(tr("_Close").as_str(), gtk::ResponseType::Close)]);
     dialog.connect_response(|d, _| d.close());
     dialog.set_default_size(560, 440);
     let win: gtk::Window = dialog.clone().upcast();
@@ -235,7 +237,12 @@ pub fn show(parent: &gtk::Window) {
     });
     let nb = gtk::Notebook::new();
     nb.set_border_width(6);
-    let pages: [(&str, &str, &str); 3] = [("Patterns", "Add a New _Pattern…", "Drag a pattern onto a folder's background, or the side pane. Reset takes the background off."), ("Colors", "Add a New _Color…", "Drag a colour onto a folder's background, or the side pane. Reset takes the background off."), ("Emblems", "Add a New _Emblem…", "Drag an emblem onto an item (onto one of the selected ones: onto all of them). Erase takes them all off.")];
+    // (title, also the page's id; add button; hint), translated where shown.
+    let pages: [(&str, &str, &str); 3] = [
+        (n_("Patterns"), n_("Add a New _Pattern…"), n_("Drag a pattern onto a folder’s background, or the side pane. Reset takes the background off.")),
+        (n_("Colors"), n_("Add a New _Color…"), n_("Drag a color onto a folder’s background, or the side pane. Reset takes the background off.")),
+        (n_("Emblems"), n_("Add a New _Emblem…"), n_("Drag an emblem onto an item (onto one of the selected ones: onto all of them). Erase takes them all off.")),
+    ];
     let flows: Vec<gtk::FlowBox> = pages
         .iter()
         .map(|(title, add, about)| {
@@ -251,7 +258,7 @@ pub fn show(parent: &gtk::Window) {
             sw.set_vexpand(true);
             sw.add(&flow);
             let page = gtk::Box::new(gtk::Orientation::Vertical, 6);
-            let hint = gtk::Label::new(Some(about));
+            let hint = gtk::Label::new(Some(&tr(about)));
             hint.set_xalign(0.0);
             hint.set_line_wrap(true);
             hint.style_context().add_class("dim-label");
@@ -259,12 +266,12 @@ pub fn show(parent: &gtk::Window) {
             hint.set_margin_top(8);
             page.pack_start(&hint, false, false, 0);
             page.pack_start(&sw, true, true, 0);
-            let add_btn = gtk::Button::with_mnemonic(add);
+            let add_btn = gtk::Button::with_mnemonic(&tr(add));
             add_btn.set_halign(gtk::Align::Start);
             add_btn.set_margin_start(12);
             add_btn.set_margin_bottom(8);
             page.pack_start(&add_btn, false, false, 0);
-            nb.append_page(&page, Some(&gtk::Label::new(Some(title))));
+            nb.append_page(&page, Some(&gtk::Label::new(Some(&tr(title)))));
             let w = win.clone();
             let which = *title;
             add_btn.connect_clicked(move |_| add_new(&w, which));
@@ -292,7 +299,7 @@ fn fill() {
             f.remove(&c);
         }
     }
-    let reset = || swatch(icons::named_pixbuf("edit-clear", 40), "Reset", Drop::Reset, None);
+    let reset = || swatch(icons::named_pixbuf("edit-clear", 40), &tr("Reset"), Drop::Reset, None);
     patterns_flow.add(&reset());
     let mine = patterns_dir();
     for p in patterns() {
@@ -318,7 +325,7 @@ fn fill() {
         });
         colors_flow.add(&swatch(color_picture(&c), &c, Drop::Color(c.clone()), remove));
     }
-    emblems_flow.add(&swatch(icons::named_pixbuf("edit-clear", 40), "Erase", Drop::Emblem(ERASE.into()), None));
+    emblems_flow.add(&swatch(icons::named_pixbuf("edit-clear", 40), &tr("Erase"), Drop::Emblem(ERASE.into()), None));
     let mine = emblems_dir();
     for (icon, title) in icons::available_emblems() {
         let keyword = icon.strip_prefix("emblem-").unwrap_or(&icon).to_string();
@@ -345,7 +352,7 @@ fn fill() {
 fn add_new(win: &gtk::Window, which: &str) {
     match which {
         "Colors" => {
-            let d = gtk::ColorChooserDialog::new(Some("Add a New Color"), Some(win));
+            let d = gtk::ColorChooserDialog::new(Some(&tr("Add a New Color")), Some(win));
             if d.run() == gtk::ResponseType::Ok {
                 let c = d.rgba();
                 let v = |x: f64| (x * 255.0).round() as u8;
@@ -359,36 +366,36 @@ fn add_new(win: &gtk::Window, which: &str) {
             d.close();
         }
         "Patterns" => {
-            let Some(picture) = choose_picture(win, "Add a New Pattern") else { return };
+            let Some(picture) = choose_picture(win, &tr("Add a New Pattern")) else { return };
             let dir = patterns_dir();
             let name = picture.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "pattern.png".into());
             let target = dir.join(util::unique_name(&gio::File::for_path(&dir), &name, false));
             if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::copy(&picture, &target)) {
-                util::error_dialog(Some(win), "Could not add the pattern", &e.to_string());
+                util::error_dialog(Some(win), &tr("Could not add the pattern"), &e.to_string());
             }
         }
         _ => {
-            let d = gtk::Dialog::with_buttons(Some("Add a New Emblem"), Some(win), gtk::DialogFlags::MODAL, &[("_Cancel", gtk::ResponseType::Cancel), ("_Add", gtk::ResponseType::Accept)]);
+            let d = gtk::Dialog::with_buttons(Some(&tr("Add a New Emblem")), Some(win), gtk::DialogFlags::MODAL, &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Add").as_str(), gtk::ResponseType::Accept)]);
             let grid = gtk::Grid::new();
             grid.set_row_spacing(8);
             grid.set_column_spacing(12);
             grid.set_border_width(12);
             let name = gtk::Entry::new();
             name.set_activates_default(true);
-            let picture = gtk::FileChooserButton::new("Choose a Picture", gtk::FileChooserAction::Open);
+            let picture = gtk::FileChooserButton::new(&tr("Choose a Picture"), gtk::FileChooserAction::Open);
             let filter = gtk::FileFilter::new();
-            filter.set_name(Some("Images"));
+            filter.set_name(Some(&tr("Images")));
             filter.add_pixbuf_formats();
             picture.add_filter(filter);
-            for (r, (label, w)) in [("_Keyword:", name.upcast_ref::<gtk::Widget>()), ("_Picture:", picture.upcast_ref())].into_iter().enumerate() {
-                let l = gtk::Label::with_mnemonic(label);
+            for (r, (label, w)) in [(tr("_Keyword:"), name.upcast_ref::<gtk::Widget>()), (tr("_Picture:"), picture.upcast_ref())].into_iter().enumerate() {
+                let l = gtk::Label::with_mnemonic(&label);
                 l.set_mnemonic_widget(Some(w));
                 l.set_xalign(1.0);
                 grid.attach(&l, 0, r as i32, 1, 1);
                 w.set_hexpand(true);
                 grid.attach(w, 1, r as i32, 1, 1);
             }
-            let hint = gtk::Label::new(Some("The keyword names the emblem: letters, numbers and spaces."));
+            let hint = gtk::Label::new(Some(&tr("The keyword names the emblem: letters, numbers and spaces.")));
             hint.style_context().add_class("dim-label");
             grid.attach(&hint, 0, 2, 2, 1);
             d.content_area().add(&grid);
@@ -401,13 +408,13 @@ fn add_new(win: &gtk::Window, which: &str) {
                 let keyword = name.text().to_string();
                 let taken = icons::available_emblems().iter().any(|(i, _)| *i == format!("emblem-{}", keyword.trim().to_lowercase().replace(' ', "-")));
                 let problem = match picture.filename() {
-                    _ if !keyword_ok(&keyword) => Some("The keyword can only have letters, numbers and spaces.".to_string()),
-                    _ if taken => Some("There is already an emblem with that keyword.".to_string()),
-                    None => Some("Choose a picture for the emblem.".to_string()),
+                    _ if !keyword_ok(&keyword) => Some(tr("The keyword can only have letters, numbers and spaces.")),
+                    _ if taken => Some(tr("There is already an emblem with that keyword.")),
+                    None => Some(tr("Choose a picture for the emblem.")),
                     Some(p) => add_emblem(&p, &keyword).err(),
                 };
                 match problem {
-                    Some(why) => util::error_dialog(Some(d.upcast_ref()), "Could not add the emblem", &why),
+                    Some(why) => util::error_dialog(Some(d.upcast_ref()), &tr("Could not add the emblem"), &why),
                     None => break,
                 }
             }
@@ -418,9 +425,9 @@ fn add_new(win: &gtk::Window, which: &str) {
 }
 
 fn choose_picture(win: &gtk::Window, title: &str) -> Option<std::path::PathBuf> {
-    let c = gtk::FileChooserDialog::with_buttons(Some(title), Some(win), gtk::FileChooserAction::Open, &[("_Cancel", gtk::ResponseType::Cancel), ("_Add", gtk::ResponseType::Accept)]);
+    let c = gtk::FileChooserDialog::with_buttons(Some(title), Some(win), gtk::FileChooserAction::Open, &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Add").as_str(), gtk::ResponseType::Accept)]);
     let filter = gtk::FileFilter::new();
-    filter.set_name(Some("Images"));
+    filter.set_name(Some(&tr("Images")));
     filter.add_pixbuf_formats();
     c.add_filter(filter);
     let picked = (c.run() == gtk::ResponseType::Accept).then(|| c.filename()).flatten();

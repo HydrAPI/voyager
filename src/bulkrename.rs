@@ -3,6 +3,7 @@
 //! tabs, a live preview, and Apply, which keeps the dialog open. Arkha adds
 //! a Regex tab and options to work before/after the file extension.
 
+use crate::i18n::{fill, n_, tr};
 use gio::prelude::*;
 use gtk::prelude::*;
 use std::cell::RefCell;
@@ -283,7 +284,7 @@ impl Ui {
                 // The last line of the message says what's wrong.
                 let msg = e.to_string();
                 let why = msg.lines().rfind(|l| !l.trim().is_empty()).unwrap_or("").trim().trim_start_matches("error: ").to_string();
-                self.regex_error.set_text(&format!("Invalid regular expression: {why}"));
+                self.regex_error.set_text(&fill(&tr("Invalid regular expression: {why}"), &[("why", &why)]));
                 self.regex_error.show();
                 None
             }
@@ -336,7 +337,7 @@ fn tab(fields: &[(&str, &gtk::Widget)]) -> gtk::Grid {
     g.set_column_spacing(12);
     g.set_column_homogeneous(true);
     for (i, (label, w)) in fields.iter().enumerate() {
-        let l = gtk::Label::new(Some(label));
+        let l = gtk::Label::new(Some(&tr(label)));
         l.set_xalign(0.0);
         g.attach(&l, i as i32, 0, 1, 1);
         g.attach(*w, i as i32, 1, 1, 1);
@@ -364,7 +365,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             .collect(),
     ));
     let d = gtk::Dialog::new();
-    d.set_title("Rename...");
+    d.set_title(&tr("Rename..."));
     // Kept above its window, but not blocking it (Caja's does): the
     // folders can be looked at and used meanwhile.
     d.set_transient_for(Some(parent));
@@ -374,10 +375,10 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     d.set_type_hint(gdk::WindowTypeHint::Dialog);
 
     let radios: [gtk::RadioButton; 4] = {
-        let up = gtk::RadioButton::with_label("Upper case");
-        let low = gtk::RadioButton::with_label_from_widget(&up, "Lower case");
-        let title = gtk::RadioButton::with_label_from_widget(&up, "Title case");
-        let same = gtk::RadioButton::with_label_from_widget(&up, "Unchanged");
+        let up = gtk::RadioButton::with_label(&tr("Upper case"));
+        let low = gtk::RadioButton::with_label_from_widget(&up, &tr("Lower case"));
+        let title = gtk::RadioButton::with_label_from_widget(&up, &tr("Title case"));
+        let same = gtk::RadioButton::with_label_from_widget(&up, &tr("Unchanged"));
         same.set_active(true);
         [up, low, title, same]
     };
@@ -385,22 +386,22 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         case: radios,
         insert_text: gtk::Entry::new(),
         insert_pos: spin(0.0, 100.0, 0.0),
-        insert_from_end: gtk::CheckButton::with_label("From the end"),
-        insert_before_ext: gtk::CheckButton::with_label("Before the extension"),
+        insert_from_end: gtk::CheckButton::with_label(&tr("From the end")),
+        insert_before_ext: gtk::CheckButton::with_label(&tr("Before the extension")),
         remove_from: spin(-100.0, 100.0, 0.0),
         remove_len: spin(0.0, 100.0, 0.0),
         replace_target: gtk::Entry::new(),
         replace_with: gtk::Entry::new(),
-        replace_keep_ext: gtk::CheckButton::with_label("Exclude file extensions"),
+        replace_keep_ext: gtk::CheckButton::with_label(&tr("Exclude file extensions")),
         regex_pattern: gtk::Entry::new(),
         regex_with: gtk::Entry::new(),
-        regex_ignore_case: gtk::CheckButton::with_label("Ignore case"),
-        regex_keep_ext: gtk::CheckButton::with_label("Exclude file extensions"),
+        regex_ignore_case: gtk::CheckButton::with_label(&tr("Ignore case")),
+        regex_keep_ext: gtk::CheckButton::with_label(&tr("Exclude file extensions")),
         regex_error: gtk::Label::new(None),
         digits: spin(0.0, 10.0, 0.0),
         start: spin(0.0, 1_000_000_000.0, 1.0),
-        number_at_end: gtk::CheckButton::with_label("At the end"),
-        number_before_ext: gtk::CheckButton::with_label("Before the extension"),
+        number_at_end: gtk::CheckButton::with_label(&tr("At the end")),
+        number_before_ext: gtk::CheckButton::with_label(&tr("Before the extension")),
     });
     ui.insert_text.set_max_length(128);
     // Not the regex pattern: it needs "\" for escapes.
@@ -418,24 +419,25 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     for (i, r) in ui.case.iter().enumerate() {
         case_grid.attach(r, 0, i as i32, 1, 1);
     }
-    pages.push(("case", case_grid.upcast(), "Case"));
+    pages.push(("case", case_grid.upcast(), n_("Case")));
     // These checkboxes (and Replace's) aren't reset by Apply: they're ways
     // of working, not edits.
-    let insert_tab = tab(&[("Text to insert", ui.insert_text.upcast_ref()), ("Position", ui.insert_pos.upcast_ref())]);
-    ui.insert_from_end.set_tooltip_text(Some("Count the position back from the end of the name instead of from its start"));
-    ui.insert_before_ext.set_tooltip_text(Some("Count the position only in the name before its extension (e.g. “.jpg”), so the text goes before it. With “From the end”, 0 puts it right before the extension"));
+    let insert_tab = tab(&[(n_("Text to insert"), ui.insert_text.upcast_ref()), (n_("Position"), ui.insert_pos.upcast_ref())]);
+    ui.insert_from_end.set_tooltip_text(Some(&tr("Count the position back from the end of the name instead of from its start")));
+    ui.insert_before_ext.set_tooltip_text(Some(&tr("Count the position only in the name before its extension (e.g. “.jpg”), so the text goes before it. With “From the end”, 0 puts it right before the extension")));
     insert_tab.attach(&ui.insert_from_end, 0, 2, 1, 1);
     insert_tab.attach(&ui.insert_before_ext, 1, 2, 1, 1);
-    pages.push(("insert", insert_tab.upcast(), "Insert"));
-    pages.push(("remove", tab(&[("From", ui.remove_from.upcast_ref()), ("Length", ui.remove_len.upcast_ref())]).upcast(), "Remove"));
-    let replace_tab = tab(&[("Text to search for", ui.replace_target.upcast_ref()), ("Text to insert", ui.replace_with.upcast_ref())]);
-    ui.replace_keep_ext.set_tooltip_text(Some("Search and replace only in the name, not in its extension (e.g. “.jpg”)"));
+    pages.push(("insert", insert_tab.upcast(), n_("Insert")));
+    pages.push(("remove", tab(&[(n_("From"), ui.remove_from.upcast_ref()), (n_("Length"), ui.remove_len.upcast_ref())]).upcast(), n_("Remove")));
+    let replace_tab = tab(&[(n_("Text to search for"), ui.replace_target.upcast_ref()), (n_("Text to insert"), ui.replace_with.upcast_ref())]);
+    ui.replace_keep_ext.set_tooltip_text(Some(&tr("Search and replace only in the name, not in its extension (e.g. “.jpg”)")));
     replace_tab.attach(&ui.replace_keep_ext, 0, 2, 2, 1);
-    pages.push(("replace", replace_tab.upcast(), "Replace"));
-    let regex_tab = tab(&[("Regular expression", ui.regex_pattern.upcast_ref()), ("Replace with", ui.regex_with.upcast_ref())]);
-    ui.regex_pattern.set_placeholder_text(Some("e.g. (\\d+)-(\\d+)"));
-    ui.regex_with.set_placeholder_text(Some("e.g. $2-$1"));
-    ui.regex_keep_ext.set_tooltip_text(Some("Match only in the name, not in its extension (e.g. “.jpg”)"));
+    pages.push(("replace", replace_tab.upcast(), n_("Replace")));
+    let regex_tab = tab(&[(n_("Regular expression"), ui.regex_pattern.upcast_ref()), (n_("Replace with"), ui.regex_with.upcast_ref())]);
+    // TRANSLATORS: an example regular expression; keep the expression itself.
+    ui.regex_pattern.set_placeholder_text(Some(&tr("e.g. (\\d+)-(\\d+)")));
+    ui.regex_with.set_placeholder_text(Some(&tr("e.g. $2-$1")));
+    ui.regex_keep_ext.set_tooltip_text(Some(&tr("Match only in the name, not in its extension (e.g. “.jpg”)")));
     regex_tab.attach(&ui.regex_ignore_case, 0, 2, 1, 1);
     regex_tab.attach(&ui.regex_keep_ext, 1, 2, 1, 1);
     // Only takes up room while there's an error to show.
@@ -444,15 +446,16 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     ui.regex_error.set_line_wrap(true);
     ui.regex_error.style_context().add_class("error");
     regex_tab.attach(&ui.regex_error, 0, 3, 2, 1);
-    let regex_hint = gtk::Label::new(Some("Every match is replaced. In “Replace with”, $1, $2… or ${name} insert what a group matched, $0 the whole match, $$ a “$”."));
+    // TRANSLATORS: keep $1, $2, ${name}, $0 and $$ as they are.
+    let regex_hint = gtk::Label::new(Some(&tr("Every match is replaced. In “Replace with”, $1, $2… or ${name} insert what a group matched, $0 the whole match, $$ a “$”.")));
     regex_hint.set_xalign(0.0);
     regex_hint.set_line_wrap(true);
     regex_hint.style_context().add_class("dim-label");
     regex_tab.attach(&regex_hint, 0, 4, 2, 1);
-    pages.push(("regex", regex_tab.upcast(), "Regex"));
-    let number_tab = tab(&[("Digits", ui.digits.upcast_ref()), ("Start", ui.start.upcast_ref())]);
-    ui.number_at_end.set_tooltip_text(Some("Put the number after the name instead of in front"));
-    ui.number_before_ext.set_tooltip_text(Some("With “At the end”: put the number before the extension (e.g. “.jpg”) instead of after it"));
+    pages.push(("regex", regex_tab.upcast(), n_("Regex")));
+    let number_tab = tab(&[(n_("Digits"), ui.digits.upcast_ref()), (n_("Start"), ui.start.upcast_ref())]);
+    ui.number_at_end.set_tooltip_text(Some(&tr("Put the number after the name instead of in front")));
+    ui.number_before_ext.set_tooltip_text(Some(&tr("With “At the end”: put the number before the extension (e.g. “.jpg”) instead of after it")));
     // In front, the number is before the extension anyway.
     ui.number_before_ext.set_sensitive(false);
     {
@@ -461,7 +464,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     }
     number_tab.attach(&ui.number_at_end, 0, 2, 1, 1);
     number_tab.attach(&ui.number_before_ext, 1, 2, 1, 1);
-    pages.push(("enumerate", number_tab.upcast(), "Enumerate"));
+    pages.push(("enumerate", number_tab.upcast(), n_("Enumerate")));
     // The tabs can be dragged into any order, which is remembered. Each
     // tab's content sits in a wrapper so that only the current tab's is
     // shown: a notebook is as tall as its tallest page, and this way the
@@ -470,7 +473,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         let wrap = gtk::Box::new(gtk::Orientation::Vertical, 0);
         wrap.add(page);
         wrap.set_widget_name(id);
-        notebook.append_page(&wrap, Some(&gtk::Label::new(Some(label))));
+        notebook.append_page(&wrap, Some(&gtk::Label::new(Some(&tr(label)))));
     }
     crate::util::order_tabs(&notebook, config::get().rename_tab_order, |order| config::update(|s| s.rename_tab_order = order));
     let show_only = |nb: &gtk::Notebook, current: &gtk::Widget| {
@@ -554,10 +557,10 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         s.connect_value_changed(move |_| u());
     }
 
-    let close = gtk::Button::with_mnemonic("_Close");
+    let close = gtk::Button::with_mnemonic(&tr("_Close"));
     close.set_image(Some(&gtk::Image::from_icon_name(Some("dialog-close"), gtk::IconSize::Button)));
     close.set_always_show_image(true);
-    let apply = gtk::Button::with_mnemonic("_Apply");
+    let apply = gtk::Button::with_mnemonic(&tr("_Apply"));
     apply.set_image(Some(&gtk::Image::from_icon_name(Some("dialog-ok"), gtk::IconSize::Button)));
     apply.set_always_show_image(true);
     {
@@ -573,14 +576,14 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             // 1. Names that can't be used.
             let bad: Vec<String> = plan.iter().filter(|(_, n)| n.is_empty() || n == "." || n == "..").map(|(i, n)| line(*i, n)).collect();
             if !bad.is_empty() {
-                message(&d, gtk::MessageType::Warning, gtk::ButtonsType::Close, "Invalid names", &format!("The following names are not acceptable:\n\n{}", bad.join("\n")));
+                message(&d, gtk::MessageType::Warning, gtk::ButtonsType::Close, &tr("Invalid names"), &fill(&tr("The following names are not acceptable:\n\n{names}"), &[("names", &bad.join("\n"))]));
                 return;
             }
             // 2. Existing files that would be replaced.
             let changed: Vec<&(usize, String)> = plan.iter().filter(|(i, n)| *n != entries.borrow()[*i].old).collect();
             let clash: Vec<String> = changed.iter().filter(|(i, n)| entries.borrow()[*i].folder.join(n).exists()).map(|(i, n)| line(*i, n)).collect();
             if !clash.is_empty() {
-                let r = message(&d, gtk::MessageType::Question, gtk::ButtonsType::YesNo, "Confirm overwrite", &format!("The following will be overwritten:\n\n{}\n\nDo you wish to continue?", clash.join("\n")));
+                let r = message(&d, gtk::MessageType::Question, gtk::ButtonsType::YesNo, &tr("Confirm overwrite"), &fill(&tr("The following will be overwritten:\n\n{names}\n\nDo you wish to continue?"), &[("names", &clash.join("\n"))]));
                 if r != gtk::ResponseType::Yes {
                     return;
                 }
@@ -603,7 +606,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             }
             crate::ops::note_renames(done);
             if !failed.is_empty() {
-                message(&d, gtk::MessageType::Error, gtk::ButtonsType::Close, "Rename error", &format!("There were errors while renaming the following:\n\n{}", failed.join("\n")));
+                message(&d, gtk::MessageType::Error, gtk::ButtonsType::Close, &tr("Rename error"), &fill(&tr("There were errors while renaming the following:\n\n{names}"), &[("names", &failed.join("\n"))]));
             }
             // 4. Start over from the new names; the dialog stays open.
             ui.reset();
