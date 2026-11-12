@@ -4,6 +4,7 @@ mod a11y;
 mod actions;
 mod autorun;
 mod bulkrename;
+mod checksums;
 mod clipboard;
 mod columns;
 mod config;

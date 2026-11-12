@@ -905,6 +905,12 @@ impl AppWindow {
                 w.paste_into(p.current());
             }
         });
+        // Pasted, each copy then read back and compared with its original.
+        self.add("paste-check", |w| {
+            if let Some(p) = w.current_pane() {
+                w.paste_with(p.current(), true);
+            }
+        });
         self.add("paste-into", |w| {
             if let Some(p) = w.current_pane() {
                 if let Some(r) = p.selected().into_iter().find(|r| r.is_dir) {
@@ -2247,6 +2253,7 @@ impl AppWindow {
         self.set_enabled("make-link", has && writable && sel.iter().all(|r| gio::File::for_uri(&r.uri).is_native()));
         // Search results are no folder to put anything in, as in Caja.
         self.set_enabled("paste", writable && !searching);
+        self.set_enabled("paste-check", writable && !searching);
         self.set_enabled("paste-into", sel.len() == 1 && dirs && writable);
         self.set_enabled("new-folder", writable && !searching);
         self.set_enabled("new-file", writable && !searching);
@@ -2879,6 +2886,11 @@ impl AppWindow {
     }
 
     fn paste_into(self: &Rc<Self>, dest: gio::File) {
+        self.paste_with(dest, false);
+    }
+
+    /// Pastes into `dest`; `check`: each copy is read back and compared.
+    fn paste_with(self: &Rc<Self>, dest: gio::File, check: bool) {
         let w = Rc::downgrade(self);
         clipboard::get(move |cut, uris| {
             let Some(s) = w.upgrade() else { return };
@@ -2887,7 +2899,7 @@ impl AppWindow {
                 return;
             }
             let kind = if cut { Kind::Move } else { Kind::Copy };
-            s.run_transfer(kind, uris, dest.clone());
+            s.run_transfer_checked(kind, uris, dest.clone(), check);
             if cut {
                 clipboard::clear_after_cut();
                 for_all_panes(|p| p.redraw());
@@ -2897,6 +2909,11 @@ impl AppWindow {
 
     /// Run a copy/move/link and select the results if the destination is open.
     fn run_transfer(self: &Rc<Self>, kind: Kind, uris: Vec<String>, dest: gio::File) {
+        self.run_transfer_checked(kind, uris, dest, false);
+    }
+
+    /// The same; `check`: each copy read back and compared with its original.
+    fn run_transfer_checked(self: &Rc<Self>, kind: Kind, uris: Vec<String>, dest: gio::File, check: bool) {
         if dest.uri().starts_with("trash:") {
             if kind == Kind::Move {
                 self.run_job(Job::Trash(uris));
@@ -2909,7 +2926,7 @@ impl AppWindow {
             .collect();
         let w = Rc::downgrade(self);
         let dest2 = dest.clone();
-        ops::run(Some(self.window.clone().upcast()), Job::Transfer { kind, items }, move |created| {
+        ops::run(Some(self.window.clone().upcast()), Job::Transfer { kind, items, check }, move |created| {
             if let Some(s) = w.upgrade() {
                 if let Some(p) = s.current_pane() {
                     if p.current().equal(&dest2) && !created.is_empty() {
@@ -2946,12 +2963,19 @@ impl AppWindow {
         d.add_button(if kind == Kind::Move { "_Move" } else { "_Copy" }, gtk::ResponseType::Accept);
         d.set_default_response(gtk::ResponseType::Accept);
         let _ = d.set_current_folder_file(&p.current());
+        let check = gtk::CheckButton::with_mnemonic("C_heck the copies");
+        check.set_tooltip_text(Some(if kind == Kind::Move {
+            "Each file moved to another drive is read back from there and compared with its original (CRC32), which is deleted only once they match. A move within one drive copies nothing, so there's nothing to check."
+        } else {
+            "Each copy is read back from where it went and compared with its original (CRC32). It takes about as long again as the copy."
+        }));
+        d.set_extra_widget(&check);
         d.set_modal(true);
         let w = Rc::downgrade(self);
         d.connect_response(move |d, r| {
             if r == gtk::ResponseType::Accept {
                 if let (Some(dest), Some(s)) = (d.file(), w.upgrade()) {
-                    s.run_transfer(kind, uris.clone(), dest);
+                    s.run_transfer_checked(kind, uris.clone(), dest, check.is_active());
                 }
             }
             d.close();
@@ -3028,7 +3052,7 @@ impl AppWindow {
             })
             .collect();
         if !items.is_empty() {
-            ops::run(Some(self.window.clone().upcast()), Job::Transfer { kind: Kind::Move, items }, |_| {});
+            ops::run(Some(self.window.clone().upcast()), Job::Transfer { kind: Kind::Move, items, check: false }, |_| {});
         }
     }
 
@@ -3079,8 +3103,16 @@ impl AppWindow {
         }
         if action == gdk::DragAction::ASK {
             let menu = gtk::Menu::new();
-            for (label, kind) in [("_Move Here", Some(Kind::Move)), ("_Copy Here", Some(Kind::Copy)), ("_Link Here", Some(Kind::Link)), ("Cancel", None)] {
-                if label == "Cancel" {
+            let choices = [
+                ("_Move Here", Some(Kind::Move), false),
+                ("_Copy Here", Some(Kind::Copy), false),
+                ("_Link Here", Some(Kind::Link), false),
+                ("Move and C_heck Here", Some(Kind::Move), true),
+                ("Copy and Ch_eck Here", Some(Kind::Copy), true),
+                ("Cancel", None, false),
+            ];
+            for (label, kind, check) in choices {
+                if label.starts_with("Move and") || label == "Cancel" {
                     menu.append(&gtk::SeparatorMenuItem::new());
                 }
                 let item = gtk::MenuItem::with_mnemonic(label);
@@ -3089,7 +3121,7 @@ impl AppWindow {
                 let dest = dest.clone();
                 item.connect_activate(move |_| {
                     if let (Some(s), Some(k)) = (w.upgrade(), kind) {
-                        s.run_transfer(k, uris.clone(), dest.clone());
+                        s.run_transfer_checked(k, uris.clone(), dest.clone(), check);
                     }
                 });
                 menu.append(&item);

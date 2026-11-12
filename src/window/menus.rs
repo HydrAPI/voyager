@@ -42,7 +42,7 @@ impl AppWindow {
         self.undo_menu.append(Some("_Undo"), Some("win.undo"));
         self.undo_menu.append(Some("_Redo"), Some("win.redo"));
         edit.append_section(None, &self.undo_menu);
-        edit.append_section(None, &section(&[("Cu_t", "win.cut"), ("_Copy", "win.copy"), ("_Paste", "win.paste"), ("Paste _Into Folder", "win.paste-into")]));
+        edit.append_section(None, &section(&[("Cu_t", "win.cut"), ("_Copy", "win.copy"), ("_Paste", "win.paste"), ("Paste and C_heck", "win.paste-check"), ("Paste _Into Folder", "win.paste-into")]));
         edit.append_section(None, &section(&[("Select _All", "win.select-all"), ("Select I_tems Matching…", "win.select-pattern"), ("_Invert Selection", "win.invert-selection")]));
         edit.append_section(None, &section(&[("Dup_licate", "win.duplicate"), ("Ma_ke Link", "win.make-link"), ("_Rename…", "win.rename"), ("Copy T_o…", "win.copy-to"), ("_Move To…", "win.move-to")]));
         edit.append_section(None, &section(&[("Copy to Other _Pane", "win.copy-to-pane"), ("Move to Other Pa_ne", "win.move-to-pane")]));
@@ -228,6 +228,7 @@ impl AppWindow {
                 }
                 add("bg:terminal", "Open in _Terminal", "win.terminal");
                 add("bg:paste", "_Paste", "win.paste");
+                add("bg:paste-check", "Paste and C_heck", "win.paste-check");
                 // The menu bar's View menu without Reload, zooming and
                 // Arrange Items (their own entries); each entry can be hidden.
                 if shown("bg:view") {

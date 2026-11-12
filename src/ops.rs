@@ -37,7 +37,9 @@ struct Moved {
 
 #[derive(Clone, Debug)]
 pub enum Job {
-    Transfer { kind: Kind, items: Vec<Item> },
+    /// `check`: each copied file read back and compared with its original
+    /// (CRC32); a move deletes an original only once its copy matched.
+    Transfer { kind: Kind, items: Vec<Item>, check: bool },
     Trash(Vec<String>),
     Delete(Vec<String>),
     EmptyTrash,
@@ -81,6 +83,9 @@ enum Msg {
         reply: mpsc::Sender<ErrChoice>,
     },
     Done(Vec<String>, Vec<Moved>),
+    /// A checked copy's outcome: how many files matched, the names of
+    /// those that didn't.
+    Checked(u64, Vec<String>),
 }
 
 struct Cancelled;
@@ -108,6 +113,10 @@ struct Worker {
     paused: Arc<AtomicBool>,
     clock: Clock,
     moves: MoveCount,
+    /// Copies are read back and compared (see Job::Transfer).
+    check: bool,
+    checked: u64,
+    check_failed: Vec<String>,
 }
 
 /// A move's items, for counting it in bytes once any of it has to be
@@ -181,7 +190,7 @@ fn format_time_left(secs: u64) -> String {
 /// Caja's progress details for a job counted in bytes: "4 MB of 10 MB",
 /// then, once the rate can be told, "4 MB of 10 MB — 2 minutes left
 /// (1 MB/sec)".
-fn bytes_detail(done: u64, total: u64, working: Duration) -> String {
+pub fn bytes_detail(done: u64, total: u64, working: Duration) -> String {
     let total = total.max(done);
     let mut s = format!("{} of {}", util::format_size(done), util::format_size(total));
     if working >= RELIABLE_RATE_AFTER && done > 0 {
@@ -257,6 +266,18 @@ impl Worker {
             paused,
             clock: Clock::new(),
             moves: MoveCount::default(),
+            check: false,
+            checked: 0,
+            check_failed: vec![],
+        }
+    }
+
+    /// How many times each byte copied is counted: also when it's checked.
+    fn byte_passes(&self) -> u64 {
+        if self.check {
+            2
+        } else {
+            1
         }
     }
 
@@ -419,7 +440,7 @@ impl Worker {
         for f in &self.moves.srcs[at..] {
             let (mut b, mut n) = (0, 0);
             self.scan(f, &mut b, &mut n);
-            sizes.push(b);
+            sizes.push(b * self.byte_passes());
         }
         self.total_bytes = sizes.iter().sum();
         self.done_bytes = 0;
@@ -669,6 +690,35 @@ impl Worker {
                     if is_mtp(src) && dst.path().is_some() {
                         let _ = dst.set_attribute_uint32("unix::mode", 0o666 & !umask(), gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS, Some(&self.cancel));
                     }
+                    if self.check && info.file_type() == gio::FileType::Regular {
+                        let failure = match self.verify(src, &dst, size) {
+                            Ok(true) => None,
+                            Ok(false) => Some((
+                                format!("“{name}” is different after copying"),
+                                glib::Error::new(gio::IOErrorEnum::Failed, "The copy doesn't match the original (their CRC32 checksums differ): it was changed on the way. Retry copies it again; Skip keeps it as it is (and a moved file's original too)."),
+                            )),
+                            Err(e) => Some((format!("Error while checking “{name}”"), e)),
+                        };
+                        if let Some((title, e)) = failure {
+                            match self.ask_error(title, &e, false) {
+                                ErrChoice::Retry => {
+                                    flags |= gio::FileCopyFlags::OVERWRITE;
+                                    continue;
+                                }
+                                ErrChoice::Cancel => return Err(Cancelled),
+                                _ => {
+                                    // Skipped: left as it is, not noted for
+                                    // Undo, and a move keeps its original.
+                                    self.check_failed.push(util::display_name(&dst));
+                                    self.done_bytes += size * self.byte_passes();
+                                    self.done_items += 1;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        self.checked += 1;
+                        self.done_bytes += size;
+                    }
                     self.done_bytes += size;
                     self.done_items += 1;
                     if created.is_none() {
@@ -717,6 +767,47 @@ impl Worker {
                 },
             }
         }
+    }
+
+    /// Whether `dst` holds what `src` does: both read (the copy from the
+    /// disk or share, not from memory) and their CRC32s compared. `size`:
+    /// the file's, for the progress (counted after the copy's own bytes).
+    fn verify(&mut self, src: &gio::File, dst: &gio::File, size: u64) -> Result<bool, glib::Error> {
+        let label = format!("Checking “{}”", base_name(src));
+        let base = self.done_bytes + size;
+        let a = self.crc32(src, false, base, &label)?;
+        #[cfg(test)]
+        if tests::CORRUPT_NEXT_COPY.with(|c| c.replace(false)) {
+            if let Some(p) = dst.path() {
+                let mut data = std::fs::read(&p).unwrap_or_default();
+                if let Some(b) = data.first_mut() {
+                    *b ^= 0xff;
+                }
+                let _ = std::fs::write(&p, data);
+            }
+        }
+        let b = self.crc32(dst, true, base + size / 2, &label)?;
+        glib::g_debug!("arkha", "check: {} {} (CRC32 {a}, copy {b})", dst.uri(), if a == b { "matches" } else { "differs" });
+        Ok(a == b)
+    }
+
+    /// The CRC32 of `f`'s contents (see checksums::compute), the progress
+    /// going from `base`, each byte read counting half; pausing the job
+    /// pauses it.
+    fn crc32(&mut self, f: &gio::File, from_disk: bool, base: u64, label: &str) -> Result<String, glib::Error> {
+        let (tx, paused, cancel, clock, total) = (self.tx.clone(), self.paused.clone(), self.cancel.clone(), self.clock.clone(), self.total_bytes);
+        let mut last = Instant::now();
+        crate::checksums::compute(f, crate::checksums::Algo::Crc32, from_disk, &cancel, &mut |read| {
+            wait_while_paused(&paused, &cancel, &clock);
+            if last.elapsed() > Duration::from_millis(100) && total > 0 {
+                last = Instant::now();
+                let done = base + read / 2;
+                let _ = tx.send_blocking(Msg::Progress {
+                    detail: format!("{label}\n{}", bytes_detail(done, total, clock.working())),
+                    fraction: (done as f64 / total as f64).clamp(0.0, 1.0),
+                });
+            }
+        })
     }
 
     fn move_rec(&mut self, src: &gio::File, dst: &gio::File, created: &mut Option<String>) -> Flow {
@@ -811,7 +902,8 @@ impl Worker {
     fn run(&mut self, job: Job) -> Vec<String> {
         let mut created = vec![];
         match job {
-            Job::Transfer { kind, items } => {
+            Job::Transfer { kind, items, check } => {
+                self.check = check;
                 self.verb = match kind {
                     Kind::Copy => "Copying",
                     Kind::Move => "Moving",
@@ -822,7 +914,7 @@ impl Worker {
                     for it in &items {
                         let (mut b, mut n) = (0, 0);
                         self.scan(&gio::File::for_uri(&it.src), &mut b, &mut n);
-                        self.total_bytes += b;
+                        self.total_bytes += b * self.byte_passes();
                         self.total_items += n;
                     }
                 } else {
@@ -1270,7 +1362,7 @@ pub fn is_busy() -> bool {
 
 pub fn title_for(job: &Job) -> String {
     match job {
-        Job::Transfer { kind, items } => {
+        Job::Transfer { kind, items, .. } => {
             let n = items.len();
             let what = if n == 1 {
                 format!("“{}”", gio::File::for_uri(&items[0].src).basename().map(|b| b.to_string_lossy().to_string()).unwrap_or_default())
@@ -1408,6 +1500,9 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
         std::thread::spawn(move || {
             let mut w = Worker::new(tx.clone(), cancel, paused);
             let created = w.run(job);
+            if w.check {
+                let _ = tx.send_blocking(Msg::Checked(w.checked, std::mem::take(&mut w.check_failed)));
+            }
             let _ = tx.send_blocking(Msg::Done(created, std::mem::take(&mut w.undo)));
         });
     }
@@ -1450,6 +1545,10 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
                     let p = dialog_parent(&parent);
                     let c = error_dialog(p.as_ref(), &title, &detail, offer_delete).await;
                     let _ = reply.send(c);
+                }
+                Msg::Checked(matched, failed) => {
+                    let p = dialog_parent(&parent);
+                    check_report(p.as_ref(), matched, &failed);
                 }
                 Msg::Done(created, done) => {
                     let did = !done.is_empty();
@@ -1532,8 +1631,8 @@ enum Shape {
 
 fn shape_of(job: &Job) -> Shape {
     match job {
-        Job::Transfer { kind: Kind::Move, items } if !items.is_empty() && items.iter().all(|i| i.src.starts_with("trash:")) => Shape::Restore,
-        Job::Transfer { kind, items } if items.iter().all(|i| !i.src.starts_with("trash:")) => Shape::Transfer(*kind),
+        Job::Transfer { kind: Kind::Move, items, .. } if !items.is_empty() && items.iter().all(|i| i.src.starts_with("trash:")) => Shape::Restore,
+        Job::Transfer { kind, items, .. } if items.iter().all(|i| !i.src.starts_with("trash:")) => Shape::Transfer(*kind),
         Job::Trash(_) => Shape::Trash(now() - 1),
         _ => Shape::Other,
     }
@@ -1795,7 +1894,7 @@ fn undo_transfer(kind: Kind, items: Vec<Moved>) -> Result<Job, String> {
                     }
                 })
                 .collect();
-            Job::Transfer { kind: Kind::Move, items }
+            Job::Transfer { kind: Kind::Move, items, check: false }
         }
     })
 }
@@ -1818,7 +1917,7 @@ fn redo_transfer(kind: Kind, items: Vec<Moved>) -> Result<Job, String> {
     if items.is_empty() {
         return Err("Nothing to redo: the items are gone.".into());
     }
-    Ok(Job::Transfer { kind, items })
+    Ok(Job::Transfer { kind, items, check: false })
 }
 
 /// The job that brings `uris` back out of the trash: each the newest item
@@ -1836,7 +1935,7 @@ fn restore_job(uris: &[String], since: i64) -> Result<Job, String> {
             Item { src: trash_uri, dest_dir: o.parent().map(|p| p.uri().to_string()).unwrap_or_default(), name: Some(base_name(&o)) }
         })
         .collect();
-    Ok(Job::Transfer { kind: Kind::Move, items })
+    Ok(Job::Transfer { kind: Kind::Move, items, check: false })
 }
 
 /// The trash's items (trash URI, original path) for `paths`: for each the
@@ -1873,6 +1972,28 @@ fn find_in_trash(paths: &[String], since: i64) -> Vec<(String, String)> {
 /// unless the window they were started from (or the operations' own
 /// window) is the active one: one closed, minimized or on another
 /// workspace isn't either.
+/// After a checked copy or move: a notice if every copy matched its
+/// original, a message listing those that didn't.
+fn check_report(parent: Option<&gtk::Window>, matched: u64, failed: &[String]) {
+    if failed.is_empty() {
+        let files = if matched == 1 { "1 file".to_string() } else { format!("{matched} files") };
+        util::notify("Arkha", &format!("Checked {files}: every copy matches its original."));
+        return;
+    }
+    let list = failed.iter().take(20).map(|n| format!("• {n}")).collect::<Vec<_>>().join("\n");
+    let more = if failed.len() > 20 { format!("\n… and {} more", failed.len() - 20) } else { String::new() };
+    let d = gtk::MessageDialog::new(
+        parent,
+        gtk::DialogFlags::DESTROY_WITH_PARENT,
+        gtk::MessageType::Warning,
+        gtk::ButtonsType::Close,
+        &if failed.len() == 1 { "1 copy doesn't match its original".to_string() } else { format!("{} copies don't match their originals", failed.len()) },
+    );
+    d.set_secondary_text(Some(&format!("{list}{more}\n\nThey were kept as they are, and the originals of moved files were kept too. {matched} other {} matched.", if matched == 1 { "file" } else { "files" })));
+    d.connect_response(|d, _| d.close());
+    d.show();
+}
+
 fn notify_done(parent: &Option<gtk::Window>) {
     let watched = |w: &gtk::Window| w.is_visible() && w.is_active();
     if !parent.as_ref().is_some_and(watched) && !OPS_WINDOW.with(|w| w.borrow().as_ref().is_some_and(watched)) {
@@ -2195,6 +2316,12 @@ mod tests {
     use super::*;
     use crate::testutil::TestDir;
     use std::fs;
+
+    thread_local! {
+        /// The next copy checked is spoilt just before it's read back (in
+        /// tests only), to see a mismatch caught.
+        pub static CORRUPT_NEXT_COPY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
     use std::path::{Path, PathBuf};
 
     /// Runs `job` on a worker whose conflict dialogs are answered from
@@ -2265,6 +2392,101 @@ mod tests {
         (created, asked, undo, progress)
     }
 
+    /// A job run with checking, errors answered in turn by `answers`
+    /// (Skip after those); `corrupt`: the first copy is spoilt before it's
+    /// read back. (questions asked, files that matched, those that didn't,
+    /// items noted for Undo, (bytes counted done, bytes in all)).
+    fn run_checked(job: Job, answers: Vec<ErrChoice>, corrupt: bool) -> (Vec<String>, u64, Vec<String>, usize, (u64, u64)) {
+        let (tx, rx) = async_channel::unbounded::<Msg>();
+        let mut w = Worker::new(tx, gio::Cancellable::new(), Arc::new(AtomicBool::new(false)));
+        let ui = std::thread::spawn(move || {
+            let (mut asked, mut last) = (vec![], 0.0);
+            let mut answers = answers.into_iter();
+            while let Ok(m) = rx.recv_blocking() {
+                match m {
+                    Msg::Error { title, reply, .. } => {
+                        asked.push(title);
+                        let _ = reply.send(answers.next().unwrap_or(ErrChoice::Skip));
+                    }
+                    Msg::Conflict(req, reply) => {
+                        asked.push(format!("conflict:{}", req.name));
+                        let _ = reply.send((Resolution::Skip, false, None));
+                    }
+                    Msg::Progress { fraction, .. } => last = fraction,
+                    _ => {}
+                }
+            }
+            (asked, last)
+        });
+        CORRUPT_NEXT_COPY.with(|c| c.set(corrupt));
+        w.run(job);
+        CORRUPT_NEXT_COPY.with(|c| c.set(false));
+        let (checked, failed, undo, bytes) = (w.checked, std::mem::take(&mut w.check_failed), w.undo.len(), (w.done_bytes, w.total_bytes));
+        drop(w);
+        let (asked, _) = ui.join().unwrap();
+        (asked, checked, failed, undo, bytes)
+    }
+
+    fn checked(kind: Kind, src: &Path, dest_dir: &Path) -> Job {
+        Job::Transfer { kind, items: vec![Item { src: uri(src), dest_dir: uri(dest_dir), name: None }], check: true }
+    }
+
+    #[test]
+    fn checked_copies_that_match() {
+        let s = home_scratch("checkok");
+        let data: Vec<u8> = (0..3_000_000u32).map(|i| (i % 253) as u8).collect();
+        fs::create_dir_all(s.0.join("src/d/sub")).unwrap();
+        fs::write(s.0.join("src/d/big.bin"), &data).unwrap();
+        write(&s.0.join("src/d/sub/small.txt"), "small");
+        fs::create_dir_all(s.0.join("dst")).unwrap();
+        let (asked, matched, failed, undo, bytes) = run_checked(checked(Kind::Copy, &s.0.join("src/d"), &s.0.join("dst")), vec![], false);
+        assert!(asked.is_empty(), "{asked:?}");
+        assert_eq!((matched, failed.len(), undo), (2, 0, 1));
+        assert_eq!(fs::read(s.0.join("dst/d/big.bin")).unwrap(), data);
+        // The checking counts in the progress too (each byte twice), and
+        // it ends where it should.
+        let size = data.len() as u64 + 5;
+        assert_eq!(bytes, (2 * size, 2 * size));
+    }
+
+    #[test]
+    fn a_spoilt_copy_is_caught_and_copied_again_or_kept() {
+        let s = home_scratch("checkbad");
+        write(&s.0.join("src/a.txt"), "the original");
+        fs::create_dir_all(s.0.join("dst")).unwrap();
+        // Skip: kept as it is, named in the report, not noted for Undo.
+        let (asked, matched, failed, undo, _) = run_checked(checked(Kind::Copy, &s.0.join("src/a.txt"), &s.0.join("dst")), vec![ErrChoice::Skip], true);
+        assert_eq!(asked, ["“a.txt” is different after copying"]);
+        assert_eq!((matched, failed, undo), (0, vec!["a.txt".to_string()], 0));
+        assert_ne!(fs::read(s.0.join("dst/a.txt")).unwrap(), b"the original");
+        fs::remove_file(s.0.join("dst/a.txt")).unwrap();
+        // Retry: copied again (over the spoilt one), and then it matches.
+        let (asked, matched, failed, _, _) = run_checked(checked(Kind::Copy, &s.0.join("src/a.txt"), &s.0.join("dst")), vec![ErrChoice::Retry], true);
+        assert_eq!(asked, ["“a.txt” is different after copying"]);
+        assert_eq!((matched, failed.len()), (1, 0));
+        assert_eq!(read(&s.0.join("dst/a.txt")), "the original");
+    }
+
+    #[test]
+    fn a_checked_move_keeps_the_original_of_a_spoilt_copy() {
+        // To another file system: the move copies (and deletes after).
+        let home = home_scratch("checkmove");
+        let other = scratch("/dev/shm", "checkmove");
+        write(&home.0.join("a.txt"), "aaa");
+        write(&home.0.join("b.txt"), "bbb");
+        let job = Job::Transfer {
+            kind: Kind::Move,
+            items: ["a.txt", "b.txt"].iter().map(|n| Item { src: uri(&home.0.join(n)), dest_dir: uri(&other.0), name: None }).collect(),
+            check: true,
+        };
+        let (asked, matched, failed, _, _) = run_checked(job, vec![ErrChoice::Skip], true);
+        assert_eq!(asked, ["“a.txt” is different after copying"]);
+        assert_eq!((matched, failed), (1, vec!["a.txt".to_string()]));
+        assert!(home.0.join("a.txt").exists(), "the spoilt one's original stays");
+        assert!(!home.0.join("b.txt").exists(), "the one that matched is moved");
+        assert_eq!(read(&other.0.join("b.txt")), "bbb");
+    }
+
     /// (dst relative to `root`, replaced) for each noted item, sorted.
     fn noted(undo: &[Moved], root: &Path) -> Vec<(String, bool)> {
         let mut v: Vec<(String, bool)> = undo
@@ -2287,6 +2509,7 @@ mod tests {
         let job = Job::Transfer {
             kind: Kind::Copy,
             items: vec![Item { src: uri(&s.0.join("src/d")), dest_dir: uri(&s.0.join("dst")), name: None }, Item { src: uri(&s.0.join("src/f")), dest_dir: uri(&s.0.join("dst")), name: None }],
+            check: false,
         };
         let (_, undo) = run_job_undo(job, &[]);
         assert_eq!(noted(&undo, &s.0), [("dst/d".to_string(), false), ("dst/f".to_string(), false)]);
@@ -2391,11 +2614,11 @@ mod tests {
     fn what_a_finished_job_did() {
         let item = |src: &str, name: Option<&str>| Item { src: src.into(), dest_dir: "file:///tmp".into(), name: name.map(String::from) };
         let moved = |src: &str, dst: &str| Moved { src: src.into(), dst: dst.into(), replaced: false };
-        let copy = Job::Transfer { kind: Kind::Copy, items: vec![item("file:///a", None)] };
+        let copy = Job::Transfer { kind: Kind::Copy, items: vec![item("file:///a", None)], check: false };
         assert!(matches!(action_of(shape_of(&copy), vec![moved("file:///a", "file:///tmp/a")]), Some(Action::Transfer { kind: Kind::Copy, .. })));
         // Nothing done: nothing to undo.
         assert!(action_of(shape_of(&copy), vec![]).is_none());
-        let restore = Job::Transfer { kind: Kind::Move, items: vec![item("trash:///a", Some("a"))] };
+        let restore = Job::Transfer { kind: Kind::Move, items: vec![item("trash:///a", Some("a"))], check: false };
         match action_of(shape_of(&restore), vec![moved("trash:///a", "file:///tmp/a")]) {
             Some(Action::Restore { uris, .. }) => assert_eq!(uris, ["file:///tmp/a"]),
             other => panic!("{other:?}"),
@@ -2417,9 +2640,9 @@ mod tests {
         let s = home_scratch("redo");
         write(&s.0.join("a.txt"), "a");
         let moved = vec![Moved { src: uri(&s.0.join("a.txt")), dst: uri(&s.0.join("dst/b.txt")), replaced: false }];
-        let Ok(Job::Transfer { kind: Kind::Move, items }) = redo_transfer(Kind::Move, moved.clone()) else { panic!() };
+        let Ok(Job::Transfer { kind: Kind::Move, items, .. }) = redo_transfer(Kind::Move, moved.clone()) else { panic!() };
         assert_eq!((items[0].dest_dir.as_str(), items[0].name.as_deref()), (uri(&s.0.join("dst")).as_str(), Some("b.txt")));
-        let Ok(Job::Transfer { kind: Kind::Copy, items }) = redo_transfer(Kind::Copy, moved.clone()) else { panic!() };
+        let Ok(Job::Transfer { kind: Kind::Copy, items, .. }) = redo_transfer(Kind::Copy, moved.clone()) else { panic!() };
         assert_eq!(items[0].name, None);
         // A source that's gone: nothing to redo.
         fs::remove_file(s.0.join("a.txt")).unwrap();
@@ -2600,6 +2823,7 @@ mod tests {
         Job::Transfer {
             kind,
             items: vec![Item { src: uri(src), dest_dir: uri(dest_dir), name: None }],
+            check: false,
         }
     }
 
@@ -2681,7 +2905,7 @@ mod tests {
         let dst = s.0.join("dst");
         fs::create_dir_all(&dst).unwrap();
         let items = [s.0.join("here/a"), t.0.join("b"), t.0.join("c")].iter().map(|p| Item { src: uri(p), dest_dir: uri(&dst), name: None }).collect();
-        let (_, asked, _, progress) = run_job_watched(Job::Transfer { kind: Kind::Move, items }, vec![], Arc::new(AtomicBool::new(false)), gio::Cancellable::new());
+        let (_, asked, _, progress) = run_job_watched(Job::Transfer { kind: Kind::Move, items, check: false }, vec![], Arc::new(AtomicBool::new(false)), gio::Cancellable::new());
         assert!(asked.is_empty(), "{asked:?}");
         assert_eq!(read(&dst.join("c/inner")).len(), 5000);
         assert!(!t.0.join("b").exists() && !t.0.join("c").exists());
@@ -2757,6 +2981,7 @@ mod tests {
         let job = Job::Transfer {
             kind: Kind::Copy,
             items: ["a.txt", "b.txt"].iter().map(|n| Item { src: uri(&s.0.join("src").join(n)), dest_dir: uri(&s.0.join("dst")), name: None }).collect(),
+            check: false,
         };
         let p = paused.clone();
         let worker = std::thread::spawn(move || run_job_paused(job, &[], p));
@@ -2925,6 +3150,7 @@ mod tests {
         let job = Job::Transfer {
             kind: Kind::Move,
             items: ["a", "b"].iter().map(|n| Item { src: uri(&s.0.join("src").join(n)), dest_dir: uri(&s.0.join("dst")), name: None }).collect(),
+            check: false,
         };
         let (_, asked) = run_job(job, &[Resolution::Cancel]);
         assert_eq!(asked, ["conflict:a"]);

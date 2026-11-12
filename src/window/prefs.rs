@@ -53,6 +53,7 @@ impl AppWindow {
         let (cm, items_refresh, bg_refresh) = self.context_menu_page(&f);
         add_page("contextmenu", "Context Menu", "open-menu-symbolic", &cm);
         add_page("customactions", "Custom Actions", "system-run-symbolic", &self.custom_actions_page(&f));
+        add_page("checksums", "Checksums", "security-high-symbolic", &self.checksums_page(&f));
         if let Some(app) = self.window.application() {
             add_page("keyboard", "Keyboard", "input-keyboard-symbolic", &self.keyboard_page(&f, &app));
         }
@@ -762,6 +763,18 @@ impl AppWindow {
         ca
     }
 
+    /// The checksums Properties' Checksums tab offers, and their order.
+    fn checksums_page(self: &Rc<Self>, f: &Form) -> gtk::Box {
+        let page = Form::page();
+        f.head(&page, "Checksums in Properties");
+        let hint = hint_label("Unchecked ones aren't offered. Drag one by its handle, or select it and use the arrows, to move it.");
+        f.indent(&page, hint.upcast_ref());
+        let editor = checksums_editor();
+        editor.set_margin_start(40);
+        page.pack_start(&editor, true, true, 0);
+        page
+    }
+
     /// Keyboard shortcuts.
     fn keyboard_page(self: &Rc<Self>, f: &Form, app: &gtk::Application) -> gtk::Box {
         let kb = Form::page();
@@ -835,6 +848,7 @@ impl Form {
 
 const MENU_ROW_TARGET: &str = "ARKHA_MENU_ROW";
 const PLACE_ROW_TARGET: &str = "ARKHA_PLACE_ROW";
+const CHECKSUM_ROW_TARGET: &str = "ARKHA_CHECKSUM_ROW";
 
 /// A check box for a setting: `set` stores it when it's toggled, then
 /// `then` applies it.
@@ -1243,6 +1257,44 @@ fn places_editor(places: impl Fn() -> Vec<crate::sidebar::Place> + 'static) -> (
     buttons.pack_end(&reset, false, false, 0);
     outer.add(&buttons);
     (outer, refresh)
+}
+
+/// Every checksum with a check box (offered or not) in the order the
+/// Checksums tab shows them, to drag or move with the arrows.
+fn checksums_editor() -> gtk::Box {
+    let outer = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let row = |id: &str| -> gtk::Widget {
+        let name = crate::checksums::Algo::from_id(id).map_or(id, |a| a.name());
+        // In a box: the rest of the row selects it, not the checkbox.
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        row.add(&shown_check(gtk::Label::new(Some(name)).upcast_ref(), id, |s| &mut s.hidden_checksums, || {}));
+        row.upcast()
+    };
+    let ol = order_list(CHECKSUM_ROW_TARGET, row, |o| {
+        let o = o.to_vec();
+        config::update(|s| s.checksum_order = o);
+    });
+    *ol.order.borrow_mut() = config::get().checksum_order;
+    (ol.rebuild)(None);
+    outer.add(&ol.widget);
+    let (up, down) = ol.arrows();
+    let reset = gtk::Button::with_mnemonic("Reset _Order");
+    reset.set_tooltip_text(Some("Put every checksum back in its usual place (which are offered stays as it is)"));
+    {
+        let ol = ol.clone();
+        reset.connect_clicked(move |_| {
+            let order: Vec<String> = crate::checksums::ALL.iter().map(|a| a.id().to_string()).collect();
+            config::update(|s| s.checksum_order = order.clone());
+            *ol.order.borrow_mut() = order;
+            (ol.rebuild)(None);
+        });
+    }
+    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    buttons.add(&up);
+    buttons.add(&down);
+    buttons.pack_end(&reset, false, false, 0);
+    outer.add(&buttons);
+    outer
 }
 
 /// List of the GTK bookmarks (shared with Caja and file choosers) with rename,

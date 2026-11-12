@@ -67,6 +67,10 @@ pub struct Settings {
     pub rename_tab_order: Vec<String>,
     /// Order of the Properties window's tabs (see PROPS_TABS), the same way.
     pub props_tab_order: Vec<String>,
+    /// The checksums the Checksums tab offers: all of them in their order
+    /// (ids as checksums::Algo::id), and those not offered.
+    pub checksum_order: Vec<String>,
+    pub hidden_checksums: Vec<String>,
     /// Order of the side pane's sections (see SIDEBAR_SECTIONS); rearranged
     /// by dragging their headings.
     pub sidebar_sections: Vec<String>,
@@ -168,7 +172,7 @@ pub struct Settings {
 /// The bulk rename window's tabs, in their default order.
 pub const RENAME_TABS: [&str; 6] = ["case", "insert", "remove", "replace", "enumerate", "regex"];
 /// The Properties window's tabs (not every one shows for every item).
-pub const PROPS_TABS: [&str; 6] = ["basic", "emblems", "permissions", "open-with", "notes", "media"];
+pub const PROPS_TABS: [&str; 7] = ["basic", "emblems", "permissions", "open-with", "notes", "media", "checksums"];
 pub const SIDEBAR_SECTIONS: [&str; 3] = ["computer", "devices", "bookmarks"];
 
 /// The location bar's button groups: zoom, view mode, split view, the info
@@ -266,6 +270,8 @@ impl Default for Settings {
             bar_order: BAR_ITEMS.iter().map(|g| g.to_string()).collect(),
             rename_tab_order: RENAME_TABS.iter().map(|t| t.to_string()).collect(),
             props_tab_order: PROPS_TABS.iter().map(|t| t.to_string()).collect(),
+            checksum_order: crate::checksums::ALL.iter().map(|a| a.id().to_string()).collect(),
+            hidden_checksums: crate::checksums::HIDDEN_AT_FIRST.iter().map(|t| t.to_string()).collect(),
             sidebar_sections: SIDEBAR_SECTIONS.iter().map(|t| t.to_string()).collect(),
             list_columns: crate::details::DEFAULT_COLUMNS.iter().map(|t| t.to_string()).collect(),
             icon_captions: crate::details::DEFAULT_CAPTIONS.iter().map(|t| t.to_string()).collect(),
@@ -436,6 +442,13 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     }
     if let Ok(v) = kf.string_list(g, "props_tab_order") {
         s.props_tab_order = tab_order(v.iter().map(|x| x.to_string()).collect(), &PROPS_TABS);
+    }
+    let checksum_ids: Vec<&str> = crate::checksums::ALL.iter().map(|a| a.id()).collect();
+    if let Ok(v) = kf.string_list(g, "checksum_order") {
+        s.checksum_order = tab_order(v.iter().map(|x| x.to_string()).collect(), &checksum_ids);
+    }
+    if let Ok(v) = kf.string_list(g, "hidden_checksums") {
+        s.hidden_checksums = v.iter().map(|x| x.to_string()).filter(|id| checksum_ids.contains(&id.as_str())).collect();
     }
     if let Ok(v) = kf.string_list(g, "list_columns") {
         let v: Vec<String> = v.iter().map(|x| x.to_string()).collect();
@@ -633,6 +646,8 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     set_string_list(&kf, g, "bar_order", &s.bar_order);
     set_string_list(&kf, g, "rename_tab_order", &s.rename_tab_order);
     set_string_list(&kf, g, "props_tab_order", &s.props_tab_order);
+    set_string_list(&kf, g, "checksum_order", &s.checksum_order);
+    set_string_list(&kf, g, "hidden_checksums", &s.hidden_checksums);
     set_string_list(&kf, g, "sidebar_sections", &s.sidebar_sections);
     set_string_list(&kf, g, "list_columns", &s.list_columns);
     set_string_list(&kf, g, "icon_captions", &s.icon_captions);

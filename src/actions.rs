@@ -35,6 +35,7 @@ pub const BACKGROUND_ENTRIES: &[(&str, &str)] = &[
     ("bg:new-document", "Create Document"),
     ("bg:terminal", "Open in Terminal"),
     ("bg:paste", "Paste"),
+    ("bg:paste-check", "Paste and Check"),
     ("bg:select-all", "Select All"),
     ("bg:arrange", "Arrange Items"),
     ("bg:view", "View (the whole submenu)"),
@@ -73,7 +74,7 @@ pub const BACKGROUND_ORDER: &[&str] = &[
     "bg:empty-trash", SEPARATOR,
     "bg:new-folder", "bg:new-document", SEPARATOR,
     "bg:terminal", SEPARATOR,
-    "bg:paste", "bg:select-all", SEPARATOR,
+    "bg:paste", "bg:paste-check", "bg:select-all", SEPARATOR,
     "bg:reload", "bg:view", "bg:arrange", "bg:add-bookmark", SEPARATOR,
     "bg:properties",
 ];

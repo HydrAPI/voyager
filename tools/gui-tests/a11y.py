@@ -14,6 +14,9 @@ same on X11 and Wayland, where window titles can't be read otherwise.
                         window whose name or tooltip starts with TEXT (to
                         click it with real input)
     a11y.py dialog-tabs the tab names of its first dialog, in order
+    a11y.py buttons     its first dialog's buttons: "name|on" or "name|off"
+    a11y.py labels      its first dialog's texts (labels), a line each
+    a11y.py focused-text  the text of the text field that has the focus
     a11y.py where-tab NAME  "x y", the middle of that dialog's tab NAME
     a11y.py focus ROLE  gives the dialog's first ROLE (e.g. text) the focus
     a11y.py listen S    keeps listening to focus events for S seconds, as
@@ -102,7 +105,7 @@ def main():
                 if name:
                     print(name)
     elif what == "press":
-        for d in windows(app, ("dialog",)):
+        for d in windows(app, ("dialog", "file chooser")):
             for role in ("check box", "button", "push button", "toggle button"):
                 for b in find(d, role, []):
                     if b.get_name().replace("_", "") == sys.argv[2]:
@@ -139,6 +142,23 @@ def main():
                 return
         if what == "where-tab":
             sys.exit(1)
+    elif what in ("buttons", "labels"):
+        for d in windows(app, ("dialog",)):
+            roles = ("button", "push button") if what == "buttons" else ("label",)
+            for role in roles:
+                for x in find(d, role, []):
+                    if what == "buttons":
+                        on = x.get_state_set().contains(Atspi.StateType.SENSITIVE)
+                        print(f"{x.get_name()}|{'on' if on else 'off'}")
+                    elif x.get_name():
+                        print(x.get_name())
+            return
+    elif what == "focused-text":
+        for w in windows(app):
+            for x in find(w, "text", []):
+                if x.get_state_set().contains(Atspi.StateType.FOCUSED):
+                    print(Atspi.Text.get_text(x, 0, -1))
+                    return
     elif what == "focus":
         for d in windows(app, ("dialog",)):
             for x in find(d, sys.argv[2], []):

@@ -63,6 +63,7 @@ pub const BINDINGS: &[Binding] = &[
     b("Files", "win.cut", "Cut", &["<Ctrl>x"]),
     b("Files", "win.copy", "Copy", &["<Ctrl>c"]),
     b("Files", "win.paste", "Paste", &["<Ctrl>v"]),
+    b("Files", "win.paste-check", "Paste and check the copies", &["<Ctrl><Shift>v"]),
     b("Files", "win.paste-into", "Paste into folder", &[]),
     b("Files", "win.undo", "Undo the last file operation", &["<Ctrl>z"]),
     b("Files", "win.redo", "Redo the last undone file operation", &["<Ctrl><Shift>z", "<Ctrl>y"]),

@@ -78,7 +78,7 @@ ACTIONS = [
     ("sort-by", "sort", 3, "plain"), ("sort-desc", "toggle", 2, "plain"), ("folders-first", "toggle", 1, "plain"),
     ("filter", None, 1, "plain"), ("location", None, 1, "plain"), ("escape", None, 3, "plain"),
     ("select-all", None, 5, "plain"), ("invert-selection", None, 3, "plain"),
-    ("copy", None, 4, "plain"), ("cut", None, 3, "plain"), ("paste", None, 4, "plain"), ("paste-into", None, 1, "plain"),
+    ("copy", None, 4, "plain"), ("cut", None, 3, "plain"), ("paste", None, 4, "plain"), ("paste-check", None, 1, "plain"), ("paste-into", None, 1, "plain"),
     # Undoes the last copy, move or link, whatever happened to it since.
     ("undo", None, 3, "plain"), ("redo", None, 2, "plain"),
     ("duplicate", None, 2, "plain"), ("make-link", None, 1, "plain"), ("copy-to-pane", None, 1, "plain"),

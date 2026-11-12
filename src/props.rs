@@ -508,9 +508,213 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         }
     }
 
+    // ------------------------------------------------------------ Checksums
+    if files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
+        let page = checksums_page(&dialog, &files[0], infos[0].size().max(0) as u64);
+        add_page(&nb, &page, "checksums", "Checksums");
+    }
+
     // Draggable into another order, which is kept, as in Rename All.
     util::order_tabs(&nb, config::get().props_tab_order, |order| config::update(|s| s.props_tab_order = order));
     dialog.show_all();
+}
+
+/// The Checksums tab: a row for each checksum chosen in Preferences, worked
+/// out only when its Calculate button is pressed, one at a time (the other
+/// buttons wait), with a progress bar, the time left and Cancel; Copy puts
+/// the result on the clipboard. Calculate All works out all those without a
+/// result (all again if each has one) in a single read of the file.
+fn checksums_page(dialog: &gtk::Dialog, file: &gio::File, size: u64) -> gtk::Box {
+    use crate::checksums;
+    let page = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    page.set_border_width(12);
+    let algos = config::with(|s| checksums::offered(&s.checksum_order, &s.hidden_checksums));
+    if algos.is_empty() {
+        page.add(&value_label("No checksums are chosen: pick them in Preferences → Checksums."));
+        return page;
+    }
+    let hint = value_label("A checksum shows whether a file is exactly the one it should be: compare it with the one its source gives. Each is worked out from the whole file when you ask for it.");
+    hint.style_context().add_class("dim-label");
+    page.add(&hint);
+    let grid = gtk::Grid::new();
+    grid.set_row_spacing(8);
+    grid.set_column_spacing(12);
+    page.add(&grid);
+    // The calculation running, if any.
+    let running: Rc<std::cell::RefCell<Option<gio::Cancellable>>> = Rc::default();
+    let calc_buttons: Rc<std::cell::RefCell<Vec<gtk::Button>>> = Rc::default();
+    // Each checksum's row: (checksum, its result, its Copy button).
+    let rows: Rc<std::cell::RefCell<Vec<Target>>> = Rc::default();
+    let bar = gtk::ProgressBar::new();
+    bar.set_show_text(true);
+    bar.set_hexpand(true);
+    let cancel = gtk::Button::with_mnemonic("_Cancel");
+    let progress_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    progress_row.pack_start(&bar, true, true, 0);
+    progress_row.pack_start(&cancel, false, false, 0);
+    progress_row.set_no_show_all(true);
+    {
+        let running = running.clone();
+        cancel.connect_clicked(move |_| {
+            if let Some(c) = running.borrow().as_ref() {
+                c.cancel();
+            }
+        });
+    }
+    // Closing the window stops what's running.
+    {
+        let running = running.clone();
+        dialog.connect_destroy(move |_| {
+            if let Some(c) = running.borrow().as_ref() {
+                c.cancel();
+            }
+        });
+    }
+    for (row, algo) in algos.into_iter().enumerate() {
+        let row = row as i32;
+        let name = gtk::Label::new(Some(algo.name()));
+        name.set_xalign(0.0);
+        name.set_valign(gtk::Align::Start);
+        let value = gtk::Label::new(None);
+        value.set_xalign(0.0);
+        value.set_selectable(true);
+        value.set_line_wrap(true);
+        value.set_line_wrap_mode(pango::WrapMode::Char);
+        value.set_hexpand(true);
+        value.set_width_chars(32);
+        value.set_max_width_chars(64);
+        let attrs = pango::AttrList::new();
+        attrs.insert(pango::AttrString::new_family("monospace"));
+        value.set_attributes(Some(&attrs));
+        let calc = gtk::Button::with_label("Calculate");
+        calc.set_valign(gtk::Align::Start);
+        let copy = gtk::Button::from_icon_name(Some("edit-copy-symbolic"), gtk::IconSize::Button);
+        copy.set_tooltip_text(Some("Copy it to the clipboard"));
+        copy.set_valign(gtk::Align::Start);
+        copy.set_sensitive(false);
+        if let Some(a) = copy.accessible() {
+            gtk::atk::prelude::AtkObjectExt::set_name(&a, &format!("Copy {}", algo.name()));
+        }
+        {
+            let value = value.clone();
+            copy.connect_clicked(move |_| gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD).set_text(&value.text()));
+        }
+        {
+            let (running, buttons, bar, progress_row) = (running.clone(), calc_buttons.clone(), bar.clone(), progress_row.clone());
+            let target = (algo, value.clone(), copy.clone());
+            let uri = file.uri().to_string();
+            calc.connect_clicked(move |_| {
+                start_checksums(vec![target.clone()], &uri, size, &running, &buttons, &bar, &progress_row);
+            });
+        }
+        calc_buttons.borrow_mut().push(calc.clone());
+        rows.borrow_mut().push((algo, value.clone(), copy.clone()));
+        grid.attach(&name, 0, row, 1, 1);
+        grid.attach(&value, 1, row, 1, 1);
+        grid.attach(&calc, 2, row, 1, 1);
+        grid.attach(&copy, 3, row, 1, 1);
+    }
+    let all = gtk::Button::with_mnemonic("Calculate _All");
+    all.set_tooltip_text(Some("Work out every checksum above that has no result yet (all of them again if each has one), reading the file only once"));
+    all.set_halign(gtk::Align::End);
+    {
+        let (running, buttons, bar, progress_row, rows) = (running.clone(), calc_buttons.clone(), bar.clone(), progress_row.clone(), rows.clone());
+        let uri = file.uri().to_string();
+        all.connect_clicked(move |_| {
+            let rows = rows.borrow();
+            // A result: its Copy button is on (an error leaves it off).
+            let missing: Vec<Target> = rows.iter().filter(|(_, _, copy)| !copy.is_sensitive()).cloned().collect();
+            let targets = if missing.is_empty() { rows.clone() } else { missing };
+            start_checksums(targets, &uri, size, &running, &buttons, &bar, &progress_row);
+        });
+    }
+    calc_buttons.borrow_mut().push(all.clone());
+    page.add(&all);
+    page.add(&progress_row);
+    page
+}
+
+/// A checksum to work out: the checksum, where its result goes, its Copy
+/// button.
+type Target = (crate::checksums::Algo, gtk::Label, gtk::Button);
+
+/// Works out the checksums of `targets` for the file `uri` on a thread of
+/// its own, in one read, showing the progress (bytes, time left) in `bar`,
+/// every Calculate button waiting meanwhile; each result goes to its row.
+fn start_checksums(
+    targets: Vec<Target>,
+    uri: &str,
+    size: u64,
+    running: &Rc<std::cell::RefCell<Option<gio::Cancellable>>>,
+    buttons: &Rc<std::cell::RefCell<Vec<gtk::Button>>>,
+    bar: &gtk::ProgressBar,
+    progress_row: &gtk::Box,
+) {
+    if running.borrow().is_some() || targets.is_empty() {
+        return;
+    }
+    let cancel = gio::Cancellable::new();
+    *running.borrow_mut() = Some(cancel.clone());
+    for b in buttons.borrow().iter() {
+        b.set_sensitive(false);
+    }
+    let what = targets.iter().map(|(a, _, _)| a.name()).collect::<Vec<_>>().join(", ");
+    bar.set_fraction(0.0);
+    bar.set_text(Some(&format!("{what}: starting…")));
+    progress_row.set_no_show_all(false);
+    progress_row.show_all();
+    enum Step {
+        Read(u64),
+        Done(Result<Vec<String>, glib::Error>),
+    }
+    let (tx, rx) = async_channel::unbounded::<Step>();
+    let (uri, algos) = (uri.to_string(), targets.iter().map(|(a, _, _)| *a).collect::<Vec<_>>());
+    std::thread::spawn(move || {
+        let mut last = std::time::Instant::now();
+        let r = crate::checksums::compute_many(&gio::File::for_uri(&uri), &algos, false, &cancel, &mut |read| {
+            if last.elapsed() > std::time::Duration::from_millis(100) {
+                last = std::time::Instant::now();
+                let _ = tx.send_blocking(Step::Read(read));
+            }
+        });
+        let _ = tx.send_blocking(Step::Done(r));
+    });
+    let started = std::time::Instant::now();
+    let (running, buttons, bar, progress_row) = (running.clone(), buttons.clone(), bar.clone(), progress_row.clone());
+    glib::MainContext::default().spawn_local(async move {
+        while let Ok(step) = rx.recv().await {
+            match step {
+                Step::Read(read) => {
+                    if size > 0 {
+                        bar.set_fraction((read as f64 / size as f64).clamp(0.0, 1.0));
+                    }
+                    bar.set_text(Some(&format!("{what}: {}", crate::ops::bytes_detail(read, size, started.elapsed()))));
+                }
+                Step::Done(r) => {
+                    match r {
+                        Ok(sums) => {
+                            for ((_, value, copy), sum) in targets.iter().zip(sums) {
+                                value.set_text(&sum);
+                                copy.set_sensitive(true);
+                            }
+                        }
+                        Err(e) if e.matches(gio::IOErrorEnum::Cancelled) => {}
+                        Err(e) => {
+                            for (_, value, _) in &targets {
+                                value.set_text(&format!("Couldn't read the file: {}", e.message()));
+                            }
+                        }
+                    }
+                    running.borrow_mut().take();
+                    for b in buttons.borrow().iter() {
+                        b.set_sensitive(true);
+                    }
+                    progress_row.hide();
+                    break;
+                }
+            }
+        }
+    });
 }
 
 /// A tab of Properties, called `id` in the order kept (see util::order_tabs).
