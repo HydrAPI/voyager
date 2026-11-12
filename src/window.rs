@@ -761,7 +761,10 @@ impl AppWindow {
         }
         // Everything shown but the window itself, so that the icons it will
         // show can be loaded all at once first (see preload_widget_icons).
-        window.forall(|w| w.show_all());
+        // As show_all() does: foreach, not forall, whose internal children
+        // (popovers) mustn't be shown, and showing them changes the list
+        // being walked.
+        window.foreach(|w| w.show_all());
         this.sidebar.widget.set_visible(s.show_sidebar);
         this.statusbar.set_visible(s.show_statusbar);
         this.toolbar.set_visible(s.show_toolbar);
