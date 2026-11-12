@@ -466,15 +466,13 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     // tab's content sits in a wrapper so that only the current tab's is
     // shown: a notebook is as tall as its tallest page, and this way the
     // tab area fits the current tab and the file list gets the rest.
-    for id in config::get().rename_tab_order {
-        if let Some((id, page, label)) = pages.iter().find(|(p, _, _)| *p == id) {
-            let wrap = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            wrap.add(page);
-            wrap.set_widget_name(id);
-            notebook.append_page(&wrap, Some(&gtk::Label::new(Some(label))));
-            notebook.set_tab_reorderable(&wrap, true);
-        }
+    for (id, page, label) in &pages {
+        let wrap = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        wrap.add(page);
+        wrap.set_widget_name(id);
+        notebook.append_page(&wrap, Some(&gtk::Label::new(Some(label))));
     }
+    crate::util::order_tabs(&notebook, config::get().rename_tab_order, |order| config::update(|s| s.rename_tab_order = order));
     let show_only = |nb: &gtk::Notebook, current: &gtk::Widget| {
         for i in 0..nb.n_pages() {
             let Some(wrap) = nb.nth_page(Some(i)).and_then(|w| w.downcast::<gtk::Box>().ok()) else { continue };
@@ -484,10 +482,6 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         }
     };
     notebook.connect_switch_page(move |nb, page, _| show_only(nb, page));
-    notebook.connect_page_reordered(|nb, _, _| {
-        let order: Vec<String> = (0..nb.n_pages()).filter_map(|i| nb.nth_page(Some(i))).map(|p| p.widget_name().to_string()).collect();
-        config::update(|s| s.rename_tab_order = order);
-    });
 
     // icon, old name, new name
     let store = gtk::ListStore::new(&[gdk_pixbuf::Pixbuf::static_type(), String::static_type(), String::static_type()]);

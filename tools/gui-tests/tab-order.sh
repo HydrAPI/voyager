@@ -1,0 +1,45 @@
+#!/bin/bash
+# tab-order.sh x11|wayland: the tabs of Properties and of Rename All can be
+# dragged into another order, which is kept: dragged with the real mouse,
+# then the window opened again (for Properties also for a folder, which
+# hasn't some of a file's tabs: their places are kept).
+GT_A11Y=1
+. "$(dirname "$0")/lib.sh"
+gt_session "$@"
+
+T=$HOME/tabs; mkdir -p "$T/folder"; echo a > "$T/a.txt"; echo b > "$T/b.txt"
+gt_display
+gt_arkha "$T"
+tabs() { gt_a11y dialog-tabs | tr '\n' ' '; }
+drag_tab() {  # drag_tab FROM TO: FROM dropped on TO's left half
+  local from to; from=$(gt_a11y where-tab "$1"); to=$(gt_a11y where-tab "$2")
+  [ -n "$from" ] && [ -n "$to" ] || { echo "FAIL no tab $1 or $2" >> "$OUT/result"; return; }
+  set -- $from $to
+  xdotool mousemove $1 $2 mousedown 1; sleep 0.3
+  for i in $(seq 1 12); do xdotool mousemove $(( $1 + ($3 - 20 - $1) * i / 12 )) $2; sleep 0.05; done
+  sleep 0.3; xdotool mouseup 1; sleep 0.8
+}
+props() { gt_click 900 650; gt_type "$1"; gt_key Escape; gdbus call --session --dest io.github.arkha.FileManager \
+  --object-path $APP_PATH/window/1 --method org.gtk.Actions.Activate properties [] {} >/dev/null & sleep 1.5; }
+props a.t
+gt_check "Properties of a file: the usual order" "$(tabs)" "Basic Emblems Permissions Open With Notes "
+drag_tab Notes Basic; gt_shot props-dragged
+gt_check "Notes dragged to the front" "$(tabs)" "Notes Basic Emblems Permissions Open With "
+gt_check "and kept" "$(grep '^props_tab_order=' "$XDG_CONFIG_HOME/arkha/arkha.conf")" "props_tab_order=notes;basic;emblems;permissions;open-with;media;"
+gt_key Escape; sleep 0.5
+props fol
+gt_check "a folder's Properties: the same order, without Open With" "$(tabs)" "Basic Emblems Permissions "
+gt_key Escape; sleep 0.5
+props b.t
+gt_check "another file: the order kept" "$(tabs)" "Notes Basic Emblems Permissions Open With "
+gt_key Escape; sleep 0.5
+# Rename All (two files selected).
+gt_click 900 650; gt_type a.t; gt_key Escape; gt_key shift+Right
+gdbus call --session --dest io.github.arkha.FileManager --object-path $APP_PATH/window/1 \
+  --method org.gtk.Actions.Activate rename-all [] {} >/dev/null & sleep 1.5
+before=$(tabs)
+first=$(echo "$before" | awk '{print $1}'); last=$(gt_a11y dialog-tabs | tail -1)
+drag_tab "$last" "$first"; gt_shot rename-dragged
+gt_check "Rename All: its last tab dragged to the front" "$(tabs)" "$last $(echo "$before" | sed "s/ $last //; s/ $//") "
+gt_key Escape
+gt_end

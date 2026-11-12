@@ -13,6 +13,8 @@ same on X11 and Wayland, where window titles can't be read otherwise.
     a11y.py where TEXT  "x y", the middle of the shown button in its first
                         window whose name or tooltip starts with TEXT (to
                         click it with real input)
+    a11y.py dialog-tabs the tab names of its first dialog, in order
+    a11y.py where-tab NAME  "x y", the middle of that dialog's tab NAME
     a11y.py focus ROLE  gives the dialog's first ROLE (e.g. text) the focus
     a11y.py listen S    keeps listening to focus events for S seconds, as
                         screen readers do (GTK then does more for them)
@@ -124,6 +126,19 @@ def main():
                     print(e.x + e.width // 2, e.y + e.height // 2)
                     return
         sys.exit(1)
+    elif what in ("dialog-tabs", "where-tab"):
+        for d in windows(app, ("dialog",)):
+            for t in find(d, "page tab", [], showing=False):
+                if what == "dialog-tabs":
+                    print(t.get_name())
+                elif t.get_name() == sys.argv[2]:
+                    e = Atspi.Component.get_extents(t, Atspi.CoordType.SCREEN)
+                    print(e.x + e.width // 2, e.y + e.height // 2)
+                    return
+            if what == "dialog-tabs":
+                return
+        if what == "where-tab":
+            sys.exit(1)
     elif what == "focus":
         for d in windows(app, ("dialog",)):
             for x in find(d, sys.argv[2], []):

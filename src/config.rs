@@ -65,6 +65,8 @@ pub struct Settings {
     pub bar_order: Vec<String>,
     /// Order of the bulk rename window's tabs (see RENAME_TABS); rearranged by dragging.
     pub rename_tab_order: Vec<String>,
+    /// Order of the Properties window's tabs (see PROPS_TABS), the same way.
+    pub props_tab_order: Vec<String>,
     /// Order of the side pane's sections (see SIDEBAR_SECTIONS); rearranged
     /// by dragging their headings.
     pub sidebar_sections: Vec<String>,
@@ -165,6 +167,8 @@ pub struct Settings {
 
 /// The bulk rename window's tabs, in their default order.
 pub const RENAME_TABS: [&str; 6] = ["case", "insert", "remove", "replace", "enumerate", "regex"];
+/// The Properties window's tabs (not every one shows for every item).
+pub const PROPS_TABS: [&str; 6] = ["basic", "emblems", "permissions", "open-with", "notes", "media"];
 pub const SIDEBAR_SECTIONS: [&str; 3] = ["computer", "devices", "bookmarks"];
 
 /// The location bar's button groups: zoom, view mode, split view, the info
@@ -261,6 +265,7 @@ impl Default for Settings {
             show_info_button: true,
             bar_order: BAR_ITEMS.iter().map(|g| g.to_string()).collect(),
             rename_tab_order: RENAME_TABS.iter().map(|t| t.to_string()).collect(),
+            props_tab_order: PROPS_TABS.iter().map(|t| t.to_string()).collect(),
             sidebar_sections: SIDEBAR_SECTIONS.iter().map(|t| t.to_string()).collect(),
             list_columns: crate::details::DEFAULT_COLUMNS.iter().map(|t| t.to_string()).collect(),
             icon_captions: crate::details::DEFAULT_CAPTIONS.iter().map(|t| t.to_string()).collect(),
@@ -416,15 +421,21 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     b!(show_swap_button);
     b!(show_info_button);
     b!(path_as_text);
-    if let Ok(v) = kf.string_list(g, "rename_tab_order") {
-        // Known tabs once each; any missing (e.g. added later) go at the end.
+    // Known tabs once each; any missing (e.g. added later) go at the end.
+    let tab_order = |v: Vec<String>, known: &[&str]| -> Vec<String> {
         let mut order: Vec<String> = vec![];
-        for id in v.iter().map(|x| x.to_string()).chain(RENAME_TABS.iter().map(|t| t.to_string())) {
-            if RENAME_TABS.contains(&id.as_str()) && !order.contains(&id) {
+        for id in v.into_iter().chain(known.iter().map(|t| t.to_string())) {
+            if known.contains(&id.as_str()) && !order.contains(&id) {
                 order.push(id);
             }
         }
-        s.rename_tab_order = order;
+        order
+    };
+    if let Ok(v) = kf.string_list(g, "rename_tab_order") {
+        s.rename_tab_order = tab_order(v.iter().map(|x| x.to_string()).collect(), &RENAME_TABS);
+    }
+    if let Ok(v) = kf.string_list(g, "props_tab_order") {
+        s.props_tab_order = tab_order(v.iter().map(|x| x.to_string()).collect(), &PROPS_TABS);
     }
     if let Ok(v) = kf.string_list(g, "list_columns") {
         let v: Vec<String> = v.iter().map(|x| x.to_string()).collect();
@@ -621,6 +632,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_boolean(g, "show_info_button", s.show_info_button);
     set_string_list(&kf, g, "bar_order", &s.bar_order);
     set_string_list(&kf, g, "rename_tab_order", &s.rename_tab_order);
+    set_string_list(&kf, g, "props_tab_order", &s.props_tab_order);
     set_string_list(&kf, g, "sidebar_sections", &s.sidebar_sections);
     set_string_list(&kf, g, "list_columns", &s.list_columns);
     set_string_list(&kf, g, "icon_captions", &s.icon_captions);

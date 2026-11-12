@@ -691,6 +691,47 @@ pub fn is_editable_focused(win: &gtk::Window) -> bool {
         .unwrap_or(false)
 }
 
+/// Puts `nb`'s tabs (each page named by its id) in the order `kept` and
+/// lets them be dragged into another; the new order goes to `save`, with
+/// the tabs not shown this time (see merge_tab_order). For Rename All and
+/// Properties.
+pub fn order_tabs(nb: &gtk::Notebook, kept: Vec<String>, save: impl Fn(Vec<String>) + 'static) {
+    let pages = || (0..nb.n_pages()).filter_map(|i| nb.nth_page(Some(i))).collect::<Vec<_>>();
+    let mut at = 0;
+    for id in &kept {
+        if let Some(page) = pages().into_iter().find(|p| p.widget_name() == id.as_str()) {
+            nb.reorder_child(&page, Some(at));
+            at += 1;
+        }
+    }
+    for page in pages() {
+        nb.set_tab_reorderable(&page, true);
+    }
+    nb.set_current_page(Some(0));
+    let kept = std::cell::RefCell::new(kept);
+    nb.connect_page_reordered(move |nb, _, _| {
+        let shown: Vec<String> = (0..nb.n_pages()).filter_map(|i| nb.nth_page(Some(i))).map(|p| p.widget_name().to_string()).collect();
+        let order = merge_tab_order(&kept.borrow(), &shown);
+        *kept.borrow_mut() = order.clone();
+        save(order);
+    });
+}
+
+/// The tabs shown now in their new order, with those of `kept` not shown
+/// this time (Properties' Open With for a folder, say) each after the tab
+/// that was before it.
+pub fn merge_tab_order(kept: &[String], shown: &[String]) -> Vec<String> {
+    let mut order = shown.to_vec();
+    for (i, id) in kept.iter().enumerate() {
+        if order.contains(id) {
+            continue;
+        }
+        let at = kept[..i].iter().rev().find_map(|p| order.iter().position(|o| o == p)).map_or(0, |p| p + 1);
+        order.insert(at, id.clone());
+    }
+    order
+}
+
 /// A key file's groups named `prefix` and a number ("Action 2"), in the
 /// numbers' order: the items of a list saved one group each.
 pub fn numbered_groups(kf: &glib::KeyFile, prefix: &str) -> Vec<String> {
@@ -740,6 +781,19 @@ pub fn preview_on(mode: &str, file: &gio::File) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tab_order_kept_for_tabs_not_shown() {
+        let v = |x: &[&str]| x.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        let kept = v(&["basic", "emblems", "permissions", "open-with", "notes", "media"]);
+        // A folder (no Open With, no Media Info): Notes dragged to the front.
+        // Open With stays after Permissions, Media Info after Notes.
+        assert_eq!(merge_tab_order(&kept, &v(&["notes", "basic", "emblems", "permissions"])), v(&["notes", "media", "basic", "emblems", "permissions", "open-with"]));
+        // A file, Media Info first: the rest as they were.
+        assert_eq!(merge_tab_order(&kept, &v(&["media", "basic", "emblems", "permissions", "open-with", "notes"])), v(&["media", "basic", "emblems", "permissions", "open-with", "notes"]));
+        // Every tab shown (Rename All): just the new order.
+        assert_eq!(merge_tab_order(&v(&["a", "b", "c"]), &v(&["c", "a", "b"])), v(&["c", "a", "b"]));
+    }
 
     #[test]
     fn bookmark_names_of_shares() {

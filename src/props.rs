@@ -254,11 +254,11 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         let parent_loc = files[0].parent().map(|p| util::pretty_location(&p)).unwrap_or_default();
         row(&grid, r, "Location:", value_label(&parent_loc).upcast_ref());
     }
-    nb.append_page(&grid, Some(&gtk::Label::new(Some("Basic"))));
+    add_page(&nb, &grid, "basic", "Basic");
 
     // -------------------------------------------------------------- Emblems
     let emblems_slot = reading_page();
-    nb.append_page(&emblems_slot, Some(&gtk::Label::new(Some("Emblems"))));
+    add_page(&nb, &emblems_slot, "emblems", "Emblems");
     let notes_slot = reading_page();
 
     // ---------------------------------------------------------- Permissions
@@ -442,7 +442,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             let l = value_label("You are not the owner, so you can't change these permissions.");
             pg.attach(&l, 0, r, 4, 1);
         }
-        nb.append_page(&pg, Some(&gtk::Label::new(Some("Permissions"))));
+        add_page(&nb, &pg, "permissions", "Permissions");
     }
 
     // ------------------------------------------------------------ Open With
@@ -478,13 +478,13 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                 });
             }
             ob.pack_start(&set_btn, false, false, 0);
-            nb.append_page(&ob, Some(&gtk::Label::new(Some("Open With"))));
+            add_page(&nb, &ob, "open-with", "Open With");
         }
     }
 
     // ---------------------------------------------------------------- Notes
     if files.len() == 1 {
-        nb.append_page(&notes_slot, Some(&gtk::Label::new(Some("Notes"))));
+        add_page(&nb, &notes_slot, "notes", "Notes");
     }
     // The metadata read in the background; then the pages that show it.
     {
@@ -504,11 +504,19 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     if files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
         let ctype = util::info_content_type(&infos[0]).unwrap_or_default();
         if let (Some(path), true) = (files[0].path(), media_info_wanted(&ctype)) {
-            nb.append_page(&media_info_page(path), Some(&gtk::Label::new(Some("Media Info"))));
+            add_page(&nb, &media_info_page(path), "media", "Media Info");
         }
     }
 
+    // Draggable into another order, which is kept, as in Rename All.
+    util::order_tabs(&nb, config::get().props_tab_order, |order| config::update(|s| s.props_tab_order = order));
     dialog.show_all();
+}
+
+/// A tab of Properties, called `id` in the order kept (see util::order_tabs).
+fn add_page(nb: &gtk::Notebook, page: &impl IsA<gtk::Widget>, id: &str, title: &str) {
+    page.set_widget_name(id);
+    nb.append_page(page, Some(&gtk::Label::new(Some(title))));
 }
 
 /// Whether mediainfo is installed.

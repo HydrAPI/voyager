@@ -117,6 +117,7 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `undo-redo` | Undo and Redo of a move to the trash, a new folder named at once, renames |
 | `bookmarks` | The bookmark editor shows paths, the bookmarks file keeps the URLs |
 | `properties` | An emblem ticked and a note typed in Properties, kept in GVfs metadata under Caja's keys |
+| `tab-order` | Properties' and Rename All's tabs dragged into another order, which is kept |
 | `previews` | Thumbnails always (with a size limit) or never; folders' item counts always or never |
 
 `tools/bench/compare.sh` measures what the audits show: opening `/usr/lib` and 20,000 files (when the main thread stays idle, its CPU, all threads'), scrolling, memory and thumbnails, against Caja and Nemo where installed; `speed.sh` compares two builds of Arkha opening folders in the icon view, the list view and the list view with every column. `sample.sh` profiles without perf (gdb samples the main thread's stack), summarized by `sample-report.py`.
