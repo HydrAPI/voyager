@@ -1,5 +1,6 @@
 //! Arkha — a Caja-style file manager in Rust + GTK 3.
 
+mod a11y;
 mod actions;
 mod autorun;
 mod bulkrename;
@@ -58,6 +59,7 @@ fn main() -> glib::ExitCode {
         app.add_action(&quit);
         gtk::Window::set_default_icon_name("system-file-manager");
         scroll::init();
+        a11y::fix_defunct_states();
         util::set_iec_units(config::with(|s| s.iec_units));
         util::set_date_format(&config::with(|s| s.date_format.clone()));
         sidebar::init_automount();
