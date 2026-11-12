@@ -3256,9 +3256,8 @@ impl AppWindow {
         d.set_modal(true);
         d.set_program_name("Arkha");
         d.set_version(Some(env!("CARGO_PKG_VERSION")));
-        d.set_comments(Some("A Caja-style file manager written in Rust and GTK 3."));
+        d.set_comments(Some("A fast graphical file manager."));
         d.set_logo_icon_name(Some("system-file-manager"));
-        d.set_license_type(gtk::License::Gpl30);
         d.connect_response(|d, _| d.close());
         d.show();
     }

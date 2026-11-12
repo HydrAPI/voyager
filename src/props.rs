@@ -1308,7 +1308,7 @@ fn notes_page(dialog: &gtk::Dialog, file: &gio::File, note: &str) -> gtk::Widget
     sw.add(&view);
     let page = gtk::Box::new(gtk::Orientation::Vertical, 8);
     page.set_border_width(12);
-    page.pack_start(&value_label("A note about this item, kept with it (Caja shows it too):"), false, false, 0);
+    page.pack_start(&value_label("A note about this item, kept with it:"), false, false, 0);
     page.pack_start(&sw, true, true, 0);
     page.upcast()
 }

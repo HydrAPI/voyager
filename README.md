@@ -1,6 +1,6 @@
 # Arkha
 
-A graphical file manager for Linux, modelled on Caja (MATE). Written in Rust with GTK 3, so it uses your MATE / GTK theme, icons and bookmarks.
+A fast graphical file manager for Linux. It is modelled on Caja (MATE) and written in Rust with GTK 3, so it uses your MATE / GTK theme, icons and bookmarks.
 
 ## Features
 

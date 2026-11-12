@@ -6,7 +6,7 @@
 pkgname=arkha
 pkgver=0.1.0
 pkgrel=1
-pkgdesc='A Caja-style file manager for GTK 3'
+pkgdesc='A fast graphical file manager'
 arch=('x86_64' 'aarch64')
 license=('unknown')
 depends=(

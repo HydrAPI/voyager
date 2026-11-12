@@ -337,7 +337,7 @@ impl AppWindow {
         f.indent(&b, confirm.upcast_ref());
         f.head(&b, "Other Programs");
         let fm1 = f.check("Open folders when other programs _ask, also when Arkha isn't running");
-        fm1.set_tooltip_text(Some("“Show in folder” in web browsers, download lists and the like opens Arkha, with the file selected. While Arkha runs it does this anyway, unless another file manager that does it (Caja, say) was there first; this lets programs start Arkha for it too."));
+        fm1.set_tooltip_text(Some("“Show in folder” in web browsers, download lists and the like opens Arkha, with the file selected. While Arkha runs it does this anyway, unless another file manager that does it was there first; this lets programs start Arkha for it too."));
         fm1.set_active(crate::fm1::activation_on());
         {
             let d = f.dialog.clone();
@@ -1639,7 +1639,7 @@ fn thumbnailers_editor(parent: &gtk::Window) -> gtk::Box {
         icons::reload_thumbnailers();
         for_all_panes(|p| p.reload());
     });
-    bx.add(&hint_label("Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used. File types none of them handles use the thumbnailers installed on the system, as Caja does: PDF with Evince, office documents, audio cover art and so on."));
+    bx.add(&hint_label("Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used. File types none of them handles use the thumbnailers installed on the system: PDF with Evince, office documents, audio cover art and so on."));
     bx
 }
 

@@ -2,7 +2,7 @@
 Type=Application
 Name=Arkha
 GenericName=File Manager
-Comment=Browse the file system with a Caja-style file manager
+Comment=Browse the file system
 Exec=arkha %U
 Icon=system-file-manager
 Terminal=false
