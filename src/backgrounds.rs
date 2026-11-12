@@ -48,7 +48,7 @@ pub fn is_target(name: &str) -> bool {
 pub fn parse(target: &str, data: &[u8]) -> Option<Drop> {
     match target {
         COLOR_TARGET => {
-            let c: Vec<u16> = data.as_chunks::<2>().0.iter().map(|b| u16::from_ne_bytes(*b)).collect();
+            let c: Vec<u16> = data.chunks_exact(2).map(|b| u16::from_ne_bytes([b[0], b[1]])).collect();
             (c.len() >= 3).then(|| format!("#{:02x}{:02x}{:02x}", c[0] >> 8, c[1] >> 8, c[2] >> 8)).map(Drop::Color)
         }
         PATTERN_TARGET => {

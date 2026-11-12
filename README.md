@@ -47,7 +47,7 @@ Settings live in `~/.config/arkha/arkha.conf`; per-folder views in `~/.config/ar
 
 ## Building
 
-Needs Rust (1.82+), the GTK 3 development files and gettext (for the translations; without it Arkha is built in English only):
+Needs Rust (1.85+, Debian 13’s), the GTK 3 development files and gettext (for the translations; without it Arkha is built in English only):
 
 ```sh
 # Debian / Ubuntu / Mint
@@ -77,6 +77,15 @@ Uninstalling also gives folders back to the application `--default` replaced.
 ```sh
 cd packaging/arch
 makepkg -si
+```
+
+### Debian and Ubuntu package
+
+`packaging/deb/build.sh` builds a .deb on Debian 13 or newer, or Ubuntu 26.04 or newer, with the distribution's own Rust (needs `cargo rustc libgtk-3-dev gettext pkg-config build-essential dpkg-dev`); its library dependencies are worked out by `dpkg-shlibdeps`. From another machine, `packaging/deb/build-on.sh HOST` copies this checkout with its crates (`cargo vendor`, so the build needs no internet) to `HOST` over SSH with rsync, builds there and fetches the package into `packaging/deb/`:
+
+```sh
+packaging/deb/build-on.sh debian    # an ssh host name
+sudo apt install ./packaging/deb/arkha_*.deb
 ```
 
 Video thumbnails (`ffmpegthumbnailer` or `ffmpeg`), the Media Info tab (`mediainfo`), phones (`gvfs-mtp`), cameras (`gvfs-gphoto2`), network shares (`gvfs-smb`) and archives (`engrampa`, `file-roller` or `xarchiver`) are optional dependencies.

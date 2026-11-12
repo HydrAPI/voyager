@@ -138,7 +138,7 @@ fn tiff(f: &mut std::fs::File, little: bool) -> Option<(u32, u32)> {
     let count = r16(&read_at(f, ifd, 2)?, 0)? as usize;
     let entries = read_at(f, ifd + 2, count.min(512) * 12)?;
     let (mut w, mut h) = (None, None);
-    for e in entries.as_chunks::<12>().0.iter().map(|e| &e[..]) {
+    for e in entries.chunks_exact(12) {
         let value = match r16(e, 2)? {
             3 => r16(e, 8)?,
             4 => r32(e, 8)?,

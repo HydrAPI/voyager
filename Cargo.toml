@@ -2,6 +2,8 @@
 name = "arkha"
 version = "0.1.0"
 edition = "2021"
+# Debian 13's; checked by clippy (incompatible_msrv).
+rust-version = "1.85"
 
 [dependencies]
 async-channel = "2"
