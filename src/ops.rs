@@ -194,6 +194,7 @@ fn format_time_left(secs: u64) -> String {
 /// "Copying “a.txt”", "Moving …", "Linking …" for the progress: `verb` is
 /// the worker's (or its copy_verb()).
 fn doing(verb: &str, name: &str) -> String {
+    // check-placeholders: filled later
     let template = match verb {
         "Moving" => tr("Moving “{name}”"),
         "Linking" => tr("Linking “{name}”"),
@@ -511,6 +512,7 @@ impl Worker {
                     return Ok(());
                 }
                 Err(e) if e.matches(gio::IOErrorEnum::NotEmpty) => {
+                    // check-placeholders: filled later
                     let Some(children) = self.list_children(f, n_("Error while deleting “{name}”"))? else {
                         return Ok(());
                     };
@@ -623,6 +625,7 @@ impl Worker {
                 self.record(src, &dst, replaced);
             }
             self.done_items += 1;
+            // check-placeholders: filled later
             let Some(children) = self.list_children(src, n_("Error while reading “{name}”"))? else {
                 return Ok(());
             };
@@ -860,6 +863,7 @@ impl Worker {
                         Resolution::Replace => {
                             if src_dir && dst_dir {
                                 // merge: move children one by one, then remove src
+                                // check-placeholders: filled later
                                 let Some(children) = self.list_children(src, n_("Error while reading “{name}”"))? else {
                                     return Ok(());
                                 };
@@ -951,6 +955,7 @@ impl Worker {
                             gio::IOErrorEnum::InvalidArgument,
                             &tr("The destination is inside the source folder."),
                         );
+                        // check-placeholders: filled later
                         let failed = if kind == Kind::Move { tr("Cannot move “{name}” into itself") } else { tr("Cannot copy “{name}” into itself") };
                         if self.ask_error(fill(&failed, &[("name", &base_name(&src))]), &e, false) == ErrChoice::Cancel {
                             break;
@@ -1765,6 +1770,7 @@ fn action_text(a: &Action) -> String {
     let text = |template: &str, what: String| fill(&tr(template), &[("what", &what)]);
     match a {
         Action::Transfer { kind, items } => {
+            // check-placeholders: filled later
             let template = match kind {
                 Kind::Copy => n_("Copy of {what}"),
                 Kind::Move => n_("Move of {what}"),
@@ -1772,11 +1778,17 @@ fn action_text(a: &Action) -> String {
             };
             text(template, what(items.iter().map(|m| m.dst.as_str()).collect()))
         }
+        // check-placeholders: filled later
         Action::Trash { uris, .. } => text(n_("Move to Trash of {what}"), what(uris.iter().map(String::as_str).collect())),
+        // check-placeholders: filled later
         Action::Restore { uris, .. } => text(n_("Restore of {what}"), what(uris.iter().map(String::as_str).collect())),
+        // check-placeholders: filled later
         Action::Rename { items } => text(n_("Rename of {what}"), what(items.iter().map(|(_, to)| to.as_str()).collect())),
+        // check-placeholders: filled later
         Action::Create { uri, folder, .. } => text(if *folder { n_("Creation of Folder {what}") } else { n_("Creation of {what}") }, name(uri)),
+        // check-placeholders: filled later
         Action::Mode { items } => text(n_("Change of Permissions of {what}"), what(items.iter().map(|i| i.0.as_str()).collect())),
+        // check-placeholders: filled later
         Action::Chown { items } => text(n_("Change of Owner or Group of {what}"), what(items.iter().map(|i| i.0.as_str()).collect())),
     }
 }

@@ -172,6 +172,7 @@ fn swatch(picture: Option<Pixbuf>, name: &str, drop: Drop, remove: Option<Box<dy
     b.pack_start(&l, false, false, 0);
     let ev = gtk::EventBox::new();
     ev.add(&b);
+    // check-placeholders: filled later
     let tip = if matches!(drop, Drop::Emblem(_)) { tr("{name}: drag it onto an item") } else { tr("{name}: drag it onto a folder’s background or the side pane") };
     ev.set_tooltip_text(Some(&crate::i18n::fill(&tip, &[("name", &name)])));
     let (kind, _) = encode(&drop);

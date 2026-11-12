@@ -55,6 +55,37 @@ APP_PATH = "/io/github/arkha/FileManager"
 # somewhere): one of these is pressed when there are any.
 ANSWERS = {"Cancel", "Skip", "Skip All", "Keep Both", "Merge", "Replace", "Delete", "Delete Permanently", "Move to Trash",
            "Empty Trash", "OK", "Close", "Rename", "Select", "Retry", "Copy", "Move", "Add", "Remove", "Yes", "No"}
+# Buttons that run a program (asked about an executable file): never pressed.
+RUN_BUTTONS = {"Run", "Run in Terminal"}
+# The window cancel_operations looks for.
+OPS_TITLE = "File Operations"
+
+
+def localize(language):
+    """For a run in another language (--language): the answers, the run
+    buttons and the operations window in it too, from Arkha's and GTK's
+    catalogs (button labels have mnemonics: compared without "_")."""
+    global OPS_TITLE
+    import gettext
+    strip = lambda t: t.replace("_", "")
+    for domain, d in (("arkha", "/tmp/arkha/locale"), ("gtk30", "/usr/share/locale")):
+        try:
+            cat = gettext.translation(domain, d, languages=[language])._catalog
+        except OSError:
+            continue
+        for msgid, msgstr in list(cat.items()):
+            if not isinstance(msgid, str) or not msgid:
+                continue
+            if strip(msgid) in ANSWERS:
+                ANSWERS.add(strip(msgstr))
+            if domain == "arkha" and strip(msgid) in ("Run", "Run in Terminal"):
+                RUN_BUTTONS.add(strip(msgstr))
+            if domain == "arkha" and msgid == "File Operations":
+                OPS_TITLE = msgstr
+
+
+def is_run(name):
+    return name.replace("_", "") in RUN_BUTTONS
 
 # Window actions: (name, parameter kind, weight, kind). Kinds: "plain" (no
 # dialog), "dialog" (opens one with buttons, answered through AT-SPI), and
@@ -287,6 +318,8 @@ def outer(args):
                 "--size", str(HOME_SIZE), "--tmpfs", HOME,
                 "--bind", run, RUN_DIR,
                 "--ro-bind", args.binary, "/tmp/arkha/arkha",
+                # The translations built beside it (see src/i18n.rs).
+                *(["--ro-bind", locale, "/tmp/arkha/locale"] if os.path.isdir(locale := os.path.join(os.path.dirname(os.path.abspath(args.binary)), "locale")) else []),
                 "--ro-bind", os.path.abspath(__file__), "/tmp/arkha/soak.py",
                 "--chdir", RUN_DIR]
     inner = ["dbus-run-session", "--", sys.executable, "/tmp/arkha/soak.py", "--inner", "--binary", "/tmp/arkha/arkha"]
@@ -297,8 +330,16 @@ def outer(args):
     # The private session's own messages (portals finding no display, …).
     with open(os.path.join(run, "session.log"), "w") as log:
         r = subprocess.run(sandbox + inner + passed, env=env, stderr=log)
+    # The driver itself failing (a Python error) leaves a report of nothing.
+    with open(os.path.join(run, "session.log")) as log:
+        failed = "Traceback (most recent call last)" in log.read()
+    if failed:
+        msg = "PROBLEM: the soak driver itself failed: see the traceback in session.log"
+        print(msg)
+        with open(os.path.join(run, "report.txt"), "a") as rep:
+            rep.write(msg + "\n")
     print(f"Logs and report: {run}")
-    return r.returncode
+    return 1 if failed else r.returncode
 
 
 # ------------------------------------------------------------------ inner
@@ -315,6 +356,8 @@ class Run:
         self.home = os.environ["HOME"]
         assert self.home == HOME and os.path.isdir(RUN_DIR), "not in the sandbox"
         self.rnd = random.Random(args.seed)
+        if args.language:
+            localize(args.language)
         # The generated files, in the (tmpfs) home.
         for d in [".config/arkha", ".local/share", ".cache"]:
             os.makedirs(os.path.join(self.home, d), exist_ok=True)
@@ -322,6 +365,7 @@ class Run:
         # Every list column and some icon captions, so all of them are drawn.
         with open(os.path.join(self.home, ".config/arkha/arkha.conf"), "w") as f:
             f.write("[General]\nconfirm_trash=false\n"
+                    f"language={args.language}\n"
                     "list_columns=size;type;mtime;atime;btime;owner;group;permissions;octal;mime;extension;location;disk;\n"
                     "icon_captions=owner;permissions;extension;\n")
         self.files = make_fixture(self.home, random.Random(args.seed))
@@ -602,7 +646,7 @@ class Run:
                     if checks and self.rnd.random() < 0.2:
                         press(self.rnd.choice(checks))
                     named = [(n, a) for r, n, a in bs if r != "check box" and n]
-                    answers = [(n, a) for n, a in named if n.replace("_", "") in ANSWERS] or named
+                    answers = [(n, a) for n, a in named if n.replace("_", "") in ANSWERS] or [(n, a) for n, a in named if not is_run(n)]
                     # Retrying what failed mostly fails again: only now and then.
                     if len(answers) > 1 and self.rnd.random() > 0.05:
                         answers = [(n, a) for n, a in answers if n.replace("_", "") != "Retry"] or answers
@@ -642,7 +686,7 @@ class Run:
                     continue
                 for j in range(app.get_child_count()):
                     w = app.get_child_at_index(j)
-                    if w and w.get_name() == "File Operations":
+                    if w and w.get_name() == OPS_TITLE:
                         for _, _, a in self.buttons(w):
                             a.get_action_iface().do_action(0)
                             pressed += 1
@@ -661,7 +705,7 @@ class Run:
         # Enter only where every dialog is seen through AT-SPI and none asks
         # whether to run a program (Run is what Enter would do).
         seen = self.dialogs()
-        may_enter = bool(seen) and not any(n.replace("_", "").startswith("Run") for d in seen for _, n, _ in self.buttons(d))
+        may_enter = bool(seen) and not any(is_run(n) for d in seen for _, n, _ in self.buttons(d))
         for w in ids:
             kind = subprocess.run(["xprop", "-id", w, "_NET_WM_WINDOW_TYPE", "WM_TRANSIENT_FOR"], env=env, capture_output=True, text=True).stdout
             if "DIALOG" not in kind and "window id #" not in kind:
@@ -1143,6 +1187,7 @@ def main():
     ap.add_argument("--backend", choices=["x11", "wayland"], default="x11")
     ap.add_argument("--minutes", type=float, default=10)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--language", default="", help="Arkha's language (a translation's code, e.g. de); the system's if not given")
     ap.add_argument("--name", help="added to the run's folder name (target/soak/<backend>-seed<N>-<name>), to keep runs of the same seed apart")
     ap.add_argument("--pause", type=float, default=0.15, help="longest pause between actions, in seconds")
     ap.add_argument("--binary", help="the arkha to run (default: one built with debug info in target/soak-build)")

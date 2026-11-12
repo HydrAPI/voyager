@@ -696,22 +696,27 @@ impl Sidebar {
         match how {
             Removal::Unmount => {
                 if let Some(m) = &item.mount {
+                    // check-placeholders: filled later
                     m.unmount_with_operation(flags, Some(&op), none, move |r| done(r, tr("Unable to unmount “{name}”"), None));
                 }
             }
             Removal::Stop => {
                 if let Some(d) = &item.drive {
                     let msg = fill(&tr("“{name}” can be removed safely"), &[("name", &d.name())]);
+                    // check-placeholders: filled later
                     d.stop(flags, Some(&op), none, move |r| done(r, tr("Unable to safely remove “{name}”"), Some(msg)));
                 }
             }
             Removal::Eject => {
                 let msg = Some(fill(&tr("“{name}” was ejected"), &[("name", &label)]));
                 if let Some(d) = item.drive.as_ref().filter(|d| d.can_eject()) {
+                    // check-placeholders: filled later
                     d.eject_with_operation(flags, Some(&op), none, move |r| done(r, tr("Unable to eject “{name}”"), msg));
                 } else if let Some(v) = item.volume.as_ref().filter(|v| v.can_eject()) {
+                    // check-placeholders: filled later
                     v.eject_with_operation(flags, Some(&op), none, move |r| done(r, tr("Unable to eject “{name}”"), msg));
                 } else if let Some(m) = &item.mount {
+                    // check-placeholders: filled later
                     m.eject_with_operation(flags, Some(&op), none, move |r| done(r, tr("Unable to eject “{name}”"), msg));
                 }
             }
