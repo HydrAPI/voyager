@@ -1500,8 +1500,9 @@ enum Action {
     Restore { uris: Vec<String>, since: i64 },
     /// Renames (old URI, new URI), in the order done.
     Rename { items: Vec<(String, String)> },
-    /// A new folder, empty document or one from a template.
-    Create { uri: String, folder: bool, template: Option<String> },
+    /// A new folder, empty document or one from a template; `named` once
+    /// the name typed right after making it is part of it.
+    Create { uri: String, folder: bool, template: Option<String>, named: bool },
     /// Permissions changed: (URI, mode before, mode after).
     Mode { items: Vec<(String, u32, u32)> },
     /// Owner or group changed: (URI, (uid, gid) before, after).
@@ -1589,8 +1590,9 @@ pub fn note_rename(from: &gio::File, to: &gio::File) {
     // step, "Creation of Folder “Photos”".
     let (from_uri, to_uri) = (from.uri().to_string(), to.uri().to_string());
     let merged = UNDO.with(|u| match u.borrow_mut().last_mut() {
-        Some(Action::Create { uri, .. }) if *uri == from_uri => {
+        Some(Action::Create { uri, named, .. }) if *uri == from_uri && !*named => {
             *uri = to_uri.clone();
+            *named = true;
             true
         }
         _ => false,
@@ -1612,7 +1614,7 @@ pub fn note_renames(items: Vec<(String, String)>) {
 
 /// Notes a new folder or document (`template`: the file it's a copy of).
 pub fn note_created(f: &gio::File, folder: bool, template: Option<String>) {
-    push_new(Action::Create { uri: f.uri().to_string(), folder, template });
+    push_new(Action::Create { uri: f.uri().to_string(), folder, template, named: false });
 }
 
 /// Notes permissions changed: (file, mode before, mode after).
@@ -1721,7 +1723,7 @@ fn perform(parent: Option<gtk::Window>, a: Action, back: bool) -> Result<(), Str
             }
             run_with(parent, Job::Trash(vec![uri]), record(a), |_| {})
         }
-        (false, Action::Create { uri, folder, template }) => {
+        (false, Action::Create { uri, folder, template, .. }) => {
             let f = gio::File::for_uri(&uri);
             let made = if folder {
                 f.make_directory(gio::Cancellable::NONE)
@@ -2430,7 +2432,7 @@ mod tests {
         assert_eq!(action_text(&a), "Copy of “my__file”");
         let t = Action::Trash { uris: vec!["file:///a".into(), "file:///b".into()], since: 0 };
         assert_eq!(action_text(&t), "Move to Trash of 2 Items");
-        let c = Action::Create { uri: "file:///x/New".into(), folder: true, template: None };
+        let c = Action::Create { uri: "file:///x/New".into(), folder: true, template: None, named: false };
         assert_eq!(action_text(&c), "Creation of Folder “New”");
         let r = Action::Rename { items: vec![("file:///x/a".into(), "file:///x/b".into())] };
         assert_eq!(action_text(&r), "Rename of “b”");
@@ -2460,7 +2462,7 @@ mod tests {
         perform(None, m, false).unwrap();
         assert_eq!(mode(&s.0.join("b")), 0o600);
         // A new folder made again.
-        let f = Action::Create { uri: uri(&s.0.join("New Folder")), folder: true, template: None };
+        let f = Action::Create { uri: uri(&s.0.join("New Folder")), folder: true, template: None, named: false };
         perform(None, f, false).unwrap();
         assert!(s.0.join("New Folder").is_dir());
         // A rename onto a name in use is refused, nothing changed.
@@ -2489,6 +2491,13 @@ mod tests {
         note_rename(&made, &named);
         assert_eq!(undo_len(), 1);
         assert_eq!(undo_label().as_deref(), Some("_Undo Creation of Folder “Photos”"));
+        // Renamed again later: a step of its own (Undo gives the name back,
+        // it doesn't take the folder away).
+        let renamed = gio::File::for_path(s.0.join("Pictures"));
+        note_rename(&named, &renamed);
+        assert_eq!(undo_len(), 2);
+        assert_eq!(undo_label().as_deref(), Some("_Undo Rename of “Pictures”"));
+        UNDO.with(|u| u.borrow_mut().pop());
         // Renamed to its own name: nothing. Another item: a step of its own.
         note_rename(&named, &named);
         assert_eq!(undo_len(), 1);
