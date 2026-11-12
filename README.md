@@ -90,21 +90,46 @@ cargo test --release -- --ignored stress              # file operation stress te
 tools/soak.py --backend x11 --minutes 30              # the whole program, driven at random
 tools/soak.py --backend wayland --minutes 30 --cycle  # one round repeated: does memory keep growing?
 tools/soak.py --backend x11 --minutes 10 --heaptrack   # memory recorded by heaptrack
+tools/gui-tests/run-all.sh                            # the GUI tests, X11 and Wayland (cargo build --release first)
+tools/gui-tests/undo.sh wayland                       # one of them
+tools/bench/compare.sh                                # speed and memory against Caja and Nemo
+tools/bench/speed.sh OLD-BINARY target/release/arkha  # opening folders, two builds compared
 ```
 
 `tools/soak.py` runs Arkha in a bubblewrap sandbox (the system read-only, `/home` and `/mnt` hidden, its own D-Bus session, a headless X server, and for Wayland Weston inside it) and drives it through its D-Bus actions, keyboard and mouse input (clicks, drags, the wheel, keys, typeahead, inline renames, search; xdotool) and its dialogs through accessibility (AT-SPI), while files keep changing underneath. The sandbox has no applications, so opening a file never starts another program. It reports crashes (with backtraces, as Arkha runs under gdb), GLib/GTK warnings, slow or missing responses, and memory over time, in `target/soak/<run>/`. `--fatal-criticals` stops at the first critical warning for its backtrace; `--name` keeps runs of the same seed apart (`target/soak/<backend>-seed<N>-<name>`). Its once-a-minute status line includes the sandbox home's free space: GTK and GVfs warnings about writing files there mean the 1 GiB home has filled up. For test coverage, give it a binary built with `RUSTFLAGS="-C instrument-coverage"` (`--binary`) and `LLVM_PROFILE_FILE=/tmp/soak-run/arkha-%p-%m.profraw`: the profiles land in the run's folder. Needs `bubblewrap`, `xorg-server-xvfb`, `weston`, `gdb`, `xdotool`, `at-spi2-core` and `python-gobject`.
+
+The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse input and read the result back from the files, from Arkha's log, or through accessibility (window titles, tabs and dialogs, the same on X11 and Wayland). Each runs in a private D-Bus session with its own runtime folder, home and settings, in a headless X server with xmonad, or Weston's kiosk shell in it for Wayland, and fails on any GLib/GTK warning in Arkha's log. It prints a PASS or FAIL line per check; screenshots and logs are in `target/gui-tests/<test>-<backend>/`. `lib.sh` holds what they share (writing another test is a few lines of `gt_click`, `gt_key`, `gt_act` and `gt_check`), `fixtures.sh` makes what they need in `target/gui-fixtures/` (a `/usr/share` without applications, so nothing else is ever started; an xmonad build; for the benchmarks 20,000 files and sample files of 30 or so types). `tools/lockbar-test.sh` checks Lock Toolbar with real drags.
+
+| Test | What it checks |
+|---|---|
+| `navbuttons` | Mouse back and forward buttons over the views as set in Preferences (default, swapped, off); right and middle clicks |
+| `tabs` | Where new tabs go |
+| `undo` | Undo of a copy and a move; Ctrl+Z in the location bar undoes nothing |
+| `selection` | After a paste exactly the copies are selected (50 and 1,500 files) |
+| `rename` | Renaming in place: Enter, Escape, a click elsewhere, a reload meanwhile |
+| `fm1` | "Show in folder" for other programs (org.freedesktop.FileManager1) |
+| `metadata-stuck` | Arkha keeps answering while GVfs's metadata service doesn't |
+| `prefs` | Every Preferences page; adding and removing a custom action |
+| `backgrounds` | Backgrounds and Emblems opens and closes |
+| `focuscol` | No accessibility assertion after the columns view hides the cursor's column |
+
+`tools/bench/compare.sh` measures what the audits show: opening `/usr/lib` and 20,000 files (when the main thread stays idle, its CPU, all threads'), scrolling, memory and thumbnails, against Caja and Nemo where installed; `speed.sh` compares two builds of Arkha opening folders in the icon view, the list view and the list view with every column. `sample.sh` profiles without perf (gdb samples the main thread's stack), summarized by `sample-report.py`.
 
 ## Code layout
 
 | File | What it does |
 |---|---|
 | `src/main.rs` | GtkApplication setup, command-line paths |
-| `src/window.rs` | Main window, menus, toolbar, path bar, tabs, all commands |
+| `src/window.rs` | Main window, toolbar, path bar, tabs, all commands |
+| `src/window/menus.rs` | The menu bar and the context menus |
+| `src/window/prefs.rs` | Preferences, and the editors for menus, places, bookmarks, shortcuts, thumbnailers and custom actions |
 | `src/columns.rs` | The side columns of the columns view (folders above, selected folder's contents): clicks, context menus, drag and drop, live updates |
 | `src/info.rs` | The info panel: folder covers, image previews and thumbnails, details |
 | `src/sidebar.rs` | Side pane: places, devices (mount, eject, automount), bookmarks, section order |
+| `src/a11y.rs` | A workaround for GTK 3 accessible objects that report no state once their widget is gone |
 | `src/scroll.rs` | Sideways wheel scrolling and middle-click autoscroll in every scrolled area, and a workaround for a GTK 3 overlay-scrollbar bug |
 | `src/pane.rs` | One tab: folder loading, monitoring, icon/list views, selection, DnD, inline rename |
+| `src/pane/signals.rs` | What clicks, keys, drags and edits do in a tab's views |
 | `src/search.rs` | Searching a folder and its subfolders by name |
 | `src/bulkrename.rs` | Rename All…: renaming several items at once |
 | `src/keys.rs` | Keyboard shortcuts and their editor |
