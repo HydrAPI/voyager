@@ -2,8 +2,7 @@
 //! Notes, Media Info), as Caja's. Emblems, notes and a custom icon are GVfs
 //! metadata, as Caja keeps them, so the two share them.
 
-use crate::i18n::fill as subst;
-use crate::i18n::{n_, tr, trn};
+use crate::i18n::{fill, n_, tr, trn};
 use gio::prelude::*;
 use gtk::prelude::*;
 use std::cell::Cell;
@@ -73,7 +72,7 @@ fn deep_count(uris: Vec<String>, count_top: bool, label: gtk::Label) {
     });
     glib::MainContext::default().spawn_local(async move {
         while let Ok((b, n, done)) = rx.recv().await {
-            let text = subst(&trn("{n} item, totalling {size}", "{n} items, totalling {size}", n), &[("n", &n), ("size", &util::format_size(b))]);
+            let text = fill(&trn("{n} item, totalling {size}", "{n} items, totalling {size}", n), &[("n", &n), ("size", &util::format_size(b))]);
             // Still counting.
             label.set_text(&if done { text } else { format!("{text} …") });
         }
@@ -86,9 +85,9 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     }
     let dialog = gtk::Dialog::with_buttons(
         Some(&if files.len() == 1 {
-            subst(&tr("{name} Properties"), &[("name", &util::display_name(&files[0]))])
+            fill(&tr("{name} Properties"), &[("name", &util::display_name(&files[0]))])
         } else {
-            subst(&trn("Properties of {n} item", "Properties of {n} items", files.len() as u64), &[("n", &files.len())])
+            fill(&trn("Properties of {n} item", "Properties of {n} items", files.len() as u64), &[("n", &files.len())])
         }),
         Some(parent),
         gtk::DialogFlags::DESTROY_WITH_PARENT,
@@ -164,7 +163,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                     Ok(nf) => {
                         crate::ops::note_rename(&file, &nf);
                         *cur.borrow_mut() = nf;
-                        d.set_title(&subst(&tr("{name} Properties"), &[("name", &new)]));
+                        d.set_title(&fill(&tr("{name} Properties"), &[("name", &new)]));
                     }
                     Err(err) => util::error_dialog(d.transient_for().as_ref(), &tr("Could not rename"), err.message()),
                 }
@@ -200,7 +199,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             row(&grid, r, &tr("Contents:"), size_label.upcast_ref());
         } else {
             let s = info.size().max(0) as u64;
-            size_label.set_text(&subst(&trn("{size} ({bytes} byte)", "{size} ({bytes} bytes)", s), &[("size", &util::format_size(s)), ("bytes", &group_digits(s))]));
+            size_label.set_text(&fill(&trn("{size} ({bytes} byte)", "{size} ({bytes} bytes)", s), &[("size", &util::format_size(s)), ("bytes", &group_digits(s))]));
             row(&grid, r, &tr("Size:"), size_label.upcast_ref());
         }
         r += 1;
@@ -213,7 +212,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                     &grid,
                     r,
                     &tr("Free space:"),
-                    value_label(&subst(
+                    value_label(&fill(
                         &tr("{free} of {total}"),
                         &[("free", &util::format_size(fsinfo.attribute_uint64("filesystem::free"))), ("total", &util::format_size(fsinfo.attribute_uint64("filesystem::size")))],
                     ))
@@ -240,7 +239,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             }
         }
     } else {
-        let l = value_label(&subst(&trn("{n} item", "{n} items", files.len() as u64), &[("n", &files.len())]));
+        let l = value_label(&fill(&trn("{n} item", "{n} items", files.len() as u64), &[("n", &files.len())]));
         head.pack_start(&l, true, true, 0);
         grid.attach(&head, 0, r, 2, 1);
         r += 1;
@@ -301,7 +300,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             Rc::new(move || {
                 let first = modes[0].get() & 0o7777;
                 let text = if modes.iter().all(|m| m.get() & 0o7777 == first) {
-                    subst(&tr("Mode: {mode}"), &[("mode", &format!("{first:04o}"))])
+                    fill(&tr("Mode: {mode}"), &[("mode", &format!("{first:04o}"))])
                 } else {
                     tr("Mode: mixed")
                 };
@@ -423,11 +422,11 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                 glib::MainContext::default().spawn_local(async move {
                     let (changed, failed) = gio::spawn_blocking(move || apply_enclosed(&dirs, my_uid == 0)).await.unwrap_or((0, 0));
                     b.set_sensitive(true);
-                    let items = |n: usize| subst(&trn("{n} item", "{n} items", n as u64), &[("n", &n)]);
+                    let items = |n: usize| fill(&trn("{n} item", "{n} items", n as u64), &[("n", &n)]);
                     done.set_text(&match failed {
-                        0 => subst(&tr("Changed {items}."), &[("items", &items(changed))]),
+                        0 => fill(&tr("Changed {items}."), &[("items", &items(changed))]),
                         // TRANSLATORS: {items} and {failed} are numbers of items: "12 items".
-                        f => subst(&tr("Changed {items}; {failed} couldn’t be changed (not yours?)."), &[("items", &items(changed)), ("failed", &items(f))]),
+                        f => fill(&tr("Changed {items}; {failed} couldn’t be changed (not yours?)."), &[("items", &items(changed)), ("failed", &items(f))]),
                     });
                 });
             });
@@ -450,7 +449,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         if let Some(ctype) = util::info_content_type(&infos[0]) {
             let ob = gtk::Box::new(gtk::Orientation::Vertical, 8);
             ob.set_border_width(12);
-            let l = value_label(&subst(
+            let l = value_label(&fill(
                 &tr("Select an application to open “{name}” and other files of type “{type}”:"),
                 &[("name", &infos[0].display_name()), ("type", &gio::content_type_get_description(&ctype))],
             ));
@@ -490,8 +489,8 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         let (d, files, img, info, metas) = (dialog.clone(), files.clone(), img.clone(), infos[0].clone(), metas.clone());
         crate::metadata::read_items(files.iter().map(|f| f.uri().to_string()).collect(), move |found| {
             let found: Vec<Meta> = found.into_iter().map(|(_, m)| m).collect();
-            fill(&emblems_slot, &emblems_page(&d, &files, found.iter().map(|m| m.emblems.clone()).collect()));
-            fill(&notes_slot, &notes_page(&d, &files[0], &found.first().map(|m| m.note.clone()).unwrap_or_default()));
+            replace_contents(&emblems_slot, &emblems_page(&d, &files, found.iter().map(|m| m.emblems.clone()).collect()));
+            replace_contents(&notes_slot, &notes_page(&d, &files[0], &found.first().map(|m| m.note.clone()).unwrap_or_default()));
             if let Some(pb) = found.first().and_then(|m| icons::icon_pixbuf(icons::item_icon(&m.applied_to(&info), &[]).as_ref(), 64)) {
                 img.set_from_pixbuf(Some(&pb));
             }
@@ -593,7 +592,7 @@ fn checksums_page(dialog: &gtk::Dialog, file: &gio::File, size: u64) -> gtk::Box
         copy.set_sensitive(false);
         if let Some(a) = copy.accessible() {
             // TRANSLATORS: a button's name for screen readers: "Copy SHA-256".
-            gtk::atk::prelude::AtkObjectExt::set_name(&a, &subst(&tr("Copy {checksum}"), &[("checksum", &algo.name())]));
+            gtk::atk::prelude::AtkObjectExt::set_name(&a, &fill(&tr("Copy {checksum}"), &[("checksum", &algo.name())]));
         }
         {
             let value = value.clone();
@@ -660,7 +659,7 @@ fn start_checksums(
     }
     let what = targets.iter().map(|(a, _, _)| a.name()).collect::<Vec<_>>().join(", ");
     bar.set_fraction(0.0);
-    bar.set_text(Some(&subst(&tr("{checksums}: starting…"), &[("checksums", &what)])));
+    bar.set_text(Some(&fill(&tr("{checksums}: starting…"), &[("checksums", &what)])));
     progress_row.set_no_show_all(false);
     progress_row.show_all();
     enum Step {
@@ -689,7 +688,7 @@ fn start_checksums(
                         bar.set_fraction((read as f64 / size as f64).clamp(0.0, 1.0));
                     }
                     // TRANSLATORS: the checksums being worked out, then how far: "SHA-256: 1.2 GB of 4 GB, 10 s left".
-                    bar.set_text(Some(&subst(&tr("{checksums}: {progress}"), &[("checksums", &what), ("progress", &crate::ops::bytes_detail(read, size, started.elapsed()))])));
+                    bar.set_text(Some(&fill(&tr("{checksums}: {progress}"), &[("checksums", &what), ("progress", &crate::ops::bytes_detail(read, size, started.elapsed()))])));
                 }
                 Step::Done(r) => {
                     match r {
@@ -702,7 +701,7 @@ fn start_checksums(
                         Err(e) if e.matches(gio::IOErrorEnum::Cancelled) => {}
                         Err(e) => {
                             for (_, value, _) in &targets {
-                                value.set_text(&subst(&tr("Couldn’t read the file: {error}"), &[("error", &e.message())]));
+                                value.set_text(&fill(&tr("Couldn’t read the file: {error}"), &[("error", &e.message())]));
                             }
                         }
                     }
@@ -764,14 +763,14 @@ fn media_info_page(path: std::path::PathBuf) -> gtk::ScrolledWindow {
                     if !sections.is_empty() {
                         Ok(sections)
                     } else if !err.is_empty() {
-                        Err(subst(&tr("mediainfo reported an error:\n{error}"), &[("error", &err)]))
+                        Err(fill(&tr("mediainfo reported an error:\n{error}"), &[("error", &err)]))
                     } else {
                         Err(tr("mediainfo found no media information in this file."))
                     }
                 }
-                Err(e) => Err(subst(&tr("Could not read mediainfo’s output: {error}"), &[("error", &e.message())])),
+                Err(e) => Err(fill(&tr("Could not read mediainfo’s output: {error}"), &[("error", &e.message())])),
             },
-            Err(e) => Err(subst(&tr("Could not run mediainfo: {error}"), &[("error", &e.message())])),
+            Err(e) => Err(fill(&tr("Could not run mediainfo: {error}"), &[("error", &e.message())])),
         };
         bx.remove(&wait);
         match result {
@@ -908,7 +907,7 @@ fn disk_usage(f: &gio::File) -> Option<gtk::Widget> {
         legend.attach(&v, 2, r, 1, 1);
     };
     // TRANSLATORS: a drive's used space and its share: "12 GB (40 %)".
-    line(0, Some(swatch(true)), &tr("Used:"), subst(&tr("{size} ({percent} %)"), &[("size", &util::format_size(used)), ("percent", &format!("{:.0}", fraction * 100.0))]));
+    line(0, Some(swatch(true)), &tr("Used:"), fill(&tr("{size} ({percent} %)"), &[("size", &util::format_size(used)), ("percent", &format!("{:.0}", fraction * 100.0))]));
     line(1, Some(swatch(false)), &tr("Free:"), util::format_size(free));
     line(2, None, &tr("Total:"), util::format_size(total));
     if let Some(t) = fs.attribute_string("filesystem::type").filter(|t| !t.is_empty()) {
@@ -986,7 +985,7 @@ fn reading_page() -> gtk::Box {
 }
 
 /// A page's contents, in place of "Reading…".
-fn fill(page: &gtk::Box, content: &gtk::Widget) {
+fn replace_contents(page: &gtk::Box, content: &gtk::Widget) {
     for c in page.children() {
         page.remove(&c);
     }

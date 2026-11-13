@@ -7,7 +7,7 @@
 //! added: emblems where Caja puts them (~/.icons/hicolor/48x48/emblems),
 //! so both show them.
 
-use crate::i18n::{n_, tr};
+use crate::i18n::{fill, n_, tr};
 use gdk_pixbuf::Pixbuf;
 use gio::prelude::*;
 use gtk::prelude::*;
@@ -174,7 +174,7 @@ fn swatch(picture: Option<Pixbuf>, name: &str, drop: Drop, remove: Option<Box<dy
     ev.add(&b);
     // check-placeholders: filled later
     let tip = if matches!(drop, Drop::Emblem(_)) { tr("{name}: drag it onto an item") } else { tr("{name}: drag it onto a folder’s background or the side pane") };
-    ev.set_tooltip_text(Some(&crate::i18n::fill(&tip, &[("name", &name)])));
+    ev.set_tooltip_text(Some(&fill(&tip, &[("name", &name)])));
     let (kind, _) = encode(&drop);
     ev.drag_source_set(gdk::ModifierType::BUTTON1_MASK, &[gtk::TargetEntry::new(kind, gtk::TargetFlags::empty(), 0)], gdk::DragAction::COPY);
     if let Some(p) = &picture {
@@ -283,7 +283,7 @@ pub fn show(parent: &gtk::Window) {
     WINDOW.with(|w| *w.borrow_mut() = Some(win.clone()));
     // The lists, filled again whenever one changes.
     FLOWS.with(|f| *f.borrow_mut() = flows.clone());
-    fill();
+    fill_lists();
     win.show_all();
 }
 
@@ -292,7 +292,7 @@ thread_local! {
 }
 
 /// Fills the window's three lists.
-fn fill() {
+fn fill_lists() {
     let flows = FLOWS.with(|f| f.borrow().clone());
     let [patterns_flow, colors_flow, emblems_flow] = flows.as_slice() else { return };
     for f in [patterns_flow, colors_flow, emblems_flow] {
@@ -309,7 +309,7 @@ fn fill() {
             let p = p.clone();
             Box::new(move || {
                 let _ = std::fs::remove_file(&p);
-                fill();
+                fill_lists();
             }) as Box<dyn Fn()>
         });
         patterns_flow.add(&swatch(icons::load_at_scale(&p, 56).ok(), &name, Drop::Pattern(gio::File::for_path(&p).uri().to_string()), remove));
@@ -321,7 +321,7 @@ fn fill() {
             let c = c.clone();
             Box::new(move || {
                 config::update(|s| s.own_colors.retain(|x| *x != c));
-                fill();
+                fill_lists();
             }) as Box<dyn Fn()>
         });
         colors_flow.add(&swatch(color_picture(&c), &c, Drop::Color(c.clone()), remove));
@@ -339,7 +339,7 @@ fn fill() {
                 if let Some(t) = gtk::IconTheme::default() {
                     t.rescan_if_needed();
                 }
-                fill();
+                fill_lists();
             }) as Box<dyn Fn()>
         });
         emblems_flow.add(&swatch(icons::named_pixbuf(&icon, 40), &title, Drop::Emblem(keyword), remove));
@@ -422,7 +422,7 @@ fn add_new(win: &gtk::Window, which: &str) {
             d.close();
         }
     }
-    fill();
+    fill_lists();
 }
 
 fn choose_picture(win: &gtk::Window, title: &str) -> Option<std::path::PathBuf> {

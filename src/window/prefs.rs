@@ -131,7 +131,7 @@ impl AppWindow {
         f.indent(&v, per.upcast_ref());
         let remembered = |n: usize| match n {
             0 => tr("No folders remembered"),
-            n => crate::i18n::fill(&trn("{n} folder remembered", "{n} folders remembered", n as u64), &[("n", &n)]),
+            n => fill(&trn("{n} folder remembered", "{n} folders remembered", n as u64), &[("n", &n)]),
         };
         let count = gtk::Label::new(Some(&remembered(folders::count())));
         count.style_context().add_class("dim-label");
@@ -190,7 +190,7 @@ impl AppWindow {
             l.set_xalign(0.0);
             zoom_grid.attach(&l, 0, row, 1, 1);
             let combo = gtk::ComboBoxText::new();
-            let fill = {
+            let refill = {
                 let combo = combo.clone();
                 move || {
                     let (levels, size) = get(&config::get());
@@ -201,12 +201,12 @@ impl AppWindow {
                     combo.set_active_id(Some(&size.to_string()));
                 }
             };
-            fill();
+            refill();
             // Zooming in a window changes the level while the dialog is open.
             {
-                let fill = fill.clone();
+                let refill = refill.clone();
                 f.dialog.connect_focus_in_event(move |_, _| {
-                    fill();
+                    refill();
                     glib::Propagation::Proceed
                 });
             }
@@ -241,7 +241,7 @@ impl AppWindow {
                             if levels != get(&config::get()).0 {
                                 let size = config::snap(&levels, get(&config::get()).1);
                                 config::update(|s| set(s, Some(levels), size));
-                                fill();
+                                refill();
                                 for_all_panes(|p| p.apply_zoom());
                             }
                         }
@@ -420,7 +420,7 @@ impl AppWindow {
         for (id, name) in [("informal", tr("Informal")), ("locale", tr("Your language’s")), ("iso", tr("ISO"))] {
             util::set_date_format(id);
             // TRANSLATORS: a date format's name and how a date looks with it.
-            dates.append(Some(id), &crate::i18n::fill(&tr("{format}: {example}"), &[("format", &name), ("example", &util::format_time(now))]));
+            dates.append(Some(id), &fill(&tr("{format}: {example}"), &[("format", &name), ("example", &util::format_time(now))]));
         }
         util::set_date_format(&s.date_format);
         dates.set_active_id(Some(&s.date_format));
@@ -573,7 +573,7 @@ impl AppWindow {
         };
         let local_tip = tr("Local files: those on this computer’s drives, network shares the system mounts included; not places opened through GVfs (smb://, sftp://, phones), which can be slow");
         // TRANSLATORS: a setting's explanation, then what “local files” are.
-        let with_local = |text: String| crate::i18n::fill(&tr("{text} {local_files}"), &[("text", &text), ("local_files", &local_tip)]);
+        let with_local = |text: String| fill(&tr("{text} {local_files}"), &[("text", &text), ("local_files", &local_tip)]);
         f.head(&pv, &tr("Text Files"));
         tradeoff(&pv, &tr("Show text in icons:"), &with_local(tr("At bigger icon sizes a text file’s icon shows its first lines.")), &s.text_in_icons, |s, v| s.text_in_icons = v);
         f.head(&pv, &tr("Other Previewable Files"));
@@ -728,7 +728,7 @@ impl AppWindow {
         f.head(&removable, &tr("Removable Media"));
         let automount = f.check(&tr("Mount drives and media when they're _inserted"));
         automount.set_tooltip_text(Some(&match crate::sidebar::automount_desktop() {
-            Some(desktop) => crate::i18n::fill(&tr("Flash drives, memory cards, discs… are mounted right away. This is {desktop}’s own setting: changing it here changes it there too. Turned off, they’re mounted when you click them in the side pane."), &[("desktop", &desktop)]),
+            Some(desktop) => fill(&tr("Flash drives, memory cards, discs… are mounted right away. This is {desktop}’s own setting: changing it here changes it there too. Turned off, they’re mounted when you click them in the side pane."), &[("desktop", &desktop)]),
             None => tr("Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they’re mounted when you click them in the side pane."),
         }));
         automount.set_active(crate::sidebar::automount_on());
@@ -1518,9 +1518,9 @@ fn keybindings_editor(parent: &gtk::Window, app: &gtk::Application) -> gtk::Box 
                     gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
                     gtk::MessageType::Question,
                     gtk::ButtonsType::None,
-                    &crate::i18n::fill(&tr("“{shortcut}” is already the shortcut for “{action}”"), &[("shortcut", &keys::labels(std::slice::from_ref(&accel))), ("action", &tr(other.label))]),
+                    &fill(&tr("“{shortcut}” is already the shortcut for “{action}”"), &[("shortcut", &keys::labels(std::slice::from_ref(&accel))), ("action", &tr(other.label))]),
                 );
-                q.set_secondary_text(Some(&crate::i18n::fill(&tr("Use it for “{action}” instead? “{other}” will no longer have it."), &[("action", &tr(b.label)), ("other", &tr(other.label))])));
+                q.set_secondary_text(Some(&fill(&tr("Use it for “{action}” instead? “{other}” will no longer have it."), &[("action", &tr(b.label)), ("other", &tr(other.label))])));
                 q.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
                 q.add_button(&tr("_Reassign"), gtk::ResponseType::Accept);
                 let ok = q.run() == gtk::ResponseType::Accept;
@@ -1604,7 +1604,7 @@ fn capture_shortcut(parent: &gtk::Window, label: &str) -> Option<String> {
     let d = gtk::Dialog::with_buttons(Some(&tr("Set Shortcut")), Some(parent), gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT, &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel)]);
     let msg = gtk::Label::new(None);
     // TRANSLATORS: keep <b>{action}</b>: the action's name is shown in bold.
-    msg.set_markup(&crate::i18n::fill(&tr("Press the new shortcut for <b>{action}</b>,\nor Escape to cancel."), &[("action", &glib::markup_escape_text(label))]));
+    msg.set_markup(&fill(&tr("Press the new shortcut for <b>{action}</b>,\nor Escape to cancel."), &[("action", &glib::markup_escape_text(label))]));
     msg.set_justify(gtk::Justification::Center);
     let note = gtk::Label::new(None);
     note.style_context().add_class("dim-label");
@@ -1652,7 +1652,7 @@ fn thumbnailers_editor(parent: &gtk::Window) -> gtk::Box {
         columns: const { &[n_("Name"), n_("File types"), n_("Command")] },
         // Ones whose program is missing are skipped when making thumbnails.
         row: |t: &thumbnailers::Thumbnailer| {
-            let name = if thumbnailers::installed(t) { t.name.clone() } else { crate::i18n::fill(&tr("{name} (not installed)"), &[("name", &t.name)]) };
+            let name = if thumbnailers::installed(t) { t.name.clone() } else { fill(&tr("{name} (not installed)"), &[("name", &t.name)]) };
             vec![name, t.types.clone(), t.command.clone()]
         },
         blank: thumbnailers::Thumbnailer::default,
