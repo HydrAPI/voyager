@@ -88,6 +88,17 @@ packaging/deb/build-on.sh debian    # an ssh host name
 sudo apt install ./packaging/deb/arkha_*.deb
 ```
 
+### Fedora package
+
+`packaging/rpm/arkha.spec` builds an RPM on Fedora (45 tested) with Fedora's own Rust (needs `cargo rust gcc gtk3-devel gettext rpm-build`); `packaging/rpm/build.sh` runs `rpmbuild` in the sources, which works out the library dependencies. As for the .deb, `packaging/rpm/build-on.sh HOST` builds it on another machine and fetches it into `packaging/rpm/` (both use `packaging/remote-build.sh`):
+
+```sh
+packaging/rpm/build-on.sh fedora    # an ssh host name
+sudo dnf install ./packaging/rpm/arkha-*.rpm
+```
+
+The version is the same in every package, in each format's own way of marking a build after a release: `0.1.0.r141.ga664f72` (Arch), `0.1.0+r141.ga664f72` (Debian), `0.1.0^r141.ga664f72` (RPM).
+
 Video thumbnails (`ffmpegthumbnailer` or `ffmpeg`), the Media Info tab (`mediainfo`), phones (`gvfs-mtp`), cameras (`gvfs-gphoto2`), network shares (`gvfs-smb`) and archives (`engrampa`, `file-roller` or `xarchiver`) are optional dependencies.
 
 Trash, network locations and mounting use GVfs, which every MATE install already has. Mounting drives also needs udisks2 (`gvfs` pulls it in on most distributions); Android phones need the GVfs MTP backend (`gvfs-mtp` on Arch, Debian and Fedora).
