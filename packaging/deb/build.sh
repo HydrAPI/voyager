@@ -8,7 +8,7 @@
 set -e
 cd "$(dirname "$0")/../.."
 top=$(pwd)
-version=$(cat VERSION 2>/dev/null || sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+version=$(sh packaging/version.sh deb)
 arch=$(dpkg --print-architecture)
 offline=
 [ -d vendor ] && offline=--offline

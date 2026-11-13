@@ -3270,7 +3270,11 @@ impl AppWindow {
         d.set_transient_for(Some(&self.window));
         d.set_modal(true);
         d.set_program_name("Arkha");
-        d.set_version(Some(env!("CARGO_PKG_VERSION")));
+        // With the build (see build.rs), for bug reports: "1.0.0-dev (r142, 6a7d287)".
+        d.set_version(Some(&match env!("ARKHA_BUILD") {
+            "" => env!("CARGO_PKG_VERSION").to_string(),
+            build => format!("{} ({build})", env!("CARGO_PKG_VERSION")),
+        }));
         d.set_comments(Some(&tr("A fast graphical file manager.")));
         d.set_logo_icon_name(Some(util::app_icon()));
         d.connect_response(|d, _| d.close());

@@ -7,10 +7,7 @@
 set -e
 cd "$(dirname "$0")/../.."
 top=$(pwd)
-version=$(cat VERSION 2>/dev/null || sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
-# RPM sorts "^" after the plain version (a snapshot of it) as Debian and
-# Arch sort "+" and ".r".
-rpmver=$(printf '%s' "$version" | tr '+' '^')
+rpmver=$(sh packaging/version.sh rpm)
 rm -rf target/rpm
 mkdir -p target/rpm
 if [ -d vendor ]; then

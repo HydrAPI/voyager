@@ -97,7 +97,11 @@ packaging/rpm/build-on.sh fedora    # an ssh host name
 sudo dnf install ./packaging/rpm/arkha-*.rpm
 ```
 
-The version is the same in every package, in each format's own way of marking a build after a release: `0.1.0.r141.ga664f72` (Arch), `0.1.0+r141.ga664f72` (Debian), `0.1.0^r141.ga664f72` (RPM).
+### Versions
+
+`Cargo.toml` holds the version, for every package and the About window: `1.0.0-dev` for the builds towards 1.0.0. The packages add the number of commits and the commit, in each format's own way of marking a build before a release, so that they update in order and to the release: `1.0.0dev.r142.g6a7d287` (Arch), `1.0.0~dev.r142.g6a7d287` (Debian and RPM; `packaging/version.sh` writes them). About shows `1.0.0-dev (r142, 6a7d287)`.
+
+A release: set the version in `Cargo.toml` (`1.0.0`), commit, and tag the commit `v1.0.0`; packages built from it are just `1.0.0`. Then the next version with `-dev` (`1.1.0-dev`). Builds after a release without that are numbered after it (`1.0.0.r150…`, `1.0.0+r150…`, `1.0.0^r150…`).
 
 Video thumbnails (`ffmpegthumbnailer` or `ffmpeg`), the Media Info tab (`mediainfo`), phones (`gvfs-mtp`), cameras (`gvfs-gphoto2`), network shares (`gvfs-smb`) and archives (`engrampa`, `file-roller` or `xarchiver`) are optional dependencies.
 

@@ -35,11 +35,21 @@ optdepends=(
 source=("$pkgname::git+file://$(realpath ../..)")
 sha256sums=('SKIP')
 
+# Cargo.toml's version as pacman sorts it: a build towards 1.0.0 ("1.0.0-dev"
+# there) is 1.0.0dev.r<commits>.g<commit>, older than 1.0.0; the release
+# (tagged v1.0.0) is 1.0.0; a build after it 1.0.0.r<commits>.g<commit>.
 pkgver() {
   cd "$pkgname"
-  local version
+  local version base pre
   version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
-  printf '%s.r%s.g%s' "$version" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  base="${version%%-*}"
+  pre="${version#"$base"}"
+  pre="${pre#-}"
+  if [ -z "$pre" ] && git describe --exact-match --tags --match "v$version" >/dev/null 2>&1; then
+    printf '%s' "$base"
+  else
+    printf '%s%s.r%s.g%s' "$base" "$pre" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  fi
 }
 
 prepare() {
