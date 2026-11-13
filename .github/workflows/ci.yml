@@ -1,0 +1,57 @@
+# Checks every push to master and every pull request: the build, the tests,
+# clippy, the translations and their {placeholders}, and that Arkha still
+# builds with its oldest supported Rust (Debian 13's).
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Build, tests, clippy, translations
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GTK 3 and gettext
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-3-dev gettext
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --locked
+      - name: Tests
+        run: cargo test --locked
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Translations
+        run: |
+          for po in po/*.po; do
+            msgfmt --check --statistics -o /dev/null "$po"
+          done
+      - name: Placeholders
+        run: python3 tools/check-placeholders.py
+
+  oldest-rust:
+    name: Build with Debian 13's Rust (1.85)
+    runs-on: ubuntu-24.04
+    container: debian:13
+    steps:
+      - name: Install Rust, GTK 3 and gettext
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates cargo rustc libgtk-3-dev gettext pkg-config build-essential
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --locked

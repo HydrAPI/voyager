@@ -28,7 +28,7 @@ Packages for each release are on the project's Releases page, and for Arch Linux
 - **Fedora:** `sudo dnf install ./arkha-*.rpm`
 - **Arch Linux:** from the AUR, `arkha` (built from the release's sources), `arkha-bin` (prebuilt) or `arkha-git` (the newest development version).
 
-Arkha uses GVfs for the Trash, network places and drives; most desktops have it already. To build it yourself, see [BUILDING.md](BUILDING.md).
+Arkha uses GVfs for the Trash, network places and drives; most desktops have it already. To build it yourself, see [BUILDING.md](BUILDING.md). If you package Arkha for a distribution, build it from a release's git tag, never from the prebuilt files: see [Packaging Arkha for a distribution](BUILDING.md#packaging-arkha-for-a-distribution).
 
 Your settings are kept in `~/.config/arkha/`.
 

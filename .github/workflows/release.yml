@@ -1,0 +1,116 @@
+# Builds a release's files when its tag (v1.0.0) is pushed: the prebuilt
+# program for the AUR's arkha-bin (arkha-<version>-x86_64.tar.gz), the .deb
+# (built on Debian 13, also for Ubuntu 26.04) and the .rpm (Fedora), with
+# their SHA-256 sums, and puts them on a draft release: write its notes and
+# publish it on GitHub. The notes start with .github/release-notes.md
+# (the downloads, and the advice for packagers), then GitHub's list of
+# changes. The tag has to match Cargo.toml's version.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Tag matches Cargo.toml
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::the tag $GITHUB_REF_NAME doesn't match Cargo.toml's version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  tarball:
+    name: Prebuilt program (x86_64)
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GTK 3 and gettext
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-3-dev gettext
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        # A release's About window shows just its version (see build.rs).
+        run: ARKHA_BUILD= packaging/tarball/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball
+          path: target/tarball/*.tar.gz
+          if-no-files-found: error
+
+  deb:
+    name: Debian package
+    needs: version
+    runs-on: ubuntu-24.04
+    container: debian:13
+    steps:
+      - name: Install the build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git cargo rustc libgtk-3-dev gettext pkg-config build-essential dpkg-dev
+      - uses: actions/checkout@v4
+      - name: Build
+        run: ARKHA_BUILD= sh packaging/deb/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: target/deb/*.deb
+          if-no-files-found: error
+
+  rpm:
+    name: Fedora package
+    needs: version
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - name: Install the build dependencies
+        run: dnf install -y git cargo rust gcc gtk3-devel gettext rpm-build
+      - uses: actions/checkout@v4
+      - name: Build
+        run: ARKHA_BUILD= sh packaging/rpm/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: target/rpm/*.rpm
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    needs: [version, tarball, deb, rpm]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      # For the notes on the release page (.github/release-notes.md).
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+            --title "Arkha $VERSION" \
+            --notes-file .github/release-notes.md --generate-notes
