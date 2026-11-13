@@ -43,7 +43,8 @@ fn main() -> glib::ExitCode {
     // Before any window: they load icons (see there).
     util::tell_metadata_store_in_background();
     let app = gtk::Application::new(
-        Some("io.github.arkha.FileManager"),
+        // The same as the AppStream metainfo's (data/), its D-Bus name.
+        Some("io.github.dekart811.Arkha"),
         gio::ApplicationFlags::HANDLES_OPEN,
     );
     app.connect_startup(|app| {

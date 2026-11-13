@@ -7,7 +7,7 @@ gt_session "$@"
 
 gt_display
 gt_arkha "$HOME"
-gdbus call --session --dest io.github.arkha.FileManager --object-path $APP_PATH/window/1 \
+gdbus call --session --dest $APP_ID --object-path $APP_PATH/window/1 \
   --method org.gtk.Actions.Activate preferences [] {} >/dev/null & sleep 2
 gt_check "Preferences opens" "$(gt_a11y dialogs)" "File Manager Preferences"
 # The page list's first row, then down the list.

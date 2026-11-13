@@ -26,7 +26,7 @@ slowest() {
   local end=$(( $(date +%s) + $1 )) worst=0 t0 ms
   while [ "$(date +%s)" -lt $end ]; do
     t0=$(date +%s%N)
-    timeout 60 gdbus call --session --dest io.github.arkha.FileManager --object-path $APP_PATH --method org.gtk.Actions.List >/dev/null 2>&1
+    timeout 60 gdbus call --session --dest $APP_ID --object-path $APP_PATH --method org.gtk.Actions.List >/dev/null 2>&1
     ms=$(( ($(date +%s%N) - t0) / 1000000 )); [ $ms -gt $worst ] && worst=$ms; sleep 0.2
   done
   echo $worst
@@ -35,7 +35,7 @@ step() {  # step NAME SECONDS: PASS if Arkha answered within 2 s throughout
   local ms; ms=$(slowest "$2")
   if [ "$ms" -lt 2000 ]; then echo "PASS $1 (slowest answer $ms ms)" >> "$OUT/result"; else echo "FAIL $1: an answer took $ms ms" >> "$OUT/result"; fi
 }
-act() { timeout 60 gdbus call --session --dest io.github.arkha.FileManager --object-path $APP_PATH/window/1 \
+act() { timeout 60 gdbus call --session --dest $APP_ID --object-path $APP_PATH/window/1 \
   --method org.gtk.Actions.Activate "$1" "${2:-[]}" {} >/dev/null 2>&1 & }
 act reload; step "reload" 4
 act go-uri "[<'file://$T/two'>]"; step "another folder" 4

@@ -12,7 +12,7 @@ B=$XDG_CONFIG_HOME/gtk-3.0/bookmarks
 printf 'file://%s/Backups\nfile://%s/My%%20Files Mine\nsmb://server/My%%20Share/\n' "$HOME" "$HOME" > "$B"
 gt_display
 gt_arkha "$HOME"
-gdbus call --session --dest io.github.arkha.FileManager --object-path $APP_PATH/window/1 \
+gdbus call --session --dest $APP_ID --object-path $APP_PATH/window/1 \
   --method org.gtk.Actions.Activate edit-bookmarks [] {} >/dev/null & sleep 2
 gt_shot editor
 cells() { python3 - <<'PY'

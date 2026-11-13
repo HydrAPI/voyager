@@ -15,7 +15,7 @@ want=$(sha256sum "$HOME/big.bin" | cut -d' ' -f1)
 gt_display
 gt_arkha "$HOME"
 gt_click 900 650; gt_type big; gt_key Escape
-gdbus call --session --dest io.github.arkha.FileManager --object-path $APP_PATH/window/1 \
+gdbus call --session --dest $APP_ID --object-path $APP_PATH/window/1 \
   --method org.gtk.Actions.Activate properties [] {} >/dev/null & sleep 1.5
 gt_ok "the Checksums tab" gt_a11y tab Checksums; sleep 0.5; gt_shot tab
 # The dialog's rows, top to bottom: ROLE NAME... (by where they are on screen).

@@ -27,7 +27,7 @@ drag_tab() {  # drag_tab FROM TO: FROM dropped on TO's left half
   for i in $(seq 1 12); do xdotool mousemove $(( $1 + ($3 - 20 - $1) * i / 12 )) $2; sleep 0.05; done
   sleep 0.3; xdotool mouseup 1; sleep 0.8
 }
-props() { gt_click 900 650; gt_type "$1"; gt_key Escape; gdbus call --session --dest io.github.arkha.FileManager \
+props() { gt_click 900 650; gt_type "$1"; gt_key Escape; gdbus call --session --dest $APP_ID \
   --object-path $APP_PATH/window/1 --method org.gtk.Actions.Activate properties [] {} >/dev/null & sleep 1.5; }
 props a.t
 [ "$BACKEND" = wayland ] || gt_check "Properties of a file: the usual order" "$(tabs)" "Basic Emblems Permissions Open With Checksums Notes "
@@ -43,7 +43,7 @@ gt_check "another file: the order kept" "$(tabs)" "Notes Basic Emblems Permissio
 gt_key Escape; sleep 0.5
 # Rename All (two files selected).
 gt_click 900 650; gt_type a.t; gt_key Escape; gt_key shift+Right
-gdbus call --session --dest io.github.arkha.FileManager --object-path $APP_PATH/window/1 \
+gdbus call --session --dest $APP_ID --object-path $APP_PATH/window/1 \
   --method org.gtk.Actions.Activate rename-all [] {} >/dev/null & sleep 1.5
 if [ "$BACKEND" = wayland ]; then
   gt_check "Rename All: the order from the settings" "$(tabs)" "Regex Case Insert Remove Replace Enumerate "

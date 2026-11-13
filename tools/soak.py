@@ -48,8 +48,8 @@ import zlib
 import struct
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APP = "io.github.arkha.FileManager"
-APP_PATH = "/io/github/arkha/FileManager"
+APP = "io.github.dekart811.Arkha"
+APP_PATH = "/io/github/dekart811/Arkha"
 
 # Buttons that answer a dialog (rather than, in a file chooser, go
 # somewhere): one of these is pressed when there are any.

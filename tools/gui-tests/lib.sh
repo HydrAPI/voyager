@@ -23,7 +23,8 @@ GT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 GT_DIR=$GT_ROOT/tools/gui-tests
 GT_FIX=$GT_ROOT/target/gui-fixtures
 ARKHA=${ARKHA:-$GT_ROOT/target/release/arkha}
-APP_PATH=/io/github/arkha/FileManager
+APP_ID=io.github.dekart811.Arkha
+APP_PATH=/io/github/dekart811/Arkha
 
 # gt_session BACKEND [ARGS...]: see above. Returns only inside the session,
 # with OUT (the run folder), BACKEND and HOME set.
@@ -105,7 +106,7 @@ gt_arkha() {
   "$ARKHA" "$@" >> "$OUT/arkha.log" 2>&1 &
   ARKHA_PID=$!
   for _ in $(seq 100); do
-    gdbus introspect --session --dest io.github.arkha.FileManager --object-path $APP_PATH/window/1 >/dev/null 2>&1 && break
+    gdbus introspect --session --dest $APP_ID --object-path $APP_PATH/window/1 >/dev/null 2>&1 && break
     sleep 0.1
   done
   gt_quiet
@@ -129,7 +130,7 @@ gt_quiet() {
 # them (PARAM in GVariant text, e.g. "<'list'>"), then waits for quiet.
 gt_act() {
   local p=${2:+[$2]}
-  timeout 60 gdbus call --session --dest io.github.arkha.FileManager --object-path "$APP_PATH/window/${3:-1}" \
+  timeout 60 gdbus call --session --dest $APP_ID --object-path "$APP_PATH/window/${3:-1}" \
     --method org.gtk.Actions.Activate "$1" "${p:-[]}" {} >/dev/null
   gt_quiet
 }
@@ -163,7 +164,7 @@ gt_ok() {
 # gt_quit: quits Arkha (as File → Quit does), killed if it doesn't end.
 gt_quit() {
   if [ -n "$ARKHA_PID" ] && kill -0 "$ARKHA_PID" 2>/dev/null; then
-    timeout 10 gdbus call --session --dest io.github.arkha.FileManager --object-path $APP_PATH \
+    timeout 10 gdbus call --session --dest $APP_ID --object-path $APP_PATH \
       --method org.gtk.Actions.Activate quit [] {} >/dev/null 2>&1
     for _ in $(seq 30); do kill -0 "$ARKHA_PID" 2>/dev/null || break; sleep 0.1; done
     kill "$ARKHA_PID" 2>/dev/null && echo "NOTE Arkha didn't quit within 3 s" >> "$OUT/result"

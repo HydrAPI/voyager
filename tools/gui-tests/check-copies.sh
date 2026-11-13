@@ -27,7 +27,7 @@ gt_key BackSpace; sleep 0.5; gt_quiet
 # Copy To with its box ticked: the dialog starts in the folder shown, so
 # the folder "to" is typed in.
 gt_click 900 650; gt_type b.t; gt_key Escape
-gdbus call --session --dest io.github.arkha.FileManager --object-path $APP_PATH/window/1 \
+gdbus call --session --dest $APP_ID --object-path $APP_PATH/window/1 \
   --method org.gtk.Actions.Activate copy-to [] {} >/dev/null & sleep 1.5
 gt_shot copy-to
 gt_ok "the Copy To dialog's box" gt_a11y press "Check the copies"
