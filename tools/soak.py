@@ -118,6 +118,7 @@ ACTIONS = [
     ("open-parent", None, 1, "plain"), ("add-bookmark", None, 1, "plain"),
     ("rename", None, 1, "dialog"), ("rename-all", None, 1, "dialog"), ("select-pattern", None, 1, "dialog"),
     ("edit-bookmarks", None, 1, "dialog"), ("about", None, 1, "dialog"), ("copy-to", None, 1, "dialog"),
+    ("connect-server", None, 1, "dialog"),
     ("move-to", None, 1, "dialog"), ("delete", None, 2, "dialog"), ("empty-trash", None, 1, "dialog"),
     # Asks before deleting where there's no trash (the Trash itself, /usr).
     ("trash", None, 3, "dialog"),
