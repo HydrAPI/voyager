@@ -1343,12 +1343,10 @@ impl Pane {
                     // A network location not mounted yet (sftp://, smb://…,
                     // typed, bookmarked or from another program): mounted,
                     // asking for a password if needed, then read again.
-                    let uri = file.uri().to_string();
-                    if e.matches(gio::IOErrorEnum::NotMounted) && p.mounted_for.replace(Some(uri.clone())).as_ref() != Some(&uri) {
+                    if mount_first(&e, &file.uri(), &p.mounted_for) {
                         p.mount_and_load(&file, gen);
                         return;
                     }
-                    p.mounted_for.replace(None);
                     p.load_failed(&file, &e, gen);
                     return;
                 }
@@ -1422,7 +1420,7 @@ impl Pane {
     /// The folder couldn't be read (or its location mounted): says why,
     /// unless the user cancelled the password dialog.
     fn load_failed(self: &Rc<Self>, file: &gio::File, e: &glib::Error, gen: u64) {
-        if !e.matches(gio::IOErrorEnum::FailedHandled) && !e.matches(gio::IOErrorEnum::Cancelled) {
+        if worth_telling(e) {
             self.show_error(&fill(&tr("Could not open “{location}”: {error}"), &[("location", &util::pretty_location(file)), ("error", &e.message())]));
         }
         self.finish_load(gen);
@@ -4354,10 +4352,62 @@ fn text_in_icon(m: &gtk::TreeModel, it: &gtk::TreeIter, icon: &gio::Icon, size: 
 }
 
 
+/// Whether a folder that couldn't be read should have its location mounted
+/// first: when it says it isn't mounted, and wasn't just mounted for it
+/// (`mounted_for`, which this keeps up to date) — so a mount that doesn't
+/// help ends in the error instead of mounting again and again.
+fn mount_first(e: &glib::Error, uri: &str, mounted_for: &RefCell<Option<String>>) -> bool {
+    if e.matches(gio::IOErrorEnum::NotMounted) && mounted_for.borrow().as_deref() != Some(uri) {
+        *mounted_for.borrow_mut() = Some(uri.to_string());
+        return true;
+    }
+    mounted_for.replace(None);
+    false
+}
+
+/// Whether an error opening a folder is worth telling: not when the user
+/// cancelled (the password dialog).
+fn worth_telling(e: &glib::Error) -> bool {
+    !e.matches(gio::IOErrorEnum::FailedHandled) && !e.matches(gio::IOErrorEnum::Cancelled)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testutil::TestDir;
+
+    #[test]
+    fn mounting_a_location_once() {
+        let err = |code| glib::Error::new(code, "x");
+        let not_mounted = err(gio::IOErrorEnum::NotMounted);
+        let mounted_for = RefCell::new(None);
+        // Not mounted: mounted first.
+        assert!(mount_first(&not_mounted, "sftp://a/x", &mounted_for));
+        assert_eq!(mounted_for.borrow().as_deref(), Some("sftp://a/x"));
+        // Still not mounted after that: the error, and the next time it's tried again.
+        assert!(!mount_first(&not_mounted, "sftp://a/x", &mounted_for));
+        assert_eq!(*mounted_for.borrow(), None);
+        assert!(mount_first(&not_mounted, "sftp://a/x", &mounted_for));
+        // Another location meanwhile: mounted too.
+        assert!(mount_first(&not_mounted, "smb://b/y", &mounted_for));
+        assert_eq!(mounted_for.borrow().as_deref(), Some("smb://b/y"));
+        // Any other error: told, nothing mounted.
+        assert!(!mount_first(&err(gio::IOErrorEnum::PermissionDenied), "smb://b/y", &mounted_for));
+        assert_eq!(*mounted_for.borrow(), None);
+        assert!(!mount_first(&err(gio::IOErrorEnum::NotFound), "file:///nope", &mounted_for));
+    }
+
+    #[test]
+    fn errors_worth_telling() {
+        let err = |code| glib::Error::new(code, "x");
+        // The password dialog cancelled: nothing to say.
+        assert!(!worth_telling(&err(gio::IOErrorEnum::FailedHandled)));
+        assert!(!worth_telling(&err(gio::IOErrorEnum::Cancelled)));
+        assert!(worth_telling(&err(gio::IOErrorEnum::NotFound)));
+        assert!(worth_telling(&err(gio::IOErrorEnum::PermissionDenied)));
+        assert!(worth_telling(&err(gio::IOErrorEnum::HostNotFound)));
+        assert!(worth_telling(&glib::Error::new(glib::FileError::Acces, "x")));
+    }
 
     #[test]
     fn rows_of_a_list_and_its_filter() {

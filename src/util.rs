@@ -672,6 +672,26 @@ fn add_bookmark_to(path: &std::path::Path, uri: &str) -> std::io::Result<bool> {
     Ok(added)
 }
 
+/// Bookmarks `uri` under `name` (Connect to Server's "Add bookmark"): at
+/// the end if it isn't there, else it keeps its place and gets the name.
+/// An empty name is the folder's name for a new bookmark, and leaves an
+/// existing one's label as it is.
+pub fn bookmark_named(uri: &str, name: &str) -> std::io::Result<()> {
+    bookmark_named_at(&bookmarks_file(), uri, name)
+}
+
+fn bookmark_named_at(path: &std::path::Path, uri: &str, name: &str) -> std::io::Result<()> {
+    let name = name.trim();
+    edit_bookmarks_at(path, |b| match b.iter_mut().find(|(u, _)| u == uri) {
+        Some(existing) => {
+            if !name.is_empty() {
+                existing.1 = name.to_string();
+            }
+        }
+        None => b.push((uri.to_string(), name.to_string())),
+    })
+}
+
 /// Minimal shell-style glob: * ? and [abc].
 pub fn glob_match(pat: &[char], s: &[char]) -> bool {
     // On a mismatch only the last "*" takes one more character: trying every
@@ -1026,6 +1046,24 @@ mod tests {
         std::fs::write(&p, "file:///a\n\nfile:///b B").unwrap();
         edit_bookmarks_at(&p, |_| {}).unwrap();
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "file:///a\n\nfile:///b B");
+    }
+
+    #[test]
+    fn bookmarks_with_names() {
+        let t = TestDir::new("bookmarks-named");
+        let p = t.0.join("gtk-3.0").join("bookmarks");
+        // New ones at the end, with their names (or the folder's name).
+        bookmark_named_at(&p, "sftp://debian/root", "Debian VM").unwrap();
+        bookmark_named_at(&p, "smb://nas/Public", "").unwrap();
+        bookmark_named_at(&p, "file:///srv", " Server ").unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "sftp://debian/root Debian VM\nsmb://nas/Public\nfile:///srv Server\n");
+        // An existing one keeps its place and gets the new name; an empty
+        // name leaves its label alone.
+        bookmark_named_at(&p, "smb://nas/Public", "NAS").unwrap();
+        bookmark_named_at(&p, "sftp://debian/root", "").unwrap();
+        bookmark_named_at(&p, "file:///srv", "Data").unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "sftp://debian/root Debian VM\nsmb://nas/Public NAS\nfile:///srv Data\n");
+        assert_eq!(bookmark_lines(&std::fs::read_to_string(&p).unwrap()).len(), 3);
     }
 
     #[test]

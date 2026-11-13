@@ -219,17 +219,7 @@ pub fn show(parent: &gtk::Window, open: impl Fn(String) + 'static) {
         if r == gtk::ResponseType::Ok {
             let Some(uri) = read().uri() else { return };
             if bookmark.is_active() {
-                let name = bookmark_name.text().trim().to_string();
-                let u = uri.clone();
-                let res = util::edit_bookmarks(|b| match b.iter_mut().find(|(x, _)| *x == u) {
-                    Some(existing) => {
-                        if !name.is_empty() {
-                            existing.1 = name.clone();
-                        }
-                    }
-                    None => b.push((u.clone(), name.clone())),
-                });
-                if let Err(e) = res {
+                if let Err(e) = util::bookmark_named(&uri, &bookmark_name.text()) {
                     util::error_dialog(Some(d.upcast_ref()), &tr("Could not add bookmark"), &e.to_string());
                     return;
                 }
