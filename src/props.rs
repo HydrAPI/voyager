@@ -116,7 +116,65 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         return;
     }
 
-    // ---------------------------------------------------------------- Basic
+    let img = gtk::Image::new();
+    if let Some(pb) = icons::icon_pixbuf(icons::item_icon(&infos[0], &[]).as_ref(), 64) {
+        img.set_from_pixbuf(Some(&pb));
+    }
+    // Each item's metadata, once read.
+    let metas: Rc<std::cell::RefCell<Option<Vec<Meta>>>> = Rc::default();
+    add_page(&nb, &basic_page(&dialog, &files, &infos, &img, &metas), "basic", &tr("Basic"));
+    // Filled once the metadata is read (below).
+    let emblems_slot = reading_page();
+    add_page(&nb, &emblems_slot, "emblems", &tr("Emblems"));
+    let notes_slot = reading_page();
+    if infos.iter().all(|i| i.has_attribute("unix::mode")) {
+        add_page(&nb, &permissions_page(&dialog, &files, &infos), "permissions", &tr("Permissions"));
+    }
+    if files.len() == 1 && infos[0].file_type() != gio::FileType::Directory {
+        if let Some(ctype) = util::info_content_type(&infos[0]) {
+            add_page(&nb, &open_with_page(&dialog, &infos[0], &ctype), "open-with", &tr("Open With"));
+        }
+    }
+    if files.len() == 1 {
+        add_page(&nb, &notes_slot, "notes", &tr("Notes"));
+    }
+    // The metadata read in the background; then the pages that show it.
+    {
+        let (d, files, img, info, metas) = (dialog.clone(), files.clone(), img.clone(), infos[0].clone(), metas.clone());
+        crate::metadata::read_items(files.iter().map(|f| f.uri().to_string()).collect(), move |found| {
+            let found: Vec<Meta> = found.into_iter().map(|(_, m)| m).collect();
+            replace_contents(&emblems_slot, &emblems_page(&d, &files, found.iter().map(|m| m.emblems.clone()).collect()));
+            replace_contents(&notes_slot, &notes_page(&d, &files[0], &found.first().map(|m| m.note.clone()).unwrap_or_default()));
+            if let Some(pb) = found.first().and_then(|m| icons::icon_pixbuf(icons::item_icon(&m.applied_to(&info), &[]).as_ref(), 64)) {
+                img.set_from_pixbuf(Some(&pb));
+            }
+            *metas.borrow_mut() = Some(found);
+        });
+    }
+
+    // ----------------------------------------------------------- Media Info
+    if files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
+        let ctype = util::info_content_type(&infos[0]).unwrap_or_default();
+        if let (Some(path), true) = (files[0].path(), media_info_wanted(&ctype)) {
+            add_page(&nb, &media_info_page(path), "media", &tr("Media Info"));
+        }
+    }
+
+    // ------------------------------------------------------------ Checksums
+    if files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
+        let page = checksums_page(&dialog, &files[0], infos[0].size().max(0) as u64);
+        add_page(&nb, &page, "checksums", &tr("Checksums"));
+    }
+
+    // Draggable into another order, which is kept, as in Rename All.
+    util::order_tabs(&nb, config::get().props_tab_order, |order| config::update(|s| s.props_tab_order = order));
+    dialog.show_all();
+}
+
+/// The Basic tab: the icon (a click picks another), the name (editable for
+/// one item), type, size or contents, location, free space, a drive's usage
+/// and the dates; for several items their number, contents and location.
+fn basic_page(dialog: &gtk::Dialog, files: &[gio::File], infos: &[gio::FileInfo], img: &gtk::Image, metas: &Rc<std::cell::RefCell<Option<Vec<Meta>>>>) -> gtk::Grid {
     let grid = gtk::Grid::new();
     grid.set_row_spacing(8);
     grid.set_column_spacing(12);
@@ -124,20 +182,14 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     let mut r = 0;
 
     let head = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let img = gtk::Image::new();
-    if let Some(pb) = icons::icon_pixbuf(icons::item_icon(&infos[0], &[]).as_ref(), 64) {
-        img.set_from_pixbuf(Some(&pb));
-    }
-    // Each item's metadata, once read.
-    let metas: Rc<std::cell::RefCell<Option<Vec<Meta>>>> = Rc::default();
     // A click on the icon picks another one, as in Caja.
     let icon_button = gtk::Button::new();
     icon_button.set_relief(gtk::ReliefStyle::None);
     icon_button.set_valign(gtk::Align::Center);
     icon_button.set_tooltip_text(Some(&tr("Choose another icon")));
-    icon_button.add(&img);
+    icon_button.add(img);
     {
-        let (files, d, img, metas, info) = (files.clone(), dialog.clone(), img.clone(), metas.clone(), infos[0].clone());
+        let (files, d, img, metas, info) = (files.to_vec(), dialog.clone(), img.clone(), metas.clone(), infos[0].clone());
         icon_button.connect_clicked(move |_| choose_icon(&d, &files, &img, &metas, &info));
     }
     head.pack_start(&icon_button, false, false, 0);
@@ -251,270 +303,229 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
         let parent_loc = files[0].parent().map(|p| util::pretty_location(&p)).unwrap_or_default();
         row(&grid, r, &tr("Location:"), value_label(&parent_loc).upcast_ref());
     }
-    add_page(&nb, &grid, "basic", &tr("Basic"));
+    grid
+}
 
-    // -------------------------------------------------------------- Emblems
-    let emblems_slot = reading_page();
-    add_page(&nb, &emblems_slot, "emblems", &tr("Emblems"));
-    let notes_slot = reading_page();
-
-    // ---------------------------------------------------------- Permissions
-    if infos.iter().all(|i| i.has_attribute("unix::mode")) {
-        let pg = gtk::Grid::new();
-        pg.set_row_spacing(8);
-        pg.set_column_spacing(12);
-        pg.set_border_width(12);
-        let mut r = 0;
-        // Every file keeps its own mode; a checkbox only flips its one bit in each.
-        let modes: Rc<Vec<Cell<u32>>> = Rc::new(infos.iter().map(|i| Cell::new(i.attribute_uint32("unix::mode"))).collect());
-        let my_uid = unsafe { libc_getuid() };
-        let can_change = infos.iter().all(|i| i.attribute_uint32("unix::uid") == my_uid || my_uid == 0);
-        let native = files.iter().all(|f| f.path().is_some());
-        // The owner and group, as Caja has them: the owner can only be
-        // changed by root, the group by the owner, to one of their groups.
-        let owner = owner_combo(&dialog, &files, &infos, my_uid == 0 && native);
-        let group = group_combo(&dialog, &files, &infos, can_change && native, my_uid == 0);
-        for (key, combo) in [(tr("Owner:"), &owner), (tr("Group:"), &group)] {
-            let l = gtk::Label::new(Some(&key));
-            l.set_xalign(1.0);
-            l.style_context().add_class("dim-label");
-            pg.attach(&l, 0, r, 1, 1);
-            // Over the permission columns, not widening the first.
-            pg.attach(combo, 1, r, 3, 1);
-            r += 1;
+/// The Permissions tab: owner and group, a check box per permission bit
+/// (each item keeps its other bits), the special bits, the mode in octal,
+/// Apply to Enclosed Items for folders, and the SELinux context.
+fn permissions_page(dialog: &gtk::Dialog, files: &[gio::File], infos: &[gio::FileInfo]) -> gtk::Grid {
+    let pg = gtk::Grid::new();
+    pg.set_row_spacing(8);
+    pg.set_column_spacing(12);
+    pg.set_border_width(12);
+    let mut r = 0;
+    // Every file keeps its own mode; a checkbox only flips its one bit in each.
+    let modes: Rc<Vec<Cell<u32>>> = Rc::new(infos.iter().map(|i| Cell::new(i.attribute_uint32("unix::mode"))).collect());
+    let my_uid = unsafe { libc_getuid() };
+    let can_change = infos.iter().all(|i| i.attribute_uint32("unix::uid") == my_uid || my_uid == 0);
+    let native = files.iter().all(|f| f.path().is_some());
+    // The owner and group, as Caja has them: the owner can only be
+    // changed by root, the group by the owner, to one of their groups.
+    let owner = owner_combo(dialog, files, infos, my_uid == 0 && native);
+    let group = group_combo(dialog, files, infos, can_change && native, my_uid == 0);
+    for (key, combo) in [(tr("Owner:"), &owner), (tr("Group:"), &group)] {
+        let l = gtk::Label::new(Some(&key));
+        l.set_xalign(1.0);
+        l.style_context().add_class("dim-label");
+        pg.attach(&l, 0, r, 1, 1);
+        // Over the permission columns, not widening the first.
+        pg.attach(combo, 1, r, 3, 1);
+        r += 1;
+    }
+    let headers = [String::new(), tr("Read"), tr("Write"), tr("Execute")];
+    for (c, h) in headers.iter().enumerate() {
+        let l = gtk::Label::new(Some(h));
+        l.style_context().add_class("dim-label");
+        pg.attach(&l, c as i32, r, 1, 1);
+    }
+    r += 1;
+    let files_rc = Rc::new(files.to_vec());
+    let any_dir = infos.iter().any(|i| i.file_type() == gio::FileType::Directory);
+    let octal = value_label("");
+    octal.style_context().add_class("dim-label");
+    let update_octal = {
+        let modes = modes.clone();
+        let octal = octal.clone();
+        Rc::new(move || {
+            let first = modes[0].get() & 0o7777;
+            let text = if modes.iter().all(|m| m.get() & 0o7777 == first) {
+                fill(&tr("Mode: {mode}"), &[("mode", &format!("{first:04o}"))])
+            } else {
+                tr("Mode: mixed")
+            };
+            // TRANSLATORS: after "Mode: 0755", for folders.
+            octal.set_text(&if any_dir { format!("{text}  {}", tr("(execute = enter folder)")) } else { text });
+        })
+    };
+    update_octal();
+    // A check box for one permission bit, flipping it in every file.
+    let bit_box = {
+        let (modes, files, update_octal, d) = (modes.clone(), files_rc.clone(), update_octal.clone(), dialog.clone());
+        move |bit: u32, label: Option<&str>| -> gtk::CheckButton {
+            let cb = match label {
+                Some(l) => gtk::CheckButton::with_label(l),
+                None => gtk::CheckButton::new(),
+            };
+            let on = modes.iter().filter(|m| m.get() & bit != 0).count();
+            cb.set_active(on == modes.len());
+            cb.set_inconsistent(on != 0 && on != modes.len());
+            cb.set_sensitive(can_change);
+            let (modes, files, update_octal, d) = (modes.clone(), files.clone(), update_octal.clone(), d.clone());
+            cb.connect_toggled(move |cb| {
+                cb.set_inconsistent(false);
+                let set = cb.is_active();
+                let mut changed = vec![];
+                for (f, m) in files.iter().zip(modes.iter()) {
+                    let new = if set { m.get() | bit } else { m.get() & !bit };
+                    if let Err(e) = f.set_attribute_uint32("unix::mode", new & 0o7777, gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE) {
+                        util::error_dialog(d.transient_for().as_ref(), &tr("Could not change permissions"), e.message());
+                        break;
+                    }
+                    changed.push((f.clone(), m.get(), new));
+                    m.set(new);
+                }
+                crate::ops::note_modes(changed);
+                update_octal();
+            });
+            cb
         }
-        let headers = [String::new(), tr("Read"), tr("Write"), tr("Execute")];
-        for (c, h) in headers.iter().enumerate() {
-            let l = gtk::Label::new(Some(h));
-            l.style_context().add_class("dim-label");
-            pg.attach(&l, c as i32, r, 1, 1);
+    };
+    for (i, who) in [tr("Owner"), tr("Group"), tr("Others")].iter().enumerate() {
+        let l = gtk::Label::new(Some(who));
+        l.set_xalign(1.0);
+        pg.attach(&l, 0, r, 1, 1);
+        for j in 0..3 {
+            let cb = bit_box(1u32 << (8 - (i * 3 + j)), None);
+            cb.set_halign(gtk::Align::Center);
+            pg.attach(&cb, j as i32 + 1, r, 1, 1);
         }
         r += 1;
-        let files_rc = Rc::new(files.clone());
-        let any_dir = infos.iter().any(|i| i.file_type() == gio::FileType::Directory);
-        let octal = value_label("");
-        octal.style_context().add_class("dim-label");
-        let update_octal = {
-            let modes = modes.clone();
-            let octal = octal.clone();
-            Rc::new(move || {
-                let first = modes[0].get() & 0o7777;
-                let text = if modes.iter().all(|m| m.get() & 0o7777 == first) {
-                    fill(&tr("Mode: {mode}"), &[("mode", &format!("{first:04o}"))])
-                } else {
-                    tr("Mode: mixed")
-                };
-                // TRANSLATORS: after "Mode: 0755", for folders.
-                octal.set_text(&if any_dir { format!("{text}  {}", tr("(execute = enter folder)")) } else { text });
-            })
-        };
-        update_octal();
-        // A check box for one permission bit, flipping it in every file.
-        let bit_box = {
-            let (modes, files, update_octal, d) = (modes.clone(), files_rc.clone(), update_octal.clone(), dialog.clone());
-            move |bit: u32, label: Option<&str>| -> gtk::CheckButton {
-                let cb = match label {
-                    Some(l) => gtk::CheckButton::with_label(l),
-                    None => gtk::CheckButton::new(),
-                };
-                let on = modes.iter().filter(|m| m.get() & bit != 0).count();
-                cb.set_active(on == modes.len());
-                cb.set_inconsistent(on != 0 && on != modes.len());
-                cb.set_sensitive(can_change);
-                let (modes, files, update_octal, d) = (modes.clone(), files.clone(), update_octal.clone(), d.clone());
-                cb.connect_toggled(move |cb| {
-                    cb.set_inconsistent(false);
-                    let set = cb.is_active();
-                    let mut changed = vec![];
-                    for (f, m) in files.iter().zip(modes.iter()) {
-                        let new = if set { m.get() | bit } else { m.get() & !bit };
-                        if let Err(e) = f.set_attribute_uint32("unix::mode", new & 0o7777, gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE) {
-                            util::error_dialog(d.transient_for().as_ref(), &tr("Could not change permissions"), e.message());
-                            break;
-                        }
-                        changed.push((f.clone(), m.get(), new));
-                        m.set(new);
-                    }
-                    crate::ops::note_modes(changed);
-                    update_octal();
-                });
-                cb
-            }
-        };
-        for (i, who) in [tr("Owner"), tr("Group"), tr("Others")].iter().enumerate() {
-            let l = gtk::Label::new(Some(who));
-            l.set_xalign(1.0);
-            pg.attach(&l, 0, r, 1, 1);
-            for j in 0..3 {
-                let cb = bit_box(1u32 << (8 - (i * 3 + j)), None);
-                cb.set_halign(gtk::Align::Center);
-                pg.attach(&cb, j as i32 + 1, r, 1, 1);
-            }
-            r += 1;
+    }
+    // setuid, setgid, sticky: the latter for folders like /tmp, where
+    // only an item's owner may delete or rename it.
+    {
+        let l = gtk::Label::new(Some(&tr("Special")));
+        l.set_xalign(1.0);
+        l.set_yalign(0.0);
+        pg.attach(&l, 0, r, 1, 1);
+        let specials = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        for (bit, label, tip) in [
+            (0o4000, tr("Set user ID"), tr("Run as the file’s owner, whoever starts it")),
+            (0o2000, tr("Set group ID"), tr("Run with the file’s group; in a folder, new items get the folder’s group")),
+            (0o1000, tr("Sticky"), tr("In a folder: only an item’s owner can delete or rename it")),
+        ] {
+            let cb = bit_box(bit, Some(&label));
+            cb.set_tooltip_text(Some(&tip));
+            specials.add(&cb);
         }
-        // setuid, setgid, sticky: the latter for folders like /tmp, where
-        // only an item's owner may delete or rename it.
-        {
-            let l = gtk::Label::new(Some(&tr("Special")));
-            l.set_xalign(1.0);
-            l.set_yalign(0.0);
-            pg.attach(&l, 0, r, 1, 1);
-            let specials = gtk::Box::new(gtk::Orientation::Vertical, 2);
-            for (bit, label, tip) in [
-                (0o4000, tr("Set user ID"), tr("Run as the file’s owner, whoever starts it")),
-                (0o2000, tr("Set group ID"), tr("Run with the file’s group; in a folder, new items get the folder’s group")),
-                (0o1000, tr("Sticky"), tr("In a folder: only an item’s owner can delete or rename it")),
-            ] {
-                let cb = bit_box(bit, Some(&label));
-                cb.set_tooltip_text(Some(&tip));
-                specials.add(&cb);
+        pg.attach(&specials, 1, r, 3, 1);
+        r += 1;
+    }
+    pg.attach(&octal, 0, r, 4, 1);
+    // Apply to what's inside, as Caja does: folders get this mode,
+    // files its read and write bits (their own execute bits stay).
+    if can_change && any_dir {
+        r += 1;
+        let apply = gtk::Button::with_label(&tr("Apply to Enclosed Items…"));
+        apply.set_halign(gtk::Align::Start);
+        apply.set_tooltip_text(Some(&tr("Give the folders inside these permissions and this group, and the files inside the same read and write permissions and group")));
+        let done = value_label("");
+        done.style_context().add_class("dim-label");
+        let grid = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        grid.pack_start(&apply, false, false, 0);
+        grid.pack_start(&done, true, true, 0);
+        pg.attach(&grid, 0, r, 4, 1);
+        let (modes, files, d) = (modes.clone(), files_rc.clone(), dialog.clone());
+        apply.connect_clicked(move |b| {
+            let dirs: Vec<(std::path::PathBuf, u32)> = files
+                .iter()
+                .zip(modes.iter())
+                .filter_map(|(f, m)| Some((f.path()?, m.get() & 0o7777)))
+                .filter(|(p, _)| p.is_dir())
+                .collect();
+            if dirs.is_empty() {
+                return;
             }
-            pg.attach(&specials, 1, r, 3, 1);
-            r += 1;
-        }
-        pg.attach(&octal, 0, r, 4, 1);
-        // Apply to what's inside, as Caja does: folders get this mode,
-        // files its read and write bits (their own execute bits stay).
-        if can_change && any_dir {
-            r += 1;
-            let apply = gtk::Button::with_label(&tr("Apply to Enclosed Items…"));
-            apply.set_halign(gtk::Align::Start);
-            apply.set_tooltip_text(Some(&tr("Give the folders inside these permissions and this group, and the files inside the same read and write permissions and group")));
-            let done = value_label("");
-            done.style_context().add_class("dim-label");
-            let grid = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-            grid.pack_start(&apply, false, false, 0);
-            grid.pack_start(&done, true, true, 0);
-            pg.attach(&grid, 0, r, 4, 1);
-            let (modes, files, d) = (modes.clone(), files_rc.clone(), dialog.clone());
-            apply.connect_clicked(move |b| {
-                let dirs: Vec<(std::path::PathBuf, u32)> = files
-                    .iter()
-                    .zip(modes.iter())
-                    .filter_map(|(f, m)| Some((f.path()?, m.get() & 0o7777)))
-                    .filter(|(p, _)| p.is_dir())
-                    .collect();
-                if dirs.is_empty() {
-                    return;
-                }
-                let ask = gtk::MessageDialog::new(
-                    Some(&d),
-                    gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
-                    gtk::MessageType::Question,
-                    gtk::ButtonsType::None,
-                    &tr("Apply these permissions to everything inside?"),
-                );
-                ask.set_secondary_text(Some(&if my_uid == 0 {
-                    tr("Every folder inside gets the same permissions, owner and group, every file the same read and write permissions, owner and group. This can’t be undone.")
-                } else {
-                    tr("Every folder inside gets the same permissions and group, every file the same read and write permissions and group. This can’t be undone.")
-                }));
-                ask.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
-                ask.add_button(&tr("_Apply"), gtk::ResponseType::Accept);
-                let ok = ask.run() == gtk::ResponseType::Accept;
-                ask.close();
-                if !ok {
-                    return;
-                }
-                b.set_sensitive(false);
-                done.set_text(&tr("Applying…"));
-                let (b, done) = (b.clone(), done.clone());
-                glib::MainContext::default().spawn_local(async move {
-                    let (changed, failed) = gio::spawn_blocking(move || apply_enclosed(&dirs, my_uid == 0)).await.unwrap_or((0, 0));
-                    b.set_sensitive(true);
-                    let items = |n: usize| fill(&trn("{n} item", "{n} items", n as u64), &[("n", &n)]);
-                    done.set_text(&match failed {
-                        0 => fill(&tr("Changed {items}."), &[("items", &items(changed))]),
-                        // TRANSLATORS: {items} and {failed} are numbers of items: "12 items".
-                        f => fill(&tr("Changed {items}; {failed} couldn’t be changed (not yours?)."), &[("items", &items(changed)), ("failed", &items(f))]),
-                    });
+            let ask = gtk::MessageDialog::new(
+                Some(&d),
+                gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
+                gtk::MessageType::Question,
+                gtk::ButtonsType::None,
+                &tr("Apply these permissions to everything inside?"),
+            );
+            ask.set_secondary_text(Some(&if my_uid == 0 {
+                tr("Every folder inside gets the same permissions, owner and group, every file the same read and write permissions, owner and group. This can’t be undone.")
+            } else {
+                tr("Every folder inside gets the same permissions and group, every file the same read and write permissions and group. This can’t be undone.")
+            }));
+            ask.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
+            ask.add_button(&tr("_Apply"), gtk::ResponseType::Accept);
+            let ok = ask.run() == gtk::ResponseType::Accept;
+            ask.close();
+            if !ok {
+                return;
+            }
+            b.set_sensitive(false);
+            done.set_text(&tr("Applying…"));
+            let (b, done) = (b.clone(), done.clone());
+            glib::MainContext::default().spawn_local(async move {
+                let (changed, failed) = gio::spawn_blocking(move || apply_enclosed(&dirs, my_uid == 0)).await.unwrap_or((0, 0));
+                b.set_sensitive(true);
+                let items = |n: usize| fill(&trn("{n} item", "{n} items", n as u64), &[("n", &n)]);
+                done.set_text(&match failed {
+                    0 => fill(&tr("Changed {items}."), &[("items", &items(changed))]),
+                    // TRANSLATORS: {items} and {failed} are numbers of items: "12 items".
+                    f => fill(&tr("Changed {items}; {failed} couldn’t be changed (not yours?)."), &[("items", &items(changed)), ("failed", &items(f))]),
                 });
             });
-        }
-        // The SELinux security context, where the system has one.
-        if let Some(ctx) = infos[0].attribute_string("selinux::context").filter(|c| !c.is_empty() && files.len() == 1) {
-            r += 1;
-            row(&pg, r, &tr("Security context:"), value_label(&ctx).upcast_ref());
-        }
-        if !can_change {
-            r += 1;
-            let l = value_label(&tr("You are not the owner, so you can't change these permissions."));
-            pg.attach(&l, 0, r, 4, 1);
-        }
-        add_page(&nb, &pg, "permissions", &tr("Permissions"));
-    }
-
-    // ------------------------------------------------------------ Open With
-    if files.len() == 1 && infos[0].file_type() != gio::FileType::Directory {
-        if let Some(ctype) = util::info_content_type(&infos[0]) {
-            let ob = gtk::Box::new(gtk::Orientation::Vertical, 8);
-            ob.set_border_width(12);
-            let l = value_label(&fill(
-                &tr("Select an application to open “{name}” and other files of type “{type}”:"),
-                &[("name", &infos[0].display_name()), ("type", &gio::content_type_get_description(&ctype))],
-            ));
-            ob.pack_start(&l, false, false, 0);
-            let w = gtk::AppChooserWidget::new(&ctype);
-            w.set_show_default(true);
-            w.set_show_recommended(true);
-            w.set_show_fallback(true);
-            w.set_vexpand(true);
-            w.set_size_request(-1, 260);
-            ob.pack_start(&w, true, true, 0);
-            let set_btn = gtk::Button::with_mnemonic(&tr("_Set as Default"));
-            set_btn.set_halign(gtk::Align::End);
-            {
-                let w = w.clone();
-                let ctype = ctype.to_string();
-                let d = dialog.clone();
-                set_btn.connect_clicked(move |_| {
-                    if let Some(app) = w.app_info() {
-                        if let Err(e) = app.set_as_default_for_type(&ctype) {
-                            util::error_dialog(d.transient_for().as_ref(), &tr("Could not set default application"), e.message());
-                        }
-                    }
-                });
-            }
-            ob.pack_start(&set_btn, false, false, 0);
-            add_page(&nb, &ob, "open-with", &tr("Open With"));
-        }
-    }
-
-    // ---------------------------------------------------------------- Notes
-    if files.len() == 1 {
-        add_page(&nb, &notes_slot, "notes", &tr("Notes"));
-    }
-    // The metadata read in the background; then the pages that show it.
-    {
-        let (d, files, img, info, metas) = (dialog.clone(), files.clone(), img.clone(), infos[0].clone(), metas.clone());
-        crate::metadata::read_items(files.iter().map(|f| f.uri().to_string()).collect(), move |found| {
-            let found: Vec<Meta> = found.into_iter().map(|(_, m)| m).collect();
-            replace_contents(&emblems_slot, &emblems_page(&d, &files, found.iter().map(|m| m.emblems.clone()).collect()));
-            replace_contents(&notes_slot, &notes_page(&d, &files[0], &found.first().map(|m| m.note.clone()).unwrap_or_default()));
-            if let Some(pb) = found.first().and_then(|m| icons::icon_pixbuf(icons::item_icon(&m.applied_to(&info), &[]).as_ref(), 64)) {
-                img.set_from_pixbuf(Some(&pb));
-            }
-            *metas.borrow_mut() = Some(found);
         });
     }
-
-    // ----------------------------------------------------------- Media Info
-    if files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
-        let ctype = util::info_content_type(&infos[0]).unwrap_or_default();
-        if let (Some(path), true) = (files[0].path(), media_info_wanted(&ctype)) {
-            add_page(&nb, &media_info_page(path), "media", &tr("Media Info"));
-        }
+    // The SELinux security context, where the system has one.
+    if let Some(ctx) = infos[0].attribute_string("selinux::context").filter(|c| !c.is_empty() && files.len() == 1) {
+        r += 1;
+        row(&pg, r, &tr("Security context:"), value_label(&ctx).upcast_ref());
     }
-
-    // ------------------------------------------------------------ Checksums
-    if files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
-        let page = checksums_page(&dialog, &files[0], infos[0].size().max(0) as u64);
-        add_page(&nb, &page, "checksums", &tr("Checksums"));
+    if !can_change {
+        r += 1;
+        let l = value_label(&tr("You are not the owner, so you can't change these permissions."));
+        pg.attach(&l, 0, r, 4, 1);
     }
+    pg
+}
 
-    // Draggable into another order, which is kept, as in Rename All.
-    util::order_tabs(&nb, config::get().props_tab_order, |order| config::update(|s| s.props_tab_order = order));
-    dialog.show_all();
+/// The Open With tab: the programs for `ctype`, with Set as Default.
+fn open_with_page(dialog: &gtk::Dialog, info: &gio::FileInfo, ctype: &str) -> gtk::Box {
+    let ob = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    ob.set_border_width(12);
+    let l = value_label(&fill(
+        &tr("Select an application to open “{name}” and other files of type “{type}”:"),
+        &[("name", &info.display_name()), ("type", &gio::content_type_get_description(ctype))],
+    ));
+    ob.pack_start(&l, false, false, 0);
+    let w = gtk::AppChooserWidget::new(ctype);
+    w.set_show_default(true);
+    w.set_show_recommended(true);
+    w.set_show_fallback(true);
+    w.set_vexpand(true);
+    w.set_size_request(-1, 260);
+    ob.pack_start(&w, true, true, 0);
+    let set_btn = gtk::Button::with_mnemonic(&tr("_Set as Default"));
+    set_btn.set_halign(gtk::Align::End);
+    {
+        let w = w.clone();
+        let ctype = ctype.to_string();
+        let d = dialog.clone();
+        set_btn.connect_clicked(move |_| {
+            if let Some(app) = w.app_info() {
+                if let Err(e) = app.set_as_default_for_type(&ctype) {
+                    util::error_dialog(d.transient_for().as_ref(), &tr("Could not set default application"), e.message());
+                }
+            }
+        });
+    }
+    ob.pack_start(&set_btn, false, false, 0);
+    ob
 }
 
 /// The Checksums tab: a row for each checksum chosen in Preferences, worked
