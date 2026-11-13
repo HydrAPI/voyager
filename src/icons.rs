@@ -7,8 +7,10 @@ use crate::thumbnailers::{self, Thumbnailer};
 use gdk_pixbuf::Pixbuf;
 use gio::prelude::*;
 use gtk::prelude::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 thread_local! {
@@ -19,14 +21,14 @@ thread_local! {
     /// Thumbnails with their shadow (see framed_thumb), and their sizes.
     static FRAMED: RefCell<HashMap<(String, i32), Pixbuf>> = RefCell::new(HashMap::new());
     /// The memory the pictures in THUMBS and FRAMED take (see CACHED_BYTES).
-    static THUMB_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-    static FRAMED_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static THUMB_BYTES: Cell<usize> = const { Cell::new(0) };
+    static FRAMED_BYTES: Cell<usize> = const { Cell::new(0) };
     static DIMS: RefCell<HashMap<String, Option<ThumbHeader>>> = RefCell::new(HashMap::new());
     /// Thumbnails being loaded, and the loaders' queue (see thumb_pixbuf).
     static LOADING: RefCell<HashSet<(String, i32)>> = RefCell::new(HashSet::new());
     static LOAD_QUEUE: RefCell<Option<Arc<Pool<ThumbKey>>>> = const { RefCell::new(None) };
     /// Views being drawn (see set_drawing).
-    static DRAWING: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static DRAWING: Cell<u32> = const { Cell::new(0) };
     /// (uri, mtime) pairs already sent to the worker; an edited file gets a new entry.
     static QUEUED: RefCell<HashSet<(String, i64)>> = RefCell::new(HashSet::new());
     static MAKERS: RefCell<Option<Arc<Pool<ThumbJob>>>> = const { RefCell::new(None) };
@@ -34,7 +36,7 @@ thread_local! {
     /// Shared, not copied: asked about for every file of a folder.
     static CUSTOM_FOR: RefCell<HashMap<String, Option<Arc<Thumbnailer>>>> = RefCell::new(HashMap::new());
     static LISTENERS: RefCell<Vec<(usize, Listener)>> = RefCell::new(Vec::new());
-    static NEXT_LISTENER: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static NEXT_LISTENER: Cell<usize> = const { Cell::new(0) };
     /// The custom thumbnailers whose programs are installed, loaded on
     /// first use (see reload_thumbnailers).
     static CUSTOM: RefCell<Option<Vec<Thumbnailer>>> = const { RefCell::new(None) };
@@ -81,7 +83,7 @@ pub fn reload_thumbnailers() {
 thread_local! {
     /// Changes when ICONS is emptied: the pictures kept on icons (see
     /// icon_pixbuf) are then out of date.
-    static ICONS_GEN: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static ICONS_GEN: Cell<u32> = const { Cell::new(0) };
     static PICTURES_KEY: glib::Quark = glib::Quark::from_str("arkha-icon-pictures");
 }
 
@@ -108,7 +110,7 @@ fn icon_key(icon: &gio::Icon) -> String {
 
 /// A text file's first lines, as read: by URI, with the modification time
 /// read at; None while being read, "" for a file that isn't text after all.
-type Texts = HashMap<String, (i64, Option<std::rc::Rc<str>>)>;
+type Texts = HashMap<String, (i64, Option<Rc<str>>)>;
 
 thread_local! {
     static TEXTS: RefCell<Texts> = RefCell::new(HashMap::new());
@@ -169,7 +171,7 @@ fn text_reader() -> async_channel::Sender<(String, std::path::PathBuf, i64)> {
                 if t.len() > 5000 {
                     t.clear();
                 }
-                t.insert(uri.clone(), (mtime, Some(std::rc::Rc::from(text))));
+                t.insert(uri.clone(), (mtime, Some(Rc::from(text))));
             });
             LISTENERS.with(|l| {
                 for (_, f) in l.borrow().iter() {
@@ -559,7 +561,7 @@ fn pixbuf_bytes(p: &Pixbuf) -> usize {
 /// Counts a picture of `add` bytes about to go into a cache of `len`
 /// entries; true if the cache is to be emptied first (it would hold too
 /// much), the count then starting again.
-fn make_room(count: &'static std::thread::LocalKey<std::cell::Cell<usize>>, len: usize, add: usize) -> bool {
+fn make_room(count: &'static std::thread::LocalKey<Cell<usize>>, len: usize, add: usize) -> bool {
     count.with(|c| {
         let full = len >= 4000 || c.get() + add > CACHED_BYTES;
         c.set(if full { add } else { c.get() + add });
@@ -760,13 +762,13 @@ pub fn preload_widget_icons(root: &gtk::Widget) {
     // else runs while waiting.
     let ctx = glib::MainContext::new();
     let _ = ctx.with_thread_default(|| {
-        let pending = std::rc::Rc::new(std::cell::Cell::new(jobs.len()));
-        let queue = std::rc::Rc::new(RefCell::new(jobs.into_iter()));
-        let late = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pending = Rc::new(Cell::new(jobs.len()));
+        let queue = Rc::new(RefCell::new(jobs.into_iter()));
+        let late = Arc::new(AtomicBool::new(false));
         let timer = {
             let late = late.clone();
             glib::timeout_source_new(std::time::Duration::from_secs(1), None, glib::Priority::DEFAULT, move || {
-                late.store(true, std::sync::atomic::Ordering::Relaxed);
+                late.store(true, Ordering::Relaxed);
                 glib::ControlFlow::Break
             })
         };
@@ -774,7 +776,7 @@ pub fn preload_widget_icons(root: &gtk::Widget) {
         for _ in 0..maker_count() {
             preload_next(&queue, &pending);
         }
-        while pending.get() > 0 && !late.load(std::sync::atomic::Ordering::Relaxed) {
+        while pending.get() > 0 && !late.load(Ordering::Relaxed) {
             ctx.iteration(true);
         }
         timer.destroy();
@@ -784,7 +786,7 @@ pub fn preload_widget_icons(root: &gtk::Widget) {
 /// An icon to load: its lookup, and for a symbolic one its widget's style.
 type IconJob = (gtk::IconInfo, Option<gtk::StyleContext>);
 
-fn preload_next(queue: &std::rc::Rc<RefCell<std::vec::IntoIter<IconJob>>>, pending: &std::rc::Rc<std::cell::Cell<usize>>) {
+fn preload_next(queue: &Rc<RefCell<std::vec::IntoIter<IconJob>>>, pending: &Rc<Cell<usize>>) {
     let Some((info, style)) = queue.borrow_mut().next() else { return };
     let (queue, pending) = (queue.clone(), pending.clone());
     let done = move || {
@@ -1295,7 +1297,6 @@ mod tests {
 
     #[test]
     fn decode_budget_holds_back_what_doesnt_fit() {
-        use std::sync::atomic::{AtomicBool, Ordering};
         let b = Arc::new(DecodeBudget::new(100));
         let first = b.take(60);
         let small = b.take(40); // fits beside it
