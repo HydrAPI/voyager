@@ -9,13 +9,15 @@ arch=('x86_64' 'aarch64')
 url='https://github.com/dekart811/arkha'
 license=('GPL-3.0-or-later')
 depends=(
+  'at-spi2-core'
   'cairo'
-  'gcc-libs'
   'gdk-pixbuf2'
   'glib2'
   'glibc'
   'gtk3'
   'gvfs'
+  'hicolor-icon-theme'
+  'libgcc'
   'pango'
 )
 makedepends=('cargo' 'git' 'gettext')
