@@ -23,6 +23,7 @@ tools/bench/compare.sh                                # speed and memory against
 tools/bench/speed.sh OLD-BINARY target/release/arkha  # opening folders, two builds compared
 tools/check-placeholders.py                           # every {place} in a translatable text filled, in the code and the .po files
 tools/soak.py --backend x11 --minutes 7 --language de  # a soak run with Arkha in German
+tools/screenshots/take.sh                             # the README's screenshots again (light and dark)
 ```
 
 `tools/soak.py` runs Arkha in a bubblewrap sandbox (the system read-only, `/home` and `/mnt` hidden, its own D-Bus session, a headless X server, and for Wayland Weston inside it) and drives it through its D-Bus actions, keyboard and mouse input (clicks, drags, the wheel, keys, typeahead, inline renames, search; xdotool) and its dialogs through accessibility (AT-SPI), while files keep changing underneath. The sandbox has no applications, so opening a file never starts another program. It reports crashes (with backtraces, as Arkha runs under gdb), GLib/GTK warnings, slow or missing responses, and memory over time, in `target/soak/<run>/`. `--fatal-criticals` stops at the first critical warning for its backtrace; `--name` keeps runs of the same seed apart (`target/soak/<backend>-seed<N>-<name>`). Its once-a-minute status line includes the sandbox home's free space: GTK and GVfs warnings about writing files there mean the 1 GiB home has filled up. For test coverage, give it a binary built with `RUSTFLAGS="-C instrument-coverage"` (`--binary`) and `LLVM_PROFILE_FILE=/tmp/soak-run/arkha-%p-%m.profraw`: the profiles land in the run's folder. Needs `bubblewrap`, `xorg-server-xvfb`, `weston`, `gdb`, `xdotool`, `at-spi2-core` and `python-gobject`.
@@ -51,6 +52,8 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `language` | German chosen in the settings: the status bar (with its plural) and side pane in German; the system's language: English again |
 | `tab-order` | Properties' and Rename All's tabs dragged into another order, which is kept |
 | `previews` | Thumbnails always (with a size limit) or never; folders' item counts always or never |
+
+`tools/screenshots/take.sh` takes the screenshots in `docs/screenshots/` again, for when Arkha's look changes: Arkha runs headless in a made-up home folder, as in the GUI tests, under Metacity for its title bars, in Adwaita with Papirus (light) and Adwaita-dark with Papirus-Dark (dark), and each window is cut out with its shadow on a transparent background. Besides what the GUI tests need, it needs `metacity`, the Papirus icon themes, the Cantarell font and the `en_US.UTF-8` locale.
 
 `tools/bench/compare.sh` measures what the audits show: opening `/usr/lib` and 20,000 files (when the main thread stays idle, its CPU, all threads'), scrolling, memory and thumbnails, against Caja and Nemo where installed; `speed.sh` compares two builds of Arkha opening folders in the icon view, the list view and the list view with every column. `sample.sh` profiles without perf (gdb samples the main thread's stack), summarized by `sample-report.py`.
 
