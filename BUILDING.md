@@ -42,7 +42,7 @@ The AUR packages are in `packaging/aur/`, each folder with its `PKGBUILD` and `.
 
 - `arkha` builds the latest release from its sources (GitHub's tarball of the tag `v<version>`);
 - `arkha-git` builds the newest commit on `master`;
-- `arkha-bin` installs the release's prebuilt program (`arkha-<version>-x86_64.tar.gz` on the release page: `arkha`, `arkha.desktop`, `arkha.svg`, `locale/`, `LICENSE` and `README.md` in a folder `arkha-<version>-x86_64/`).
+- `arkha-bin` installs the release's prebuilt program (`arkha-<version>-x86_64.tar.gz` on the release page: `arkha`, `arkha.desktop`, `arkha.svg`, the AppStream metainfo, `locale/`, `LICENSE` and `README.md` in a folder `arkha-<version>-x86_64/`).
 
 Any of the three can be installed instead of the others. After changing a `PKGBUILD`, write its `.SRCINFO` again with `makepkg --printsrcinfo > .SRCINFO`.
 
@@ -68,7 +68,7 @@ sudo dnf install ./packaging/rpm/arkha-*.rpm
 
 `Cargo.toml` holds the version, for every package and the About window: `1.0.0-dev` for the builds towards 1.0.0. The packages add the number of commits and the commit, in each format's own way of marking a build before a release, so that they update in order and to the release: `1.0.0dev.r142.g6a7d287` (Arch), `1.0.0~dev.r142.g6a7d287` (Debian and RPM; `packaging/version.sh` writes them). About shows `1.0.0-dev (r142, 6a7d287)`.
 
-A release: set the version in `Cargo.toml` (`1.0.0`), commit, and tag the commit `v1.0.0`; packages built from it are just `1.0.0`. Pushing the tag starts the release workflow (`.github/workflows/release.yml`): it checks that the tag matches `Cargo.toml`, builds the prebuilt program (`packaging/tarball/build.sh`), the .deb (in Debian 13) and the .rpm (in Fedora), and puts them with their SHA-256 sums on a draft release, to write its notes and publish. For the AUR, set `pkgver=1.0.0` (and `pkgrel=1`) in `packaging/aur/arkha` and `arkha-bin` once the release and its files are on GitHub, then run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO` in each. Then the next version with `-dev` (`1.1.0-dev`). Builds after a release without that are numbered after it (`1.0.0.r150…`, `1.0.0+r150…`, `1.0.0^r150…`).
+A release: set the version in `Cargo.toml` (`1.0.0`), add the release to `data/io.github.dekart811.Arkha.metainfo.xml` (`<releases><release version="1.0.0" date="2026-12-01"/></releases>`, newest first; software centres show it, `appstreamcli validate` checks the file), commit, and tag the commit `v1.0.0`; packages built from it are just `1.0.0`. Pushing the tag starts the release workflow (`.github/workflows/release.yml`): it checks that the tag matches `Cargo.toml`, builds the prebuilt program (`packaging/tarball/build.sh`), the .deb (in Debian 13) and the .rpm (in Fedora), and puts them with their SHA-256 sums on a draft release, to write its notes and publish. For the AUR, set `pkgver=1.0.0` (and `pkgrel=1`) in `packaging/aur/arkha` and `arkha-bin` once the release and its files are on GitHub, then run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO` in each. Then the next version with `-dev` (`1.1.0-dev`). Builds after a release without that are numbered after it (`1.0.0.r150…`, `1.0.0+r150…`, `1.0.0^r150…`).
 
 ## Prebuilt program
 

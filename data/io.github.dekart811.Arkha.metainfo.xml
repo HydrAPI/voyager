@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- What software centres (GNOME Software, KDE Discover) show about Arkha.
+     Installed as /usr/share/metainfo/io.github.dekart811.Arkha.metainfo.xml;
+     each release gets a <release> line (see BUILDING.md). -->
+<component type="desktop-application">
+  <id>io.github.dekart811.Arkha</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Arkha</name>
+  <summary>Fast graphical file manager</summary>
+  <developer id="io.github.dekart811">
+    <name>dekart811</name>
+  </developer>
+
+  <description>
+    <p>
+      Arkha is a fast file manager for Linux, modelled on Caja (MATE). It uses
+      your desktop’s GTK theme, icons and bookmarks, and feels at home on MATE,
+      but works on any desktop.
+    </p>
+    <ul>
+      <li>Icon, list, compact and columns views</li>
+      <li>Split view with two panes, each with its own tabs</li>
+      <li>Tabs like a browser: reopen closed tabs, drag them between windows</li>
+      <li>An info panel with a folder’s cover picture or a file’s preview</li>
+      <li>Rename many files at once: change case, insert, remove, replace, number</li>
+      <li>Undo and redo of file operations, and copies checked against their originals</li>
+      <li>Checksums (MD5, SHA-1, SHA-256, CRC32 and more) in a file’s properties</li>
+      <li>Your own context menu entries and thumbnailers, and every keyboard shortcut changeable</li>
+    </ul>
+    <p>
+      Arkha’s code was written by an AI, Anthropic’s Claude, directed and
+      tested by its maintainer.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">arkha.desktop</launchable>
+  <provides>
+    <binary>arkha</binary>
+  </provides>
+  <translation type="gettext">arkha</translation>
+
+  <url type="homepage">https://github.com/dekart811/arkha</url>
+  <url type="bugtracker">https://github.com/dekart811/arkha/issues</url>
+  <url type="vcs-browser">https://github.com/dekart811/arkha</url>
+  <url type="contribute">https://github.com/dekart811/arkha/blob/master/CONTRIBUTING.md</url>
+  <url type="translate">https://github.com/dekart811/arkha/blob/master/CONTRIBUTING.md#translating</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The icon view, with the info panel showing the selected picture</caption>
+      <image>https://raw.githubusercontent.com/dekart811/arkha/master/docs/screenshots/icons-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Split view: two panes, each with its own tabs and view</caption>
+      <image>https://raw.githubusercontent.com/dekart811/arkha/master/docs/screenshots/split-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Renaming many files at once</caption>
+      <image>https://raw.githubusercontent.com/dekart811/arkha/master/docs/screenshots/rename-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A file’s checksums in its properties</caption>
+      <image>https://raw.githubusercontent.com/dekart811/arkha/master/docs/screenshots/checksums-light.png</image>
+    </screenshot>
+  </screenshots>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+
+  <!-- Each release: <releases><release version="1.0.0" date="YYYY-MM-DD"/></releases> -->
+</component>

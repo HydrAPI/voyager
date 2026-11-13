@@ -9,6 +9,7 @@ PREFIX="${PREFIX:-$HOME/.local}"
 install -Dm755 target/release/arkha "$PREFIX/bin/arkha"
 install -Dm644 arkha.desktop "$PREFIX/share/applications/arkha.desktop"
 install -Dm644 data/arkha.svg "$PREFIX/share/icons/hicolor/scalable/apps/arkha.svg"
+install -Dm644 data/io.github.dekart811.Arkha.metainfo.xml "$PREFIX/share/metainfo/io.github.dekart811.Arkha.metainfo.xml"
 # The translations the build made from po/*.po (none without gettext).
 for mo in target/release/locale/*/LC_MESSAGES/arkha.mo; do
     [ -e "$mo" ] && install -Dm644 "$mo" "$PREFIX/share/locale/${mo#target/release/locale/}"

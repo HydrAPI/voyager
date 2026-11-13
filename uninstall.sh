@@ -8,7 +8,7 @@ PREFIX="${PREFIX:-$HOME/.local}"
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 removed=0
-for f in "$PREFIX/bin/arkha" "$PREFIX/share/applications/arkha.desktop" "$PREFIX/share/icons/hicolor/scalable/apps/arkha.svg"; do
+for f in "$PREFIX/bin/arkha" "$PREFIX/share/applications/arkha.desktop" "$PREFIX/share/icons/hicolor/scalable/apps/arkha.svg" "$PREFIX/share/metainfo/io.github.dekart811.Arkha.metainfo.xml"; do
     if [ -e "$f" ]; then
         rm -f "$f"
         echo "Removed $f"

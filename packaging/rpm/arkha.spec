@@ -43,6 +43,7 @@ cargo build --release --locked %{?arkha_offline}
 install -Dm755 target/release/arkha %{buildroot}%{_bindir}/arkha
 install -Dm644 arkha.desktop %{buildroot}%{_datadir}/applications/arkha.desktop
 install -Dm644 data/arkha.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/arkha.svg
+install -Dm644 data/io.github.dekart811.Arkha.metainfo.xml %{buildroot}%{_metainfodir}/io.github.dekart811.Arkha.metainfo.xml
 # The translations build.rs made from po/*.po.
 for mo in target/release/locale/*/LC_MESSAGES/arkha.mo; do
     [ -e "$mo" ] && install -Dm644 "$mo" "%{buildroot}%{_datadir}/locale/${mo#target/release/locale/}"
@@ -55,3 +56,4 @@ done
 %{_bindir}/arkha
 %{_datadir}/applications/arkha.desktop
 %{_datadir}/icons/hicolor/scalable/apps/arkha.svg
+%{_metainfodir}/io.github.dekart811.Arkha.metainfo.xml

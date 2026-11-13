@@ -21,6 +21,7 @@ mkdir -p "$stage/DEBIAN"
 install -Dm755 target/release/arkha "$stage/usr/bin/arkha"
 install -Dm644 arkha.desktop "$stage/usr/share/applications/arkha.desktop"
 install -Dm644 data/arkha.svg "$stage/usr/share/icons/hicolor/scalable/apps/arkha.svg"
+install -Dm644 data/io.github.dekart811.Arkha.metainfo.xml "$stage/usr/share/metainfo/io.github.dekart811.Arkha.metainfo.xml"
 # The translations build.rs made from po/*.po.
 for mo in target/release/locale/*/LC_MESSAGES/arkha.mo; do
     [ -e "$mo" ] && install -Dm644 "$mo" "$stage/usr/share/locale/${mo#target/release/locale/}"

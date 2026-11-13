@@ -37,8 +37,8 @@ conflicts=("$_pkgname")
 # The program comes stripped: there's nothing for a -debug package.
 options=('!debug')
 # The release's prebuilt program: arkha-<version>-<arch>/ with arkha (runs
-# from there too), arkha.desktop, arkha.svg, locale/, LICENSE and
-# README.md. The checksum is set for each release (updpkgsums, then
+# from there too), arkha.desktop, arkha.svg, the AppStream metainfo,
+# locale/, LICENSE and README.md. The checksum is set for each release (updpkgsums, then
 # makepkg --printsrcinfo > .SRCINFO).
 source_x86_64=("$url/releases/download/v$pkgver/$_pkgname-$pkgver-x86_64.tar.gz")
 sha256sums_x86_64=('SKIP')
@@ -48,6 +48,7 @@ package() {
   install -Dm755 arkha "$pkgdir/usr/bin/arkha"
   install -Dm644 arkha.desktop "$pkgdir/usr/share/applications/arkha.desktop"
   install -Dm644 arkha.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/arkha.svg"
+  install -Dm644 io.github.dekart811.Arkha.metainfo.xml "$pkgdir/usr/share/metainfo/io.github.dekart811.Arkha.metainfo.xml"
   for mo in locale/*/LC_MESSAGES/arkha.mo; do
     install -Dm644 "$mo" "$pkgdir/usr/share/$mo"
   done
