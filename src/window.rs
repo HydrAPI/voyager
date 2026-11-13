@@ -2324,10 +2324,14 @@ impl AppWindow {
             } else if c.uri() == "trash:///" {
                 (Some("user-trash"), tr("Trash"))
             } else if c.parent().is_none() {
-                if c.path().is_some() {
+                // A mounted server's files have local paths too (GVfs's
+                // FUSE folder): only a native top is the file system.
+                if c.is_native() {
                     (Some("drive-harddisk"), tr("File System"))
                 } else {
-                    (Some("folder-remote"), util::display_name(c))
+                    // The mount's name, as the side pane shows it ("debian").
+                    let name = c.find_enclosing_mount(gio::Cancellable::NONE).map(|m| m.name().to_string());
+                    (Some("folder-remote"), name.unwrap_or_else(|_| util::display_name(c)))
                 }
             } else {
                 (None, util::display_name(c))

@@ -551,6 +551,9 @@ pub struct Pane {
     editing: Rc<RefCell<Option<String>>>,
     free_space: RefCell<Option<u64>>,
     loading: Cell<bool>,
+    /// The location mounted for the folder being opened (see mount_and_load):
+    /// if it still says it isn't mounted, that's an error, not another mount.
+    mounted_for: RefCell<Option<String>>,
     typeahead: RefCell<String>,
     typeahead_gen: Cell<u64>,
     /// Wheel scrolling not yet a whole step (see typeahead_scroll).
@@ -908,6 +911,7 @@ impl Pane {
             editing: Rc::new(RefCell::new(None)),
             free_space: RefCell::new(None),
             loading: Cell::new(false),
+            mounted_for: RefCell::new(None),
             typeahead: RefCell::new(String::new()),
             typeahead_gen: Cell::new(0),
             typeahead_wheel: Cell::new(0.0),
@@ -1332,12 +1336,20 @@ impl Pane {
             let en = match res {
                 Ok(en) => en,
                 Err(e) => {
-                    if let Some(p) = weak.upgrade() {
-                        if p.gen.get() == gen {
-                            p.show_error(&fill(&tr("Could not open “{location}”: {error}"), &[("location", &util::pretty_location(&file)), ("error", &e.message())]));
-                            p.finish_load(gen);
-                        }
+                    let Some(p) = weak.upgrade() else { return };
+                    if p.gen.get() != gen {
+                        return;
                     }
+                    // A network location not mounted yet (sftp://, smb://…,
+                    // typed, bookmarked or from another program): mounted,
+                    // asking for a password if needed, then read again.
+                    let uri = file.uri().to_string();
+                    if e.matches(gio::IOErrorEnum::NotMounted) && p.mounted_for.replace(Some(uri.clone())).as_ref() != Some(&uri) {
+                        p.mount_and_load(&file, gen);
+                        return;
+                    }
+                    p.mounted_for.replace(None);
+                    p.load_failed(&file, &e, gen);
                     return;
                 }
             };
@@ -1383,8 +1395,42 @@ impl Pane {
         });
     }
 
+    /// Mounts the location `file` is on, as Caja does when a network
+    /// location isn't mounted yet, with GTK's dialog for a password or a
+    /// question (a new server's key); then reads the folder again.
+    fn mount_and_load(self: &Rc<Self>, file: &gio::File, gen: u64) {
+        let parent = self.root.toplevel().and_downcast::<gtk::Window>();
+        let op = gtk::MountOperation::new(parent.as_ref());
+        let w = Rc::downgrade(self);
+        let f = file.clone();
+        file.mount_enclosing_volume(gio::MountMountFlags::NONE, Some(&op), gio::Cancellable::NONE, move |res| {
+            let Some(p) = w.upgrade() else { return };
+            if p.gen.get() != gen {
+                return;
+            }
+            match res {
+                Ok(()) => p.load(),
+                Err(e) if e.matches(gio::IOErrorEnum::AlreadyMounted) => p.load(),
+                Err(e) => {
+                    p.mounted_for.replace(None);
+                    p.load_failed(&f, &e, gen);
+                }
+            }
+        });
+    }
+
+    /// The folder couldn't be read (or its location mounted): says why,
+    /// unless the user cancelled the password dialog.
+    fn load_failed(self: &Rc<Self>, file: &gio::File, e: &glib::Error, gen: u64) {
+        if !e.matches(gio::IOErrorEnum::FailedHandled) && !e.matches(gio::IOErrorEnum::Cancelled) {
+            self.show_error(&fill(&tr("Could not open “{location}”: {error}"), &[("location", &util::pretty_location(file)), ("error", &e.message())]));
+        }
+        self.finish_load(gen);
+    }
+
     fn finish_load(self: &Rc<Self>, gen: u64) {
         self.loading.set(false);
+        self.mounted_for.replace(None);
         // The columns view's "Empty folder" waits for the loading to end.
         self.tree_view.queue_draw();
         let file = self.current();
