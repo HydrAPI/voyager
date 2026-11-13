@@ -2,7 +2,27 @@
 
 A fast graphical file manager for Linux, modelled on Caja (MATE). It uses your desktop's GTK theme, icons and bookmarks, and feels at home on MATE, but works on any desktop.
 
-<!-- Screenshots go here. -->
+<!-- Light or dark, as the reader's GitHub is; made with Adwaita and Papirus. -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/icons-dark.png">
+  <img src="docs/screenshots/icons-light.png" alt="Arkha's icon view, with the info panel showing the selected picture">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/split-dark.png">
+  <img src="docs/screenshots/split-light.png" alt="Split view: a home folder in the icon view and an album in the list view, each with tabs">
+</picture>
+
+<p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/rename-dark.png">
+  <img src="docs/screenshots/rename-light.png" alt="Rename All replacing IMG_ with Holiday in eight file names" width="49%">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/checksums-dark.png">
+  <img src="docs/screenshots/checksums-light.png" alt="The Checksums tab of a picture's properties" width="49%">
+</picture>
+</p>
 
 ## Highlights
 
