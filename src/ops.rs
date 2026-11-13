@@ -109,7 +109,8 @@ struct Worker {
     /// The name typed in the conflict dialog for Keep Both (see keep_both).
     new_name: Option<String>,
     last: Instant,
-    verb: &'static str,
+    /// A transfer's kind, for its progress texts (see doing).
+    kind: Kind,
     /// Set from the progress window's pause button.
     paused: Arc<AtomicBool>,
     clock: Clock,
@@ -191,14 +192,13 @@ fn format_time_left(secs: u64) -> String {
     }
 }
 
-/// "Copying “a.txt”", "Moving …", "Linking …" for the progress: `verb` is
-/// the worker's (or its copy_verb()).
-fn doing(verb: &str, name: &str) -> String {
+/// "Copying “a.txt”", "Moving …", "Linking …" for a transfer's progress.
+fn doing(kind: Kind, name: &str) -> String {
     // check-placeholders: filled later
-    let template = match verb {
-        "Moving" => tr("Moving “{name}”"),
-        "Linking" => tr("Linking “{name}”"),
-        _ => tr("Copying “{name}”"),
+    let template = match kind {
+        Kind::Copy => tr("Copying “{name}”"),
+        Kind::Move => tr("Moving “{name}”"),
+        Kind::Link => tr("Linking “{name}”"),
     };
     fill(&template, &[("name", &name)])
 }
@@ -279,7 +279,8 @@ impl Worker {
             new_name: None,
             // So the first progress is shown right away.
             last: Instant::now() - Duration::from_secs(1),
-            verb: "",
+            // Only transfers read it (each sets its own).
+            kind: Kind::Copy,
             paused,
             clock: Clock::new(),
             moves: MoveCount::default(),
@@ -438,11 +439,11 @@ impl Worker {
 
     /// Count bytes and items below `f` (not following symlinks).
     /// What a file copy is called: part of a move is copied too.
-    fn copy_verb(&self) -> &'static str {
-        if self.verb == "Moving" {
-            "Moving"
+    fn copy_kind(&self) -> Kind {
+        if self.kind == Kind::Move {
+            Kind::Move
         } else {
-            "Copying"
+            Kind::Copy
         }
     }
 
@@ -465,7 +466,7 @@ impl Worker {
         self.by_bytes = true;
         self.moves.sizes = Some(sizes);
         let name = self.moves.srcs.get(at).map(base_name).unwrap_or_default();
-        self.progress(&doing(self.verb, &name), true);
+        self.progress(&doing(self.kind, &name), true);
     }
 
     fn scan(&self, f: &gio::File, bytes: &mut u64, items: &mut u64) {
@@ -656,7 +657,7 @@ impl Worker {
             let total = self.total_bytes;
             let tx = self.tx.clone();
             let mut last = Instant::now();
-            let label = doing(self.copy_verb(), &name);
+            let label = doing(self.copy_kind(), &name);
             let (paused, cancel, clock) = (self.paused.clone(), self.cancel.clone(), self.clock.clone());
             let mut cb = |cur: i64, _tot: i64| {
                 // Pausing in the middle of a big file stops the copy here.
@@ -747,7 +748,7 @@ impl Worker {
                     if record {
                         self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
                     }
-                    self.progress(&doing(self.copy_verb(), &name), false);
+                    self.progress(&doing(self.copy_kind(), &name), false);
                     return Ok(());
                 }
                 Err(e) if e.matches(gio::IOErrorEnum::Exists) => {
@@ -925,11 +926,7 @@ impl Worker {
         match job {
             Job::Transfer { kind, items, check } => {
                 self.check = check;
-                self.verb = match kind {
-                    Kind::Copy => "Copying",
-                    Kind::Move => "Moving",
-                    Kind::Link => "Linking",
-                };
+                self.kind = kind;
                 if kind == Kind::Copy {
                     self.by_bytes = true;
                     for it in &items {
@@ -1019,7 +1016,6 @@ impl Worker {
                 }
             }
             Job::Trash(uris) => {
-                self.verb = "Moving to Trash";
                 self.total_items = uris.len() as u64;
                 self.progress(&tr("Preparing…"), true);
                 for u in uris {
@@ -1056,7 +1052,6 @@ impl Worker {
                 }
             }
             Job::Delete(uris) => {
-                self.verb = "Deleting";
                 for u in &uris {
                     let (mut b, mut n) = (0, 0);
                     self.scan(&gio::File::for_uri(u), &mut b, &mut n);
@@ -1070,7 +1065,6 @@ impl Worker {
                 }
             }
             Job::EmptyTrash => {
-                self.verb = "Emptying Trash";
                 let trash = gio::File::for_uri("trash:///");
                 let kids: Vec<gio::File> = trash
                     .enumerate_children("standard::name", NOFOLLOW, Some(&self.cancel))
