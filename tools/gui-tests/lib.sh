@@ -144,7 +144,11 @@ gt_click() { xdotool mousemove "$1" "$2" click "${3:-1}"; sleep 0.5; gt_quiet; }
 gt_shot() { import -window root "$OUT/$1.png" 2>/dev/null; }
 
 # gt_a11y QUERY: what accessibility shows of Arkha (GT_A11Y=1): see a11y.py.
-gt_a11y() { python3 "$GT_DIR/a11y.py" "$@"; }
+# Each query is an accessibility client that comes and goes. GTK 3 crashes
+# when a key arrives while its AT-SPI bridge takes its key snooper away for
+# a client that left (it calls the freed snooper; seen as segfaults in
+# gtk_main_do_event): so a moment's pause after it, before any key.
+gt_a11y() { python3 "$GT_DIR/a11y.py" "$@"; local s=$?; sleep 0.3; return $s; }
 
 # gt_note TEXT: a result line (benchmarks).
 gt_note() { echo "    $*" >> "$OUT/result"; }
