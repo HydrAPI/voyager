@@ -3276,6 +3276,8 @@ impl AppWindow {
             build => format!("{} ({build})", env!("CARGO_PKG_VERSION")),
         }));
         d.set_comments(Some(&tr("A fast graphical file manager.")));
+        // GTK's own (translated) notice, with a link to the license.
+        d.set_license_type(gtk::License::Gpl30);
         d.set_logo_icon_name(Some(util::app_icon()));
         d.connect_response(|d, _| d.close());
         d.show();

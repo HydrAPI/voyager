@@ -12,8 +12,7 @@ Name:           arkha
 Version:        %{arkha_version}
 Release:        1%{?dist}
 Summary:        Fast graphical file manager
-# Not chosen yet.
-License:        LicenseRef-Not-Yet-Chosen
+License:        GPL-3.0-or-later
 
 BuildRequires:  cargo >= 1.85
 BuildRequires:  rust >= 1.85
@@ -51,6 +50,7 @@ done
 %find_lang %{name}
 
 %files -f %{name}.lang
+%license LICENSE
 %doc README.md
 %{_bindir}/arkha
 %{_datadir}/applications/arkha.desktop

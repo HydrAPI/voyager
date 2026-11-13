@@ -26,6 +26,27 @@ for mo in target/release/locale/*/LC_MESSAGES/arkha.mo; do
     [ -e "$mo" ] && install -Dm644 "$mo" "$stage/usr/share/locale/${mo#target/release/locale/}"
 done
 install -Dm644 README.md "$stage/usr/share/doc/arkha/README.md"
+# Debian keeps the GPL's text in base-files' /usr/share/common-licenses.
+cat > "$stage/usr/share/doc/arkha/copyright" <<EOF
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Arkha
+Source: https://github.com/dekart811/arkha
+
+Files: *
+Copyright: 2026 dekart811
+License: GPL-3.0+
+Comment: Some texts and the search's groups of file types come from Caja
+ (GPL-2.0-or-later), by the MATE developers.
+
+License: GPL-3.0+
+ This program is free software: you can redistribute it and/or modify it
+ under the terms of the GNU General Public License as published by the Free
+ Software Foundation, either version 3 of the License, or (at your option)
+ any later version.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 can be found in /usr/share/common-licenses/GPL-3.
+EOF
 
 # The libraries it's linked with, by their Debian package names and the
 # versions it needs (dpkg-shlibdeps wants a debian/control to run in).

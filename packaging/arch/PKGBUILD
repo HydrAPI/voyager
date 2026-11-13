@@ -8,7 +8,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc='A fast graphical file manager'
 arch=('x86_64' 'aarch64')
-license=('unknown')
+license=('GPL-3.0-or-later')
 depends=(
   'cairo'
   'gcc-libs'
