@@ -1,0 +1,4 @@
+# What makepkg leaves here: its work folders, the sources, packages.
+*/*
+!*/PKGBUILD
+!*/.SRCINFO
