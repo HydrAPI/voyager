@@ -38,7 +38,11 @@ Arkha speaks English and German so far. A new language is one file to translate;
 
 ## Contributing
 
-Bug reports, translations and code are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Please follow the [code of conduct](CODE_OF_CONDUCT.md).
+Bug reports, translations and code are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Written by an AI
+
+Arkha's code, its German translation and its documentation were written by an AI, Anthropic's Claude (in Claude Code), not by a human programmer. Its maintainer decided what Arkha should do and how it should behave, and tried out and checked the results.
 
 ## License
 
