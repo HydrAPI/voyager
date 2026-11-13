@@ -744,12 +744,7 @@ impl Pane {
                 }
                 if ev.state().contains(gdk::ModifierType::CONTROL_MASK) {
                     if let Some(p) = w2.upgrade() {
-                        let dy = match ev.direction() {
-                            gdk::ScrollDirection::Up => -1.0,
-                            gdk::ScrollDirection::Down => 1.0,
-                            gdk::ScrollDirection::Smooth => ev.delta().1,
-                            _ => 0.0,
-                        };
+                        let dy = crate::scroll::vertical_steps(ev);
                         if dy < 0.0 {
                             p.zoom(1);
                         } else if dy > 0.0 {

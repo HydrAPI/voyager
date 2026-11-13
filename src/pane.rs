@@ -2365,12 +2365,7 @@ impl Pane {
     /// The wheel while typing: a match up or down for each notch (a
     /// touchpad's small steps are added up to whole ones).
     fn typeahead_scroll(self: &Rc<Self>, ev: &gdk::EventScroll) {
-        let dy = match ev.direction() {
-            gdk::ScrollDirection::Up => -1.0,
-            gdk::ScrollDirection::Down => 1.0,
-            gdk::ScrollDirection::Smooth => ev.delta().1,
-            _ => 0.0,
-        };
+        let dy = crate::scroll::vertical_steps(ev);
         let mut steps = self.typeahead_wheel.get() + dy;
         while steps.abs() >= 1.0 {
             self.typeahead_step(steps > 0.0);

@@ -891,6 +891,35 @@ fn setting_check(label: &str, tip: Option<&str>, on: bool, set: fn(&mut config::
     c
 }
 
+/// A row of buttons under a list: `start` from the left, `end` at the right.
+fn button_row(start: &[&gtk::Button], end: &[&gtk::Button]) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    for b in start {
+        row.pack_start(*b, false, false, 0);
+    }
+    for b in end.iter().rev() {
+        row.pack_end(*b, false, false, 0);
+    }
+    row
+}
+
+/// A dialog to add or change an item of a list, with Cancel and Save, and
+/// the grid for its fields.
+fn edit_dialog(parent: &gtk::Window, title: &str) -> (gtk::Dialog, gtk::Grid) {
+    let d = gtk::Dialog::with_buttons(
+        Some(title),
+        Some(parent),
+        gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
+        &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Save").as_str(), gtk::ResponseType::Ok)],
+    );
+    d.set_default_response(gtk::ResponseType::Ok);
+    let grid = gtk::Grid::new();
+    grid.set_row_spacing(8);
+    grid.set_column_spacing(12);
+    grid.set_border_width(12);
+    (d, grid)
+}
+
 /// A dimmed explanation under a setting, wrapped.
 fn hint_label(text: &str) -> gtk::Label {
     let l = gtk::Label::new(Some(text));
@@ -1186,13 +1215,7 @@ fn menu_order_editor(bg: bool) -> (gtk::Box, Rc<dyn Fn()>) {
             remove_sep.set_sensitive(sep);
         });
     }
-    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    buttons.add(&up);
-    buttons.add(&down);
-    buttons.add(&add_sep);
-    buttons.add(&remove_sep);
-    buttons.pack_end(&reset, false, false, 0);
-    outer.add(&buttons);
+    outer.add(&button_row(&[&up, &down, &add_sep, &remove_sep], &[&reset]));
     // The View submenu keeps its own order; its entries can be hidden.
     if bg {
         let hb = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -1279,11 +1302,7 @@ fn places_editor(places: impl Fn() -> Vec<crate::sidebar::Place> + 'static) -> (
             refresh();
         });
     }
-    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    buttons.add(&up);
-    buttons.add(&down);
-    buttons.pack_end(&reset, false, false, 0);
-    outer.add(&buttons);
+    outer.add(&button_row(&[&up, &down], &[&reset]));
     (outer, refresh)
 }
 
@@ -1317,11 +1336,7 @@ fn checksums_editor() -> gtk::Box {
             (ol.rebuild)(None);
         });
     }
-    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    buttons.add(&up);
-    buttons.add(&down);
-    buttons.pack_end(&reset, false, false, 0);
-    outer.add(&buttons);
+    outer.add(&button_row(&[&up, &down], &[&reset]));
     outer
 }
 
@@ -1581,11 +1596,7 @@ fn keybindings_editor(parent: &gtk::Window, app: &gtk::Application) -> gtk::Box 
         let selected = selected.clone();
         tv.selection().connect_changed(move |_| sync(selected()));
     }
-    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    buttons.pack_start(&btn_change, false, false, 0);
-    buttons.pack_start(&btn_clear, false, false, 0);
-    buttons.pack_start(&btn_reset, false, false, 0);
-    buttons.pack_end(&btn_reset_all, false, false, 0);
+    let buttons = button_row(&[&btn_change, &btn_clear, &btn_reset], &[&btn_reset_all]);
     let hint = gtk::Label::new(Some(&tr("Double-click an action to give it a new shortcut. Changed shortcuts are shown in bold.")));
     hint.set_xalign(0.0);
     hint.set_line_wrap(true);
@@ -1805,14 +1816,8 @@ fn list_editor<T: Clone + 'static>(parent: &gtk::Window, items: Vec<T>, spec: Li
     };
     sync(None);
     tv.selection().connect_changed(move |_| sync(selected()));
-    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    buttons.pack_start(&add, false, false, 0);
-    buttons.pack_start(&edit, false, false, 0);
-    buttons.pack_start(&remove, false, false, 0);
-    if spec.reorder {
-        buttons.pack_end(&down, false, false, 0);
-        buttons.pack_end(&up, false, false, 0);
-    }
+    let arrows = [&up, &down];
+    let buttons = button_row(&[&add, &edit, &remove], if spec.reorder { &arrows } else { &[] });
     let bx = gtk::Box::new(gtk::Orientation::Vertical, 6);
     bx.add(&sw);
     bx.add(&buttons);
@@ -1821,17 +1826,7 @@ fn list_editor<T: Clone + 'static>(parent: &gtk::Window, items: Vec<T>, spec: Li
 
 /// Dialog to create or change a custom thumbnailer; None if cancelled.
 fn edit_thumbnailer(parent: &gtk::Window, title: &str, cur: &thumbnailers::Thumbnailer) -> Option<thumbnailers::Thumbnailer> {
-    let d = gtk::Dialog::with_buttons(
-        Some(title),
-        Some(parent),
-        gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
-        &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Save").as_str(), gtk::ResponseType::Ok)],
-    );
-    d.set_default_response(gtk::ResponseType::Ok);
-    let grid = gtk::Grid::new();
-    grid.set_row_spacing(8);
-    grid.set_column_spacing(12);
-    grid.set_border_width(12);
+    let (d, grid) = edit_dialog(parent, title);
     let entry = |text: &str, placeholder: &str| {
         let e = gtk::Entry::new();
         e.set_text(text);
@@ -1926,17 +1921,7 @@ fn custom_actions_editor(parent: &gtk::Window) -> gtk::Box {
 
 /// Dialog to create or change a custom action; None if cancelled.
 fn edit_custom_action(parent: &gtk::Window, title: &str, cur: &actions::CustomAction) -> Option<actions::CustomAction> {
-    let d = gtk::Dialog::with_buttons(
-        Some(title),
-        Some(parent),
-        gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
-        &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Save").as_str(), gtk::ResponseType::Ok)],
-    );
-    d.set_default_response(gtk::ResponseType::Ok);
-    let grid = gtk::Grid::new();
-    grid.set_row_spacing(8);
-    grid.set_column_spacing(12);
-    grid.set_border_width(12);
+    let (d, grid) = edit_dialog(parent, title);
     let label = |t: &str| {
         let l = gtk::Label::with_mnemonic(&tr(t));
         l.set_xalign(0.0);

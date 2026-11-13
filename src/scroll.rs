@@ -24,13 +24,8 @@ pub fn init() {
         params: *const glib::gobject_ffi::GValue,
         _data: glib::ffi::gpointer,
     ) -> glib::ffi::gboolean {
-        if n > 0 {
-            let v = &*(params as *const glib::Value);
-            if let Ok(Some(w)) = v.get::<Option<gtk::Widget>>() {
-                if let Ok(sw) = w.downcast::<gtk::ScrolledWindow>() {
-                    install(&sw);
-                }
-            }
+        if let Some(sw) = emitter(n, params).and_then(|w| w.downcast::<gtk::ScrolledWindow>().ok()) {
+            install(&sw);
         }
         glib::ffi::GTRUE
     }
@@ -43,15 +38,10 @@ pub fn init() {
         params: *const glib::gobject_ffi::GValue,
         _data: glib::ffi::gpointer,
     ) -> glib::ffi::gboolean {
-        if n > 0 {
-            let v = &*(params as *const glib::Value);
-            if let Ok(Some(w)) = v.get::<Option<gtk::Widget>>() {
-                // Any container: a GtkStack destroys windows of its own
-                // first without saying it has one.
-                if w.is::<gtk::Container>() {
-                    let_go_of_indicators(&w);
-                }
-            }
+        // Any container: a GtkStack destroys windows of its own first
+        // without saying it has one.
+        if let Some(w) = emitter(n, params).filter(|w| w.is::<gtk::Container>()) {
+            let_go_of_indicators(&w);
         }
         glib::ffi::GTRUE
     }
@@ -61,6 +51,30 @@ pub fn init() {
         glib::gobject_ffi::g_signal_add_emission_hook(id, 0, Some(on_realize), std::ptr::null_mut(), None);
         let id = glib::gobject_ffi::g_signal_lookup(c"unrealize".as_ptr(), ty);
         glib::gobject_ffi::g_signal_add_emission_hook(id, 0, Some(on_unrealize), std::ptr::null_mut(), None);
+    }
+}
+
+/// The widget a signal was emitted on, from an emission hook's parameters
+/// (`n` of them; the first is the instance).
+///
+/// # Safety
+/// `params` must point to `n` valid GValues, as GLib passes them.
+unsafe fn emitter(n: u32, params: *const glib::gobject_ffi::GValue) -> Option<gtk::Widget> {
+    if n == 0 {
+        return None;
+    }
+    let v = &*(params as *const glib::Value);
+    v.get::<Option<gtk::Widget>>().ok().flatten()
+}
+
+/// The wheel's movement up (negative) or down in steps, one per notch; a
+/// touchpad's or smooth wheel's in fractions.
+pub fn vertical_steps(ev: &gdk::EventScroll) -> f64 {
+    match ev.direction() {
+        gdk::ScrollDirection::Up => -1.0,
+        gdk::ScrollDirection::Down => 1.0,
+        gdk::ScrollDirection::Smooth => ev.delta().1,
+        _ => 0.0,
     }
 }
 
