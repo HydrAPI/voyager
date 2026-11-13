@@ -10,6 +10,7 @@ use crate::actions;
 use crate::i18n::{fill, n_, tr, trn};
 use crate::bulkrename;
 use crate::config;
+use crate::connect;
 use crate::folders;
 use crate::keys;
 use crate::thumbnailers;
@@ -1052,6 +1053,14 @@ impl AppWindow {
             }
         });
         self.add("edit-bookmarks", |w| w.edit_bookmarks());
+        self.add("connect-server", |w| {
+            let weak = Rc::downgrade(w);
+            connect::show(w.window.upcast_ref(), move |uri| {
+                if let Some(w) = weak.upgrade() {
+                    w.go(&gio::File::for_uri(&uri));
+                }
+            });
+        });
         // Around from the last tab to the first and back, as in browsers.
         // Move Tab Left / Right, as in Caja (Ctrl+Shift+Page Up / Down).
         for (name, step) in [("tab-left", -1i32), ("tab-right", 1)] {

@@ -52,6 +52,7 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `language` | German chosen in the settings: the status bar (with its plural) and side pane in German; the system's language: English again |
 | `tab-order` | Properties' and Rename All's tabs dragged into another order, which is kept |
 | `previews` | Thumbnails always (with a size limit) or never; folders' item counts always or never |
+| `connect` | Connect to Server: the fields for each type, the bookmark, a server that refuses; with `ARKHA_TEST_SFTP=HOST` also a real SFTP mount |
 
 `tools/screenshots/take.sh` takes the screenshots in `docs/screenshots/` again, for when Arkha's look changes: Arkha runs headless in a made-up home folder, as in the GUI tests, under Metacity for its title bars, in Adwaita with Papirus (light) and Adwaita-dark with Papirus-Dark (dark), and each window is cut out with its shadow on a transparent background. Besides what the GUI tests need, it needs `metacity`, the Papirus icon themes, the Cantarell font and the `en_US.UTF-8` locale.
 

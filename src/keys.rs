@@ -57,6 +57,7 @@ pub const BINDINGS: &[Binding] = &[
     b(n_("Navigation"), "win.escape", n_("Cancel (close search or location bar)"), &["Escape"]),
     b(n_("Opening"), "win.open", n_("Open"), &["<Ctrl>o", "<Alt>Down"]),
     b(n_("Opening"), "win.open-new-tab", n_("Open in new tab"), &["<Ctrl>Return"]),
+    b(n_("Navigation"), "win.connect-server", n_("Connect to server"), &[]),
     b(n_("Opening"), "win.open-new-window", n_("Open in new window"), &[]),
     b(n_("Opening"), "win.open-with-other", n_("Open with other application"), &[]),
     b(n_("Opening"), "win.terminal", n_("Open in terminal"), &["F4"]),

@@ -8,6 +8,7 @@ mod checksums;
 mod clipboard;
 mod columns;
 mod config;
+mod connect;
 mod details;
 mod iconlabel;
 mod iconview;

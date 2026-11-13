@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Arkha 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 21:59+0100\n"
+"POT-Creation-Date: 2026-11-13 19:21+0100\n"
 "PO-Revision-Date: 2026-11-12 21:59+0100\n"
 "Last-Translator: \n"
 "Language-Team: German\n"
@@ -29,7 +29,7 @@ msgstr "In neuem Reiter öffnen"
 msgid "Open in New Window"
 msgstr "In neuem Fenster öffnen"
 
-#: src/actions.rs:15 src/props.rs:480
+#: src/actions.rs:15 src/props.rs:135
 msgid "Open With"
 msgstr "Öffnen mit"
 
@@ -37,11 +37,11 @@ msgstr "Öffnen mit"
 msgid "Open parent location (in search results)"
 msgstr "Übergeordneten Ort öffnen (in Suchergebnissen)"
 
-#: src/actions.rs:17 src/keys.rs:65
+#: src/actions.rs:17 src/keys.rs:66
 msgid "Cut"
 msgstr "Ausschneiden"
 
-#: src/actions.rs:18 src/keys.rs:66
+#: src/actions.rs:18 src/keys.rs:67
 msgid "Copy"
 msgstr "Kopieren"
 
@@ -49,7 +49,7 @@ msgstr "Kopieren"
 msgid "Paste Into Folder"
 msgstr "In Ordner einfügen"
 
-#: src/actions.rs:20 src/keys.rs:74
+#: src/actions.rs:20 src/keys.rs:75
 msgid "Duplicate"
 msgstr "Duplizieren"
 
@@ -61,7 +61,7 @@ msgstr "Verknüpfung anlegen"
 msgid "Rename…"
 msgstr "Umbenennen …"
 
-#: src/actions.rs:23 src/keys.rs:73
+#: src/actions.rs:23 src/keys.rs:74
 msgid "Rename All… / Advanced Rename…"
 msgstr "Alle umbenennen … / Erweitertes Umbenennen …"
 
@@ -73,7 +73,7 @@ msgstr "Kopieren nach …"
 msgid "Move To…"
 msgstr "Verschieben nach …"
 
-#: src/actions.rs:26 src/keys.rs:80
+#: src/actions.rs:26 src/keys.rs:81
 msgid "Move to Trash"
 msgstr "In den Papierkorb verschieben"
 
@@ -85,7 +85,7 @@ msgstr "Löschen"
 msgid "Extract Here"
 msgstr "Hier entpacken"
 
-#: src/actions.rs:29 src/keys.rs:85
+#: src/actions.rs:29 src/keys.rs:86
 msgid "Compress…"
 msgstr "Komprimieren …"
 
@@ -97,7 +97,7 @@ msgstr "Im Terminal öffnen"
 msgid "Restore (in the Trash)"
 msgstr "Wiederherstellen (im Papierkorb)"
 
-#: src/actions.rs:32 src/actions.rs:55 src/keys.rs:86
+#: src/actions.rs:32 src/actions.rs:55 src/keys.rs:87
 msgid "Properties"
 msgstr "Eigenschaften"
 
@@ -109,7 +109,7 @@ msgstr "Ordner anlegen"
 msgid "Create Document"
 msgstr "Dokument anlegen"
 
-#: src/actions.rs:39 src/keys.rs:67
+#: src/actions.rs:39 src/keys.rs:68
 msgid "Paste"
 msgstr "Einfügen"
 
@@ -161,7 +161,7 @@ msgstr "Ansicht › Zusätzliche Ansicht"
 msgid "View › Statusbar"
 msgstr "Ansicht › Statusleiste"
 
-#: src/actions.rs:52 src/window/prefs.rs:1404
+#: src/actions.rs:52 src/window/prefs.rs:1419
 msgid "Add Bookmark"
 msgstr "Lesezeichen hinzufügen"
 
@@ -181,8 +181,8 @@ msgstr "Videos"
 msgid "Audio"
 msgstr "Audio"
 
-#: src/actions.rs:219 src/backgrounds.rs:387 src/backgrounds.rs:430
-#: src/props.rs:1019
+#: src/actions.rs:219 src/backgrounds.rs:388 src/backgrounds.rs:431
+#: src/props.rs:1029
 msgid "Images"
 msgstr "Bilder"
 
@@ -256,9 +256,7 @@ msgid "You have just inserted a digital audio player."
 msgstr "Sie haben soeben einen digitalen Audio-Player angeschlossen."
 
 #: src/autorun.rs:220
-msgid ""
-"You have just inserted a medium with software intended to be automatically "
-"started."
+msgid "You have just inserted a medium with software intended to be automatically started."
 msgstr "Sie haben soeben einen Datenträger mit Software eingelegt, die automatisch gestartet werden soll."
 
 #: src/autorun.rs:221
@@ -294,29 +292,27 @@ msgstr "Wählen Sie, welche Anwendung gestartet werden soll."
 
 #: src/autorun.rs:318
 #, rust-format
-msgid ""
-"Select how to open “{name}” and whether to perform this action in the future "
-"for other media of type “{type}”."
+msgid "Select how to open “{name}” and whether to perform this action in the future for other media of type “{type}”."
 msgstr "Wählen Sie, wie „{name}“ geöffnet werden soll und ob diese Aktion künftig auch für andere Datenträger vom Typ „{type}“ ausgeführt werden soll."
 
 #: src/autorun.rs:336
 msgid "_Always perform this action"
 msgstr "Diese Aktion _immer ausführen"
 
-#: src/autorun.rs:341 src/sidebar.rs:774
+#: src/autorun.rs:341 src/sidebar.rs:779
 msgid "_Eject"
 msgstr "Aus_werfen"
 
-#: src/autorun.rs:341 src/sidebar.rs:766
+#: src/autorun.rs:341 src/sidebar.rs:771
 msgid "_Unmount"
 msgstr "_Aushängen"
 
-#: src/autorun.rs:348 src/backgrounds.rs:378 src/backgrounds.rs:428
-#: src/ops.rs:2097 src/ops.rs:2161 src/props.rs:413 src/props.rs:550
-#: src/props.rs:1015 src/sidebar.rs:837 src/window.rs:2751 src/window.rs:2969
-#: src/window.rs:3097 src/window.rs:3212 src/window/prefs.rs:1407
-#: src/window/prefs.rs:1524 src/window/prefs.rs:1604 src/window/prefs.rs:1828
-#: src/window/prefs.rs:1933
+#: src/autorun.rs:348 src/backgrounds.rs:379 src/backgrounds.rs:429
+#: src/connect.rs:89 src/ops.rs:2103 src/ops.rs:2167 src/props.rs:462
+#: src/props.rs:560 src/props.rs:1025 src/sidebar.rs:842 src/window.rs:2764
+#: src/window.rs:2982 src/window.rs:3110 src/window.rs:3225
+#: src/window/prefs.rs:913 src/window/prefs.rs:1422 src/window/prefs.rs:1539
+#: src/window/prefs.rs:1615
 msgid "_Cancel"
 msgstr "_Abbrechen"
 
@@ -351,14 +347,11 @@ msgstr "Umgang mit Datenträgern"
 #. TRANSLATORS: {desktop} is a desktop's name, such as MATE or GNOME.
 #: src/autorun.rs:438
 #, rust-format
-msgid ""
-"What happens when you insert media or connect devices that Arkha mounts. "
-"These are {desktop}’s own settings."
+msgid "What happens when you insert media or connect devices that Arkha mounts. These are {desktop}’s own settings."
 msgstr "Was geschieht, wenn Sie Datenträger einlegen oder Geräte anschließen, die Arkha einhängt. Dies sind die Einstellungen von {desktop}."
 
 #: src/autorun.rs:439
-msgid ""
-"What happens when you insert media or connect devices that Arkha mounts."
+msgid "What happens when you insert media or connect devices that Arkha mounts."
 msgstr "Was geschieht, wenn Sie Datenträger einlegen oder Geräte anschließen, die Arkha einhängt."
 
 #: src/autorun.rs:473
@@ -369,7 +362,7 @@ msgstr "Andere Datenträger"
 msgid "Less common media formats can be configured here."
 msgstr "Weniger verbreitete Datenträgerformate können hier eingestellt werden."
 
-#: src/autorun.rs:519
+#: src/autorun.rs:519 src/connect.rs:149
 msgid "_Type:"
 msgstr "_Typ:"
 
@@ -390,134 +383,126 @@ msgid "B_rowse media when inserted"
 msgstr "Datenträger beim Einlegen _durchsuchen"
 
 #: src/autorun.rs:536
-msgid ""
-"Open a window for media that hold nothing in particular (no photos, music, "
-"video…)"
+msgid "Open a window for media that hold nothing in particular (no photos, music, video…)"
 msgstr "Ein Fenster für Datenträger öffnen, die nichts Bestimmtes enthalten (keine Fotos, Musik, Videos …)"
 
-#: src/backgrounds.rs:175
+#: src/backgrounds.rs:176
 #, rust-format
 msgid "{name}: drag it onto a folder’s background or the side pane"
 msgstr "{name}: auf den Hintergrund eines Ordners oder die Seitenleiste ziehen"
 
-#: src/backgrounds.rs:175
+#: src/backgrounds.rs:176
 #, rust-format
 msgid "{name}: drag it onto an item"
 msgstr "{name}: auf ein Objekt ziehen"
 
-#: src/backgrounds.rs:194 src/sidebar.rs:796 src/window/prefs.rs:1385
-#: src/window/prefs.rs:1743
+#: src/backgrounds.rs:195 src/sidebar.rs:801 src/window/prefs.rs:1400
+#: src/window/prefs.rs:1754
 msgid "_Remove"
 msgstr "_Entfernen"
 
-#: src/backgrounds.rs:230
+#: src/backgrounds.rs:231
 msgid "Backgrounds and Emblems"
 msgstr "Hintergründe und Embleme"
 
-#: src/backgrounds.rs:230 src/bulkrename.rs:560 src/props.rs:95
-#: src/window.rs:2172 src/window.rs:3246 src/window.rs:3281
+#: src/backgrounds.rs:231 src/bulkrename.rs:560 src/props.rs:94
+#: src/window.rs:2181 src/window.rs:3259 src/window.rs:3300
 msgid "_Close"
 msgstr "_Schließen"
 
-#: src/backgrounds.rs:242
+#: src/backgrounds.rs:243
 msgid "Add a New _Pattern…"
 msgstr "Neues _Muster hinzufügen …"
 
-#: src/backgrounds.rs:242
-msgid ""
-"Drag a pattern onto a folder’s background, or the side pane. Reset takes the "
-"background off."
+#: src/backgrounds.rs:243
+msgid "Drag a pattern onto a folder’s background, or the side pane. Reset takes the background off."
 msgstr "Ziehen Sie ein Muster auf den Hintergrund eines Ordners oder auf die Seitenleiste. „Zurücksetzen“ entfernt den Hintergrund."
 
-#: src/backgrounds.rs:242
+#: src/backgrounds.rs:243
 msgid "Patterns"
 msgstr "Muster"
 
-#: src/backgrounds.rs:243
+#: src/backgrounds.rs:244
 msgid "Add a New _Color…"
 msgstr "Neue _Farbe hinzufügen …"
 
-#: src/backgrounds.rs:243
+#: src/backgrounds.rs:244
 msgid "Colors"
 msgstr "Farben"
 
-#: src/backgrounds.rs:243
-msgid ""
-"Drag a color onto a folder’s background, or the side pane. Reset takes the "
-"background off."
+#: src/backgrounds.rs:244
+msgid "Drag a color onto a folder’s background, or the side pane. Reset takes the background off."
 msgstr "Ziehen Sie eine Farbe auf den Hintergrund eines Ordners oder auf die Seitenleiste. „Zurücksetzen“ entfernt den Hintergrund."
 
-#: src/backgrounds.rs:244
+#: src/backgrounds.rs:245
 msgid "Add a New _Emblem…"
 msgstr "Neues _Emblem hinzufügen …"
 
-#: src/backgrounds.rs:244
-msgid ""
-"Drag an emblem onto an item (onto one of the selected ones: onto all of "
-"them). Erase takes them all off."
+#: src/backgrounds.rs:245
+msgid "Drag an emblem onto an item (onto one of the selected ones: onto all of them). Erase takes them all off."
 msgstr "Ziehen Sie ein Emblem auf ein Objekt (auf eines der ausgewählten: auf alle). „Löschen“ entfernt alle Embleme."
 
-#: src/backgrounds.rs:244 src/props.rs:259
+#: src/backgrounds.rs:245 src/props.rs:128
 msgid "Emblems"
 msgstr "Embleme"
 
-#: src/backgrounds.rs:302
+#: src/backgrounds.rs:303
 msgid "Reset"
 msgstr "Zurücksetzen"
 
-#: src/backgrounds.rs:328
+#: src/backgrounds.rs:329
 msgid "Erase"
 msgstr "Löschen"
 
-#: src/backgrounds.rs:355
+#: src/backgrounds.rs:356
 msgid "Add a New Color"
 msgstr "Neue Farbe hinzufügen"
 
-#: src/backgrounds.rs:369
+#: src/backgrounds.rs:370
 msgid "Add a New Pattern"
 msgstr "Neues Muster hinzufügen"
 
-#: src/backgrounds.rs:374
+#: src/backgrounds.rs:375
 msgid "Could not add the pattern"
 msgstr "Das Muster konnte nicht hinzugefügt werden"
 
-#: src/backgrounds.rs:378
+#: src/backgrounds.rs:379
 msgid "Add a New Emblem"
 msgstr "Neues Emblem hinzufügen"
 
-#: src/backgrounds.rs:378 src/backgrounds.rs:428 src/window/prefs.rs:1407
+#: src/backgrounds.rs:379 src/backgrounds.rs:429 src/window/prefs.rs:1422
 msgid "_Add"
 msgstr "_Hinzufügen"
 
-#: src/backgrounds.rs:385
+#: src/backgrounds.rs:386
 msgid "Choose a Picture"
 msgstr "Ein Bild wählen"
 
-#: src/backgrounds.rs:390
+#: src/backgrounds.rs:391
 msgid "_Keyword:"
 msgstr "_Schlüsselwort:"
 
-#: src/backgrounds.rs:390
+#: src/backgrounds.rs:391
 msgid "_Picture:"
 msgstr "_Bild:"
 
-#: src/backgrounds.rs:398
+#: src/backgrounds.rs:399
 msgid "The keyword names the emblem: letters, numbers and spaces."
 msgstr "Das Schlüsselwort benennt das Emblem: Buchstaben, Ziffern und Leerzeichen."
 
-#: src/backgrounds.rs:411
+#: src/backgrounds.rs:412
 msgid "The keyword can only have letters, numbers and spaces."
 msgstr "Das Schlüsselwort darf nur Buchstaben, Ziffern und Leerzeichen enthalten."
 
-#: src/backgrounds.rs:412
+#: src/backgrounds.rs:413
 msgid "There is already an emblem with that keyword."
 msgstr "Es gibt bereits ein Emblem mit diesem Schlüsselwort."
 
-#: src/backgrounds.rs:413
+#: src/backgrounds.rs:414
 msgid "Choose a picture for the emblem."
 msgstr "Wählen Sie ein Bild für das Emblem."
 
-#: src/backgrounds.rs:417
+#: src/backgrounds.rs:418
 msgid "Could not add the emblem"
 msgstr "Das Emblem konnte nicht hinzugefügt werden"
 
@@ -579,15 +564,11 @@ msgid "Text to insert"
 msgstr "Einzufügender Text"
 
 #: src/bulkrename.rs:426
-msgid ""
-"Count the position back from the end of the name instead of from its start"
+msgid "Count the position back from the end of the name instead of from its start"
 msgstr "Die Position vom Ende des Namens statt von seinem Anfang zählen"
 
 #: src/bulkrename.rs:427
-msgid ""
-"Count the position only in the name before its extension (e.g. “.jpg”), so "
-"the text goes before it. With “From the end”, 0 puts it right before the "
-"extension"
+msgid "Count the position only in the name before its extension (e.g. “.jpg”), so the text goes before it. With “From the end”, 0 puts it right before the extension"
 msgstr "Die Position nur im Namen vor seiner Endung (z. B. „.jpg“) zählen, sodass der Text davor eingefügt wird. Mit „Vom Ende her“ setzt 0 ihn direkt vor die Endung"
 
 #: src/bulkrename.rs:430
@@ -642,9 +623,7 @@ msgstr "Nur im Namen suchen, nicht in seiner Endung (z. B. „.jpg“)"
 #. TRANSLATORS: keep $1, $2, ${name}, $0 and $$ as they are.
 #: src/bulkrename.rs:450
 #, rust-format
-msgid ""
-"Every match is replaced. In “Replace with”, $1, $2… or ${name} insert what a "
-"group matched, $0 the whole match, $$ a “$”."
+msgid "Every match is replaced. In “Replace with”, $1, $2… or ${name} insert what a group matched, $0 the whole match, $$ a “$”."
 msgstr "Jeder Treffer wird ersetzt. In „Ersetzen durch“ fügen $1, $2 … oder ${name} ein, was eine Gruppe gefunden hat, $0 den ganzen Treffer, $$ ein „$“."
 
 #: src/bulkrename.rs:455
@@ -664,16 +643,14 @@ msgid "Put the number after the name instead of in front"
 msgstr "Die Nummer hinter den Namen statt davor setzen"
 
 #: src/bulkrename.rs:458
-msgid ""
-"With “At the end”: put the number before the extension (e.g. “.jpg”) instead "
-"of after it"
+msgid "With “At the end”: put the number before the extension (e.g. “.jpg”) instead of after it"
 msgstr "Mit „Am Ende“: die Nummer vor die Endung (z. B. „.jpg“) statt dahinter setzen"
 
 #: src/bulkrename.rs:467
 msgid "Enumerate"
 msgstr "Nummerieren"
 
-#: src/bulkrename.rs:563 src/props.rs:414
+#: src/bulkrename.rs:563 src/props.rs:463
 msgid "_Apply"
 msgstr "_Anwenden"
 
@@ -687,7 +664,10 @@ msgid ""
 "The following names are not acceptable:\n"
 "\n"
 "{names}"
-msgstr "Die folgenden Namen sind nicht zulässig:\n\n{names}"
+msgstr ""
+"Die folgenden Namen sind nicht zulässig:\n"
+"\n"
+"{names}"
 
 #: src/bulkrename.rs:586
 msgid "Confirm overwrite"
@@ -701,7 +681,12 @@ msgid ""
 "{names}\n"
 "\n"
 "Do you wish to continue?"
-msgstr "Folgendes wird überschrieben:\n\n{names}\n\nMöchten Sie fortfahren?"
+msgstr ""
+"Folgendes wird überschrieben:\n"
+"\n"
+"{names}\n"
+"\n"
+"Möchten Sie fortfahren?"
 
 #: src/bulkrename.rs:609
 msgid "Rename error"
@@ -713,11 +698,90 @@ msgid ""
 "There were errors while renaming the following:\n"
 "\n"
 "{names}"
-msgstr "Beim Umbenennen von Folgendem sind Fehler aufgetreten:\n\n{names}"
+msgstr ""
+"Beim Umbenennen von Folgendem sind Fehler aufgetreten:\n"
+"\n"
+"{names}"
 
 #: src/columns.rs:54
 msgid "Empty folder"
 msgstr "Leerer Ordner"
+
+#: src/connect.rs:17
+msgid "SSH"
+msgstr "SSH"
+
+#: src/connect.rs:18
+msgid "Public FTP"
+msgstr "Öffentlicher FTP"
+
+#: src/connect.rs:19
+msgid "FTP (with login)"
+msgstr "FTP (mit Anmeldung)"
+
+#: src/connect.rs:20
+msgid "Windows share"
+msgstr "Windows-Freigabe"
+
+#: src/connect.rs:21
+msgid "WebDAV (HTTP)"
+msgstr "WebDAV (HTTP)"
+
+#: src/connect.rs:22
+msgid "Secure WebDAV (HTTPS)"
+msgstr "Sicheres WebDAV (HTTPS)"
+
+#: src/connect.rs:86
+msgid "Connect to Server"
+msgstr "Mit Server verbinden"
+
+#: src/connect.rs:89
+msgid "C_onnect"
+msgstr "_Verbinden"
+
+#: src/connect.rs:126
+msgid "Add _bookmark"
+msgstr "_Lesezeichen hinzufügen"
+
+#: src/connect.rs:147
+msgid "Server Details"
+msgstr "Server-Einstellungen"
+
+#: src/connect.rs:148
+msgid "_Server:"
+msgstr "_Server:"
+
+#: src/connect.rs:150
+msgid "Sh_are:"
+msgstr "_Freigabe:"
+
+#: src/connect.rs:151
+msgid "_Port:"
+msgstr "_Port:"
+
+#: src/connect.rs:152
+msgid "_Folder:"
+msgstr "_Ordner:"
+
+#: src/connect.rs:153
+msgid "User Details"
+msgstr "Benutzerangaben"
+
+#: src/connect.rs:155
+msgid "_Domain name:"
+msgstr "_Domain-Name:"
+
+#: src/connect.rs:156
+msgid "_User name:"
+msgstr "_Benutzername:"
+
+#: src/connect.rs:158
+msgid "Bookmark _name:"
+msgstr "Lesezeichen_name:"
+
+#: src/connect.rs:233 src/window.rs:1051
+msgid "Could not add bookmark"
+msgstr "Lesezeichen konnte nicht hinzugefügt werden"
 
 #: src/details.rs:38
 msgid "By _Size"
@@ -764,7 +828,7 @@ msgstr "Erstellt"
 msgid "By _Owner"
 msgstr "Nach _Besitzer"
 
-#: src/details.rs:43 src/props.rs:345
+#: src/details.rs:43 src/props.rs:394
 msgid "Owner"
 msgstr "Besitzer"
 
@@ -772,7 +836,7 @@ msgstr "Besitzer"
 msgid "By _Group"
 msgstr "Nach G_ruppe"
 
-#: src/details.rs:44 src/props.rs:345
+#: src/details.rs:44 src/props.rs:394
 msgid "Group"
 msgstr "Gruppe"
 
@@ -780,7 +844,7 @@ msgstr "Gruppe"
 msgid "By _Permissions"
 msgstr "Nach Zugriffs_rechten"
 
-#: src/details.rs:45 src/props.rs:445
+#: src/details.rs:45 src/props.rs:131
 msgid "Permissions"
 msgstr "Zugriffsrechte"
 
@@ -808,7 +872,7 @@ msgstr "Endung"
 msgid "By _Location"
 msgstr "Nach _Ort"
 
-#: src/details.rs:49 src/search.rs:21 src/window/prefs.rs:1347
+#: src/details.rs:49 src/search.rs:21 src/window/prefs.rs:1362
 msgid "Location"
 msgstr "Ort"
 
@@ -829,8 +893,8 @@ msgid "Original Location"
 msgstr "Ursprünglicher Ort"
 
 #: src/i18n.rs:105 src/i18n.rs:106 src/i18n.rs:107 src/info.rs:255
-#: src/ops.rs:1390 src/pane.rs:1550 src/pane.rs:3952 src/props.rs:243
-#: src/props.rs:426
+#: src/ops.rs:1389 src/pane.rs:1596 src/pane.rs:3993 src/props.rs:294
+#: src/props.rs:475
 #, rust-format
 msgid "{n} item"
 msgid_plural "{n} items"
@@ -852,7 +916,7 @@ msgid_plural "{n} folders"
 msgstr[0] "{n} Ordner"
 msgstr[1] "{n} Ordner"
 
-#: src/info.rs:333 src/ops.rs:2002
+#: src/info.rs:333 src/ops.rs:2008
 #, rust-format
 msgid "{n} file"
 msgid_plural "{n} files"
@@ -888,7 +952,7 @@ msgstr "Fenster und Reiter"
 msgid "New window"
 msgstr "Neues Fenster"
 
-#: src/keys.rs:25 src/window.rs:1655
+#: src/keys.rs:25 src/window.rs:1664
 msgid "Close tab"
 msgstr "Reiter schließen"
 
@@ -968,17 +1032,17 @@ msgstr "Zu Reiter 8"
 msgid "Go to last tab"
 msgstr "Zum letzten Reiter"
 
-#: src/keys.rs:45 src/window.rs:419
+#: src/keys.rs:45 src/window.rs:420
 msgid "Back"
 msgstr "Zurück"
 
 #: src/keys.rs:45 src/keys.rs:46 src/keys.rs:47 src/keys.rs:48 src/keys.rs:49
 #: src/keys.rs:50 src/keys.rs:51 src/keys.rs:52 src/keys.rs:53 src/keys.rs:54
-#: src/keys.rs:55 src/keys.rs:56 src/keys.rs:57
+#: src/keys.rs:55 src/keys.rs:56 src/keys.rs:57 src/keys.rs:60
 msgid "Navigation"
 msgstr "Navigation"
 
-#: src/keys.rs:46 src/window.rs:420
+#: src/keys.rs:46 src/window.rs:421
 msgid "Forward"
 msgstr "Vor"
 
@@ -994,12 +1058,12 @@ msgstr "Persönlicher Ordner"
 msgid "File system"
 msgstr "Dateisystem"
 
-#: src/keys.rs:50 src/sidebar.rs:1149
+#: src/keys.rs:50 src/sidebar.rs:1154
 msgid "Desktop"
 msgstr "Schreibtisch"
 
-#: src/keys.rs:51 src/pane.rs:1191 src/pane/build.rs:208 src/sidebar.rs:1164
-#: src/sidebar.rs:1165 src/window.rs:2325 src/window/prefs.rs:334
+#: src/keys.rs:51 src/pane.rs:1195 src/pane/build.rs:208 src/sidebar.rs:1169
+#: src/sidebar.rs:1170 src/window.rs:2334 src/window/prefs.rs:334
 msgid "Trash"
 msgstr "Papierkorb"
 
@@ -1023,261 +1087,265 @@ msgstr "Chronik leeren (zurück und vor)"
 msgid "Cancel (close search or location bar)"
 msgstr "Abbrechen (Suche oder Ortsleiste schließen)"
 
-#: src/keys.rs:58 src/keys.rs:59 src/keys.rs:60 src/keys.rs:61 src/keys.rs:62
+#: src/keys.rs:58 src/keys.rs:59 src/keys.rs:61 src/keys.rs:62 src/keys.rs:63
 #: src/window/prefs.rs:299
 msgid "Opening"
 msgstr "Öffnen"
 
-#: src/keys.rs:59 src/window.rs:3318
+#: src/keys.rs:59 src/window.rs:3337
 msgid "Open in new tab"
 msgstr "In neuem Reiter öffnen"
 
 #: src/keys.rs:60
+msgid "Connect to server"
+msgstr "Mit Server verbinden"
+
+#: src/keys.rs:61
 msgid "Open in new window"
 msgstr "In neuem Fenster öffnen"
 
-#: src/keys.rs:61
+#: src/keys.rs:62
 msgid "Open with other application"
 msgstr "Mit anderer Anwendung öffnen"
 
-#: src/keys.rs:62
+#: src/keys.rs:63
 msgid "Open in terminal"
 msgstr "Im Terminal öffnen"
 
-#: src/keys.rs:63 src/keys.rs:64 src/keys.rs:65 src/keys.rs:66 src/keys.rs:67
-#: src/keys.rs:68 src/keys.rs:69 src/keys.rs:70 src/keys.rs:71 src/keys.rs:72
-#: src/keys.rs:73 src/keys.rs:74 src/keys.rs:75 src/keys.rs:76 src/keys.rs:77
-#: src/keys.rs:78 src/keys.rs:79 src/keys.rs:80 src/keys.rs:81 src/keys.rs:82
-#: src/keys.rs:83 src/keys.rs:84 src/keys.rs:85 src/keys.rs:86
+#: src/keys.rs:64 src/keys.rs:65 src/keys.rs:66 src/keys.rs:67 src/keys.rs:68
+#: src/keys.rs:69 src/keys.rs:70 src/keys.rs:71 src/keys.rs:72 src/keys.rs:73
+#: src/keys.rs:74 src/keys.rs:75 src/keys.rs:76 src/keys.rs:77 src/keys.rs:78
+#: src/keys.rs:79 src/keys.rs:80 src/keys.rs:81 src/keys.rs:82 src/keys.rs:83
+#: src/keys.rs:84 src/keys.rs:85 src/keys.rs:86 src/keys.rs:87
 #: src/window/prefs.rs:392
 msgid "Files"
 msgstr "Dateien"
 
-#: src/keys.rs:63
+#: src/keys.rs:64
 msgid "New folder"
 msgstr "Neuer Ordner"
 
-#: src/keys.rs:64
+#: src/keys.rs:65
 msgid "New empty document"
 msgstr "Neues leeres Dokument"
 
-#: src/keys.rs:68
+#: src/keys.rs:69
 msgid "Paste and check the copies"
 msgstr "Einfügen und die Kopien prüfen"
 
-#: src/keys.rs:69
+#: src/keys.rs:70
 msgid "Paste into folder"
 msgstr "In Ordner einfügen"
 
-#: src/keys.rs:70
+#: src/keys.rs:71
 msgid "Undo the last file operation"
 msgstr "Letzten Dateivorgang rückgängig machen"
 
-#: src/keys.rs:71
+#: src/keys.rs:72
 msgid "Redo the last undone file operation"
 msgstr "Zuletzt rückgängig gemachten Dateivorgang wiederholen"
 
-#: src/keys.rs:72
+#: src/keys.rs:73
 msgid "Rename"
 msgstr "Umbenennen"
 
-#: src/keys.rs:75
+#: src/keys.rs:76
 msgid "Make link"
 msgstr "Verknüpfung anlegen"
 
-#: src/keys.rs:76
+#: src/keys.rs:77
 msgid "Copy to…"
 msgstr "Kopieren nach …"
 
-#: src/keys.rs:77
+#: src/keys.rs:78
 msgid "Move to…"
 msgstr "Verschieben nach …"
 
-#: src/keys.rs:78
+#: src/keys.rs:79
 msgid "Copy to other pane"
 msgstr "In die andere Ansicht kopieren"
 
-#: src/keys.rs:79
+#: src/keys.rs:80
 msgid "Move to other pane"
 msgstr "In die andere Ansicht verschieben"
 
-#: src/keys.rs:81
+#: src/keys.rs:82
 msgid "Delete permanently"
 msgstr "Endgültig löschen"
 
-#: src/keys.rs:82
+#: src/keys.rs:83
 msgid "Restore from Trash"
 msgstr "Aus dem Papierkorb wiederherstellen"
 
-#: src/keys.rs:83 src/pane/build.rs:215
+#: src/keys.rs:84 src/pane/build.rs:215
 msgid "Empty Trash"
 msgstr "Papierkorb leeren"
 
-#: src/keys.rs:84
+#: src/keys.rs:85
 msgid "Extract here"
 msgstr "Hier entpacken"
 
-#: src/keys.rs:87
+#: src/keys.rs:88
 msgid "Select all"
 msgstr "Alles auswählen"
 
-#: src/keys.rs:87 src/keys.rs:88 src/keys.rs:89
+#: src/keys.rs:88 src/keys.rs:89 src/keys.rs:90
 msgid "Selection"
 msgstr "Auswahl"
 
-#: src/keys.rs:88
+#: src/keys.rs:89
 msgid "Invert selection"
 msgstr "Auswahl umkehren"
 
-#: src/keys.rs:89
+#: src/keys.rs:90
 msgid "Select by pattern"
 msgstr "Nach Muster auswählen"
 
-#: src/keys.rs:90 src/window/prefs.rs:274
+#: src/keys.rs:91 src/window/prefs.rs:274
 msgid "Icon view"
 msgstr "Symbolansicht"
 
-#: src/keys.rs:90 src/keys.rs:91 src/keys.rs:92 src/keys.rs:93 src/keys.rs:94
-#: src/keys.rs:95 src/keys.rs:96 src/keys.rs:97 src/keys.rs:98 src/keys.rs:99
-#: src/keys.rs:100 src/keys.rs:101 src/keys.rs:102 src/keys.rs:103
-#: src/keys.rs:104 src/keys.rs:105 src/keys.rs:106 src/keys.rs:107
-#: src/keys.rs:108 src/keys.rs:109 src/keys.rs:110 src/keys.rs:111
-#: src/keys.rs:112 src/keys.rs:113
+#: src/keys.rs:91 src/keys.rs:92 src/keys.rs:93 src/keys.rs:94 src/keys.rs:95
+#: src/keys.rs:96 src/keys.rs:97 src/keys.rs:98 src/keys.rs:99 src/keys.rs:100
+#: src/keys.rs:101 src/keys.rs:102 src/keys.rs:103 src/keys.rs:104
+#: src/keys.rs:105 src/keys.rs:106 src/keys.rs:107 src/keys.rs:108
+#: src/keys.rs:109 src/keys.rs:110 src/keys.rs:111 src/keys.rs:112
+#: src/keys.rs:113 src/keys.rs:114
 msgid "View"
 msgstr "Ansicht"
 
-#: src/keys.rs:91 src/window/prefs.rs:280
+#: src/keys.rs:92 src/window/prefs.rs:280
 msgid "List view"
 msgstr "Listenansicht"
 
-#: src/keys.rs:92 src/window/prefs.rs:286
+#: src/keys.rs:93 src/window/prefs.rs:286
 msgid "Compact view"
 msgstr "Kompakte Ansicht"
 
-#: src/keys.rs:93
+#: src/keys.rs:94
 msgid "Columns view"
 msgstr "Spaltenansicht"
 
-#: src/keys.rs:94
+#: src/keys.rs:95
 msgid "Show hidden files"
 msgstr "Verborgene Dateien anzeigen"
 
-#: src/keys.rs:95
+#: src/keys.rs:96
 msgid "Side pane"
 msgstr "Seitenleiste"
 
-#: src/keys.rs:96
+#: src/keys.rs:97
 msgid "Extra pane (split view)"
 msgstr "Zusätzliche Ansicht (geteilte Ansicht)"
 
-#: src/keys.rs:97
+#: src/keys.rs:98
 msgid "Swap the panes (split view)"
 msgstr "Ansichten tauschen (geteilte Ansicht)"
 
-#: src/keys.rs:98
+#: src/keys.rs:99
 msgid "Focus the pane under the mouse pointer"
 msgstr "Die Ansicht unter dem Mauszeiger auswählen"
 
-#: src/keys.rs:99
+#: src/keys.rs:100
 msgid "Info panel (for this folder)"
 msgstr "Infobereich (für diesen Ordner)"
 
-#: src/keys.rs:100
+#: src/keys.rs:101
 msgid "Statusbar"
 msgstr "Statusleiste"
 
-#: src/keys.rs:101
+#: src/keys.rs:102
 msgid "Main toolbar"
 msgstr "Werkzeugleiste"
 
-#: src/keys.rs:102
+#: src/keys.rs:103
 msgid "Location bar"
 msgstr "Ortsleiste"
 
-#: src/keys.rs:103
+#: src/keys.rs:104
 msgid "Reset view to defaults"
 msgstr "Ansicht auf Vorgaben zurücksetzen"
 
-#: src/keys.rs:104
+#: src/keys.rs:105
 msgid "Lock the toolbar (no dragging its buttons around)"
 msgstr "Werkzeugleiste sperren (Knöpfe nicht verschiebbar)"
 
-#: src/keys.rs:105 src/window.rs:488
+#: src/keys.rs:106 src/window.rs:489
 msgid "Zoom in"
 msgstr "Vergrößern"
 
-#: src/keys.rs:106 src/window.rs:486
+#: src/keys.rs:107 src/window.rs:487
 msgid "Zoom out"
 msgstr "Verkleinern"
 
-#: src/keys.rs:107 src/window.rs:487
+#: src/keys.rs:108 src/window.rs:488
 msgid "Normal size"
 msgstr "Normale Größe"
 
-#: src/keys.rs:108
+#: src/keys.rs:109
 msgid "Sort by name"
 msgstr "Nach Name sortieren"
 
-#: src/keys.rs:109
+#: src/keys.rs:110
 msgid "Sort by size"
 msgstr "Nach Größe sortieren"
 
-#: src/keys.rs:110
+#: src/keys.rs:111
 msgid "Sort by type"
 msgstr "Nach Typ sortieren"
 
-#: src/keys.rs:111
+#: src/keys.rs:112
 msgid "Sort by modification date"
 msgstr "Nach Änderungsdatum sortieren"
 
-#: src/keys.rs:112
+#: src/keys.rs:113
 msgid "Reversed order"
 msgstr "Umgekehrte Reihenfolge"
 
-#: src/keys.rs:113
+#: src/keys.rs:114
 msgid "Folders before files"
 msgstr "Ordner vor Dateien"
 
-#: src/keys.rs:114
+#: src/keys.rs:115
 msgid "Add bookmark"
 msgstr "Lesezeichen hinzufügen"
 
-#: src/keys.rs:114 src/keys.rs:115 src/keys.rs:116 src/keys.rs:117
-#: src/keys.rs:118
+#: src/keys.rs:115 src/keys.rs:116 src/keys.rs:117 src/keys.rs:118
+#: src/keys.rs:119
 msgid "Bookmarks and Help"
 msgstr "Lesezeichen und Hilfe"
 
-#: src/keys.rs:115
+#: src/keys.rs:116
 msgid "Edit bookmarks"
 msgstr "Lesezeichen bearbeiten"
 
-#: src/keys.rs:116
+#: src/keys.rs:117
 msgid "Preferences"
 msgstr "Einstellungen"
 
-#: src/keys.rs:117
+#: src/keys.rs:118
 msgid "Keyboard shortcuts"
 msgstr "Tastenkürzel"
 
-#: src/keys.rs:118
+#: src/keys.rs:119
 msgid "About"
 msgstr "Info"
 
-#: src/ops.rs:182
+#: src/ops.rs:183
 #, rust-format
 msgid "{n} second"
 msgid_plural "{n} seconds"
 msgstr[0] "{n} Sekunde"
 msgstr[1] "{n} Sekunden"
 
-#: src/ops.rs:183
+#: src/ops.rs:184
 #, rust-format
 msgid "{n} minute"
 msgid_plural "{n} minutes"
 msgstr[0] "{n} Minute"
 msgstr[1] "{n} Minuten"
 
-#: src/ops.rs:184
+#: src/ops.rs:185
 #, rust-format
 msgid "{n} hour"
 msgid_plural "{n} hours"
@@ -1285,214 +1353,211 @@ msgstr[0] "{n} Stunde"
 msgstr[1] "{n} Stunden"
 
 #. TRANSLATORS: "2 hours, 5 minutes".
-#: src/ops.rs:189
+#: src/ops.rs:190
 #, rust-format
 msgid "{hours}, {minutes}"
 msgstr "{hours}, {minutes}"
 
-#: src/ops.rs:190
+#: src/ops.rs:191
 #, rust-format
 msgid "approximately {hours}"
 msgstr "ungefähr {hours}"
 
-#: src/ops.rs:198 src/ops.rs:848
-#, rust-format
-msgid "Moving “{name}”"
-msgstr "„{name}“ wird verschoben"
-
 #: src/ops.rs:199
-#, rust-format
-msgid "Linking “{name}”"
-msgstr "„{name}“ wird verknüpft"
-
-#: src/ops.rs:200
 #, rust-format
 msgid "Copying “{name}”"
 msgstr "„{name}“ wird kopiert"
 
-#: src/ops.rs:210
+#: src/ops.rs:200 src/ops.rs:852
+#, rust-format
+msgid "Moving “{name}”"
+msgstr "„{name}“ wird verschoben"
+
+#: src/ops.rs:201
+#, rust-format
+msgid "Linking “{name}”"
+msgstr "„{name}“ wird verknüpft"
+
+#: src/ops.rs:211
 #, rust-format
 msgid "{done} of {total}"
 msgstr "{done} von {total}"
 
 #. TRANSLATORS: after "4 MB of 10 MB": " — 2 minutes left (1 MB/sec)".
-#: src/ops.rs:215
+#: src/ops.rs:216
 #, rust-format
 msgid " — {time} left ({rate}/sec)"
 msgstr " — noch {time} ({rate}/s)"
 
-#: src/ops.rs:223
+#: src/ops.rs:224
 #, rust-format
 msgid "{done} of {total} item"
 msgid_plural "{done} of {total} items"
 msgstr[0] "{done} von {total} Objekt"
 msgstr[1] "{done} von {total} Objekten"
 
-#: src/ops.rs:226
+#: src/ops.rs:227
 #, rust-format
 msgid " — {time} left"
 msgstr " — noch {time}"
 
-#: src/ops.rs:248
+#: src/ops.rs:249
 #, rust-format
 msgid "Folder, modified {date}"
 msgstr "Ordner, geändert {date}"
 
-#: src/ops.rs:250
+#: src/ops.rs:251
 #, rust-format
 msgid "{size}, modified {date}"
 msgstr "{size}, geändert {date}"
 
-#: src/ops.rs:510
+#: src/ops.rs:512
 #, rust-format
 msgid "Deleting “{name}”"
 msgstr "„{name}“ wird gelöscht"
 
-#: src/ops.rs:514 src/ops.rs:531 src/ops.rs:541
+#: src/ops.rs:517 src/ops.rs:534 src/ops.rs:544
 #, rust-format
 msgid "Error while deleting “{name}”"
 msgstr "Fehler beim Löschen von „{name}“"
 
-#: src/ops.rs:567 src/ops.rs:611 src/ops.rs:777
+#: src/ops.rs:570 src/ops.rs:614 src/ops.rs:781
 #, rust-format
 msgid "Error while copying “{name}”"
 msgstr "Fehler beim Kopieren von „{name}“"
 
-#: src/ops.rs:626 src/ops.rs:863
+#: src/ops.rs:630 src/ops.rs:868
 #, rust-format
 msgid "Error while reading “{name}”"
 msgstr "Fehler beim Lesen von „{name}“"
 
-#: src/ops.rs:714
+#: src/ops.rs:718
 #, rust-format
 msgid "“{name}” is different after copying"
 msgstr "„{name}“ ist nach dem Kopieren anders"
 
-#: src/ops.rs:715
-msgid ""
-"The copy doesn’t match the original (their CRC32 checksums differ): it was "
-"changed on the way. Retry copies it again; Skip keeps it as it is (and a "
-"moved file’s original too)."
+#: src/ops.rs:719
+msgid "The copy doesn’t match the original (their CRC32 checksums differ): it was changed on the way. Retry copies it again; Skip keeps it as it is (and a moved file’s original too)."
 msgstr "Die Kopie stimmt nicht mit dem Original überein (ihre CRC32-Prüfsummen unterscheiden sich): Sie wurde unterwegs verändert. „Wiederholen“ kopiert sie erneut; „Überspringen“ behält sie, wie sie ist (und bei einer verschobenen Datei auch das Original)."
 
-#: src/ops.rs:717
+#: src/ops.rs:721
 #, rust-format
 msgid "Error while checking “{name}”"
 msgstr "Fehler beim Prüfen von „{name}“"
 
-#: src/ops.rs:793
+#: src/ops.rs:797
 #, rust-format
 msgid "Checking “{name}”"
 msgstr "„{name}“ wird geprüft"
 
-#: src/ops.rs:910
+#: src/ops.rs:915
 #, rust-format
 msgid "Error while moving “{name}”"
 msgstr "Fehler beim Verschieben von „{name}“"
 
-#: src/ops.rs:943 src/ops.rs:1019 src/ops.rs:1060 src/ops.rs:1081
-#: src/ops.rs:1511
+#: src/ops.rs:944 src/ops.rs:1020 src/ops.rs:1060 src/ops.rs:1080
+#: src/ops.rs:1510
 msgid "Preparing…"
 msgstr "Wird vorbereitet …"
 
-#: src/ops.rs:952
+#: src/ops.rs:953
 msgid "The destination is inside the source folder."
 msgstr "Das Ziel liegt innerhalb des Quellordners."
 
-#: src/ops.rs:954
+#: src/ops.rs:956
 #, rust-format
 msgid "Cannot copy “{name}” into itself"
 msgstr "„{name}“ kann nicht in sich selbst kopiert werden"
 
-#: src/ops.rs:954
+#: src/ops.rs:956
 #, rust-format
 msgid "Cannot move “{name}” into itself"
 msgstr "„{name}“ kann nicht in sich selbst verschoben werden"
 
 #. TRANSLATORS: the name of a link made beside its target.
-#: src/ops.rs:982
+#: src/ops.rs:984
 #, rust-format
 msgid "Link to {name}"
 msgstr "Verknüpfung mit {name}"
 
-#: src/ops.rs:996
+#: src/ops.rs:998
 #, rust-format
 msgid "Cannot create link to “{name}”"
 msgstr "Verknüpfung mit „{name}“ kann nicht angelegt werden"
 
-#: src/ops.rs:1031
+#: src/ops.rs:1032
 #, rust-format
 msgid "Trashing “{name}”"
 msgstr "„{name}“ wird in den Papierkorb verschoben"
 
-#: src/ops.rs:1035
+#: src/ops.rs:1036
 #, rust-format
 msgid "“{name}” can’t be put in the trash. Delete it permanently?"
 msgstr "„{name}“ kann nicht in den Papierkorb verschoben werden. Endgültig löschen?"
 
-#: src/ops.rs:1138
+#: src/ops.rs:1137
 #, rust-format
 msgid "Paused — {progress}"
 msgstr "Angehalten — {progress}"
 
-#: src/ops.rs:1173
+#: src/ops.rs:1172
 msgid "File Operations"
 msgstr "Dateivorgänge"
 
-#: src/ops.rs:1298
+#: src/ops.rs:1297
 msgid "Pause"
 msgstr "Anhalten"
 
-#: src/ops.rs:1298
+#: src/ops.rs:1297
 msgid "Resume"
 msgstr "Fortsetzen"
 
-#: src/ops.rs:1323 src/window.rs:3126
+#: src/ops.rs:1322 src/window.rs:3139
 msgid "Cancel"
 msgstr "Abbrechen"
 
-#: src/ops.rs:1327
+#: src/ops.rs:1326
 msgid "Waiting for other operations…"
 msgstr "Wartet auf andere Vorgänge …"
 
-#: src/ops.rs:1330
+#: src/ops.rs:1329
 msgid "Start now, alongside the running operations"
 msgstr "Jetzt starten, neben den laufenden Vorgängen"
 
-#: src/ops.rs:1397
+#: src/ops.rs:1396
 #, rust-format
 msgid "Copying {what} to “{folder}”"
 msgstr "{what} wird nach „{folder}“ kopiert"
 
-#: src/ops.rs:1398
+#: src/ops.rs:1397
 #, rust-format
 msgid "Moving {what} to “{folder}”"
 msgstr "{what} wird nach „{folder}“ verschoben"
 
-#: src/ops.rs:1399
+#: src/ops.rs:1398
 #, rust-format
 msgid "Creating links to {what}"
 msgstr "Verknüpfungen mit {what} werden angelegt"
 
-#: src/ops.rs:1402
+#: src/ops.rs:1401
 #, rust-format
 msgid "Moving {n} item to the Trash"
 msgid_plural "Moving {n} items to the Trash"
 msgstr[0] "{n} Objekt wird in den Papierkorb verschoben"
 msgstr[1] "{n} Objekte werden in den Papierkorb verschoben"
 
-#: src/ops.rs:1403
+#: src/ops.rs:1402
 #, rust-format
 msgid "Deleting {n} item"
 msgid_plural "Deleting {n} items"
 msgstr[0] "{n} Objekt wird gelöscht"
 msgstr[1] "{n} Objekte werden gelöscht"
 
-#: src/ops.rs:1404
+#: src/ops.rs:1403
 msgid "Emptying the Trash"
 msgstr "Papierkorb wird geleert"
 
-#: src/ops.rs:1762
+#: src/ops.rs:1761
 #, rust-format
 msgid "{n} Item"
 msgid_plural "{n} Items"
@@ -1514,216 +1579,220 @@ msgstr "Verschieben von {what}"
 msgid "Link of {what}"
 msgstr "Verknüpfen von {what}"
 
-#: src/ops.rs:1775
+#: src/ops.rs:1776
 #, rust-format
 msgid "Move to Trash of {what}"
 msgstr "In den Papierkorb verschieben von {what}"
 
-#: src/ops.rs:1776
+#: src/ops.rs:1778
 #, rust-format
 msgid "Restore of {what}"
 msgstr "Wiederherstellen von {what}"
 
-#: src/ops.rs:1777
+#: src/ops.rs:1780
 #, rust-format
 msgid "Rename of {what}"
 msgstr "Umbenennen von {what}"
 
-#: src/ops.rs:1778
+#: src/ops.rs:1782
 #, rust-format
 msgid "Creation of Folder {what}"
 msgstr "Anlegen des Ordners {what}"
 
-#: src/ops.rs:1778
+#: src/ops.rs:1782
 #, rust-format
 msgid "Creation of {what}"
 msgstr "Anlegen von {what}"
 
-#: src/ops.rs:1779
+#: src/ops.rs:1784
 #, rust-format
 msgid "Change of Permissions of {what}"
 msgstr "Ändern der Zugriffsrechte von {what}"
 
-#: src/ops.rs:1780
+#: src/ops.rs:1786
 #, rust-format
 msgid "Change of Owner or Group of {what}"
 msgstr "Ändern von Besitzer oder Gruppe von {what}"
 
-#: src/ops.rs:1787
+#: src/ops.rs:1793
 #, rust-format
 msgid "_Undo {action}"
 msgstr "{action} _rückgängig machen"
 
-#: src/ops.rs:1792
+#: src/ops.rs:1798
 #, rust-format
 msgid "_Redo {action}"
 msgstr "{action} _wiederholen"
 
-#: src/ops.rs:1804
+#: src/ops.rs:1810
 msgid "There is nothing to undo."
 msgstr "Es gibt nichts rückgängig zu machen."
 
-#: src/ops.rs:1813
+#: src/ops.rs:1819
 msgid "There is nothing to redo."
 msgstr "Es gibt nichts zu wiederholen."
 
-#: src/ops.rs:1833
+#: src/ops.rs:1839
 msgid "Nothing to do: the items are gone."
 msgstr "Nichts zu tun: Die Objekte sind nicht mehr da."
 
-#: src/ops.rs:1844
+#: src/ops.rs:1850
 msgid "Nothing to undo: the item is gone."
 msgstr "Nichts rückgängig zu machen: Das Objekt ist nicht mehr da."
 
-#: src/ops.rs:1866
+#: src/ops.rs:1872
 #, rust-format
 msgid "“{name}” is already used."
 msgstr "„{name}“ wird bereits verwendet."
 
-#: src/ops.rs:1882
+#: src/ops.rs:1888
 msgid "Only local files can change owner or group."
 msgstr "Nur bei lokalen Dateien können Besitzer oder Gruppe geändert werden."
 
-#: src/ops.rs:1899
+#: src/ops.rs:1905
 msgid "Nothing to undo: the copies are gone or replaced other files."
 msgstr "Nichts rückgängig zu machen: Die Kopien sind nicht mehr da oder haben andere Dateien ersetzt."
 
-#: src/ops.rs:1905
+#: src/ops.rs:1911
 msgid "Nothing to undo: the moved items are gone."
 msgstr "Nichts rückgängig zu machen: Die verschobenen Objekte sind nicht mehr da."
 
-#: src/ops.rs:1941
+#: src/ops.rs:1947
 msgid "Nothing to redo: the items are gone."
 msgstr "Nichts zu wiederholen: Die Objekte sind nicht mehr da."
 
-#: src/ops.rs:1952
+#: src/ops.rs:1958
 msgid "Nothing to do: the items are no longer in the Trash."
 msgstr "Nichts zu tun: Die Objekte sind nicht mehr im Papierkorb."
 
-#: src/ops.rs:2003
+#: src/ops.rs:2009
 #, rust-format
 msgid "Checked {files}: every copy matches its original."
 msgstr "{files} geprüft: Jede Kopie stimmt mit ihrem Original überein."
 
-#: src/ops.rs:2007
+#: src/ops.rs:2013
 #, rust-format
 msgid "… and {n} more"
 msgstr "… und {n} weitere"
 
-#: src/ops.rs:2013
+#: src/ops.rs:2019
 #, rust-format
 msgid "{n} copy doesn’t match its original"
 msgid_plural "{n} copies don’t match their originals"
 msgstr[0] "{n} Kopie stimmt nicht mit ihrem Original überein"
 msgstr[1] "{n} Kopien stimmen nicht mit ihren Originalen überein"
 
-#: src/ops.rs:2017
+#: src/ops.rs:2023
 #, rust-format
-msgid ""
-"They were kept as they are, and the originals of moved files were kept too. "
-"{n} other file matched."
-msgid_plural ""
-"They were kept as they are, and the originals of moved files were kept too. "
-"{n} other files matched."
+msgid "They were kept as they are, and the originals of moved files were kept too. {n} other file matched."
+msgid_plural "They were kept as they are, and the originals of moved files were kept too. {n} other files matched."
 msgstr[0] "Sie wurden behalten, wie sie sind, ebenso die Originale verschobener Dateien. {n} weitere Datei stimmte überein."
 msgstr[1] "Sie wurden behalten, wie sie sind, ebenso die Originale verschobener Dateien. {n} weitere Dateien stimmten überein."
 
-#: src/ops.rs:2031
+#: src/ops.rs:2037
 msgid "Process completed"
 msgstr "Vorgang abgeschlossen"
 
-#: src/ops.rs:2048
+#: src/ops.rs:2054
 #, rust-format
 msgid "Merge folder “{name}”?"
 msgstr "Ordner „{name}“ zusammenführen?"
 
-#: src/ops.rs:2050
+#: src/ops.rs:2056
 #, rust-format
 msgid "Replace folder “{name}”?"
 msgstr "Ordner „{name}“ ersetzen?"
 
-#: src/ops.rs:2052
+#: src/ops.rs:2058
 #, rust-format
 msgid "Replace file “{name}”?"
 msgstr "Datei „{name}“ ersetzen?"
 
-#: src/ops.rs:2055
+#: src/ops.rs:2061
 #, rust-format
 msgid ""
 "A folder with the same name already exists in “{folder}”.\n"
 "Merging will ask before replacing any files in it that conflict."
-msgstr "In „{folder}“ gibt es bereits einen Ordner mit demselben Namen.\nBeim Zusammenführen wird nachgefragt, bevor darin Dateien ersetzt werden, die sich überschneiden."
+msgstr ""
+"In „{folder}“ gibt es bereits einen Ordner mit demselben Namen.\n"
+"Beim Zusammenführen wird nachgefragt, bevor darin Dateien ersetzt werden, die sich überschneiden."
 
-#: src/ops.rs:2057
+#: src/ops.rs:2063
 #, rust-format
 msgid ""
 "Another folder with the same name already exists in “{folder}”.\n"
 "Replacing it will overwrite its content."
-msgstr "In „{folder}“ gibt es bereits einen anderen Ordner mit demselben Namen.\nBeim Ersetzen wird sein Inhalt überschrieben."
+msgstr ""
+"In „{folder}“ gibt es bereits einen anderen Ordner mit demselben Namen.\n"
+"Beim Ersetzen wird sein Inhalt überschrieben."
 
-#: src/ops.rs:2059
+#: src/ops.rs:2065
 #, rust-format
 msgid ""
 "Another file with the same name already exists in “{folder}”.\n"
 "Replacing it will overwrite its content."
-msgstr "In „{folder}“ gibt es bereits eine andere Datei mit demselben Namen.\nBeim Ersetzen wird ihr Inhalt überschrieben."
+msgstr ""
+"In „{folder}“ gibt es bereits eine andere Datei mit demselben Namen.\n"
+"Beim Ersetzen wird ihr Inhalt überschrieben."
 
-#: src/ops.rs:2068
+#: src/ops.rs:2074
 msgid "File conflict"
 msgstr "Dateikonflikt"
 
-#: src/ops.rs:2071
+#: src/ops.rs:2077
 #, rust-format
 msgid ""
 "Original: {original}\n"
 "Replace with: {new}"
-msgstr "Original: {original}\nErsetzen durch: {new}"
+msgstr ""
+"Original: {original}\n"
+"Ersetzen durch: {new}"
 
-#: src/ops.rs:2073
+#: src/ops.rs:2079
 msgid "Apply this action to all conflicts"
 msgstr "Diese Aktion auf alle Konflikte anwenden"
 
-#: src/ops.rs:2081
+#: src/ops.rs:2087
 msgid "Select a _new name for the destination"
 msgstr "Einen _neuen Namen für das Ziel wählen"
 
-#: src/ops.rs:2087 src/window/prefs.rs:1543
+#: src/ops.rs:2093 src/window/prefs.rs:1558
 msgid "R_eset"
 msgstr "_Zurücksetzen"
 
-#: src/ops.rs:2098 src/ops.rs:2163
+#: src/ops.rs:2104 src/ops.rs:2169
 msgid "_Skip"
 msgstr "Ü_berspringen"
 
-#: src/ops.rs:2099
+#: src/ops.rs:2105
 msgid "_Keep Both"
 msgstr "_Beide behalten"
 
-#: src/ops.rs:2100
+#: src/ops.rs:2106
 msgid "_Merge"
 msgstr "_Zusammenführen"
 
-#: src/ops.rs:2100
+#: src/ops.rs:2106
 msgid "_Replace"
 msgstr "_Ersetzen"
 
-#: src/ops.rs:2114 src/sidebar.rs:837
+#: src/ops.rs:2120 src/sidebar.rs:842
 msgid "_Rename"
 msgstr "_Umbenennen"
 
-#: src/ops.rs:2162
+#: src/ops.rs:2168
 msgid "S_kip All"
 msgstr "Alle übe_rspringen"
 
-#: src/ops.rs:2165 src/window/menus.rs:175
+#: src/ops.rs:2171 src/window/menus.rs:176
 msgid "_Delete Permanently"
 msgstr "Endgültig _löschen"
 
-#: src/ops.rs:2167
+#: src/ops.rs:2173
 msgid "_Retry"
 msgstr "_Wiederholen"
 
-#: src/ops.rs:2238
+#: src/ops.rs:2244
 #, rust-format
 msgid "Error removing file {path}: {reason}"
 msgstr "Fehler beim Entfernen der Datei {path}: {reason}"
@@ -1732,109 +1801,109 @@ msgstr "Fehler beim Entfernen der Datei {path}: {reason}"
 msgid "Folder"
 msgstr "Ordner"
 
-#: src/pane.rs:1194 src/sidebar.rs:1158 src/window.rs:2328
+#: src/pane.rs:1198 src/sidebar.rs:1163 src/window.rs:2339
 msgid "File System"
 msgstr "Dateisystem"
 
-#: src/pane.rs:1197 src/sidebar.rs:1129 src/window.rs:2323
+#: src/pane.rs:1201 src/sidebar.rs:1134 src/window.rs:2332
 msgid "Home"
 msgstr "Persönlicher Ordner"
 
-#: src/pane.rs:1337
-#, rust-format
-msgid "Could not open “{location}”: {error}"
-msgstr "„{location}“ konnte nicht geöffnet werden: {error}"
-
-#: src/pane.rs:1364
+#: src/pane.rs:1376
 #, rust-format
 msgid "Error while reading the folder: {error}"
 msgstr "Fehler beim Lesen des Ordners: {error}"
 
+#: src/pane.rs:1426
+#, rust-format
+msgid "Could not open “{location}”: {error}"
+msgstr "„{location}“ konnte nicht geöffnet werden: {error}"
+
 #. TRANSLATORS: a folder's number of items when it couldn't be counted.
-#: src/pane.rs:1552
+#: src/pane.rs:1598
 msgid "? items"
 msgstr "? Objekte"
 
 #. TRANSLATORS: the type of a link: "Link (PNG image)".
-#: src/pane.rs:1915
+#: src/pane.rs:1961
 #, rust-format
 msgid "Link ({type})"
 msgstr "Verknüpfung ({type})"
 
-#: src/pane.rs:2746 src/window/menus.rs:64
+#: src/pane.rs:2787 src/window/menus.rs:65
 msgid "_Visible Columns…"
 msgstr "_Sichtbare Spalten …"
 
-#: src/pane.rs:3845 src/props.rs:1250
+#: src/pane.rs:3886 src/props.rs:1260
 msgid "Could not change the emblems"
 msgstr "Die Embleme konnten nicht geändert werden"
 
-#: src/pane.rs:3861
+#: src/pane.rs:3902
 msgid "Could not change the background"
 msgstr "Der Hintergrund konnte nicht geändert werden"
 
 #. TRANSLATORS: after the number of items in the status bar.
-#: src/pane.rs:3945
+#: src/pane.rs:3986
 #, rust-format
 msgid ", Free space: {size}"
 msgstr ", freier Speicher: {size}"
 
-#: src/pane.rs:3948
+#: src/pane.rs:3989
 #, rust-format
 msgid "Loading… {n} item"
 msgid_plural "Loading… {n} items"
 msgstr[0] "Wird geladen … {n} Objekt"
 msgstr[1] "Wird geladen … {n} Objekte"
 
-#: src/pane.rs:3954
+#: src/pane.rs:3995
 #, rust-format
 msgid " ({n} hidden)"
 msgstr " ({n} verborgen)"
 
 #. TRANSLATORS: {count} is a folder's number of items: "12 items".
-#: src/pane.rs:3966
+#: src/pane.rs:4007
 #, rust-format
 msgid "“{name}” selected (containing {count})"
 msgstr "„{name}“ ausgewählt (enthält {count})"
 
-#: src/pane.rs:3967
+#: src/pane.rs:4008
 #, rust-format
 msgid "“{name}” selected"
 msgstr "„{name}“ ausgewählt"
 
-#: src/pane.rs:3970
+#: src/pane.rs:4011
 #, rust-format
 msgid "“{name}” selected ({size})"
 msgstr "„{name}“ ausgewählt ({size})"
 
-#: src/pane.rs:3978
+#: src/pane.rs:4019
 #, rust-format
 msgid "{n} item selected ({size})"
 msgid_plural "{n} items selected ({size})"
 msgstr[0] "{n} Objekt ausgewählt ({size})"
 msgstr[1] "{n} Objekte ausgewählt ({size})"
 
-#: src/pane.rs:3979 src/pane.rs:3984
+#: src/pane.rs:4020 src/pane.rs:4025
 #, rust-format
 msgid "{n} folder selected"
 msgid_plural "{n} folders selected"
 msgstr[0] "{n} Ordner ausgewählt"
 msgstr[1] "{n} Ordner ausgewählt"
 
-#: src/pane.rs:3982
+#: src/pane.rs:4023
 #, rust-format
 msgid "{folders}, {others} ({size})"
 msgstr "{folders}, {others} ({size})"
 
-#: src/pane.rs:3985
+#: src/pane.rs:4026
 #, rust-format
 msgid "{n} other item selected"
 msgid_plural "{n} other items selected"
 msgstr[0] "{n} weiteres Objekt ausgewählt"
 msgstr[1] "{n} weitere Objekte ausgewählt"
 
-#: src/pane/build.rs:112 src/search.rs:719 src/window/prefs.rs:1340
-#: src/window/prefs.rs:1652 src/window/prefs.rs:1887
+#: src/pane/build.rs:112 src/search.rs:719 src/window/prefs.rs:1355
+#: src/window/prefs.rs:1663 src/window/prefs.rs:1882
 msgid "Name"
 msgstr "Name"
 
@@ -1850,399 +1919,388 @@ msgstr "Die ausgewählten Objekte dorthin zurückverschieben, wo sie gelöscht w
 msgid "Delete all items in the Trash"
 msgstr "Alle Objekte im Papierkorb löschen"
 
-#: src/props.rs:76
+#: src/props.rs:75
 #, rust-format
 msgid "{n} item, totalling {size}"
 msgid_plural "{n} items, totalling {size}"
 msgstr[0] "{n} Objekt, insgesamt {size}"
 msgstr[1] "{n} Objekte, insgesamt {size}"
 
-#: src/props.rs:89 src/props.rs:167
+#: src/props.rs:88 src/props.rs:218
 #, rust-format
 msgid "{name} Properties"
 msgstr "Eigenschaften von {name}"
 
-#: src/props.rs:91
+#: src/props.rs:90
 #, rust-format
 msgid "Properties of {n} item"
 msgid_plural "Properties of {n} items"
 msgstr[0] "Eigenschaften von {n} Objekt"
 msgstr[1] "Eigenschaften von {n} Objekten"
 
-#: src/props.rs:116
+#: src/props.rs:115
 msgid "Could not read properties"
 msgstr "Eigenschaften konnten nicht gelesen werden"
 
-#: src/props.rs:116
+#: src/props.rs:115
 msgid "The file may have been removed."
 msgstr "Die Datei wurde möglicherweise entfernt."
 
-#: src/props.rs:138
+#: src/props.rs:125
+msgid "Basic"
+msgstr "Allgemein"
+
+#: src/props.rs:139
+msgid "Notes"
+msgstr "Notizen"
+
+#: src/props.rs:159 src/window/prefs.rs:603
+msgid "Media Info"
+msgstr "Medieninfo"
+
+#: src/props.rs:166 src/window/prefs.rs:56
+msgid "Checksums"
+msgstr "Prüfsummen"
+
+#: src/props.rs:189
 msgid "Choose another icon"
 msgstr "Ein anderes Symbol wählen"
 
-#: src/props.rs:169
+#: src/props.rs:220
 msgid "Could not rename"
 msgstr "Umbenennen nicht möglich"
 
-#: src/props.rs:180
+#: src/props.rs:231
 msgid "Folder (inode/directory)"
 msgstr "Ordner (inode/directory)"
 
-#: src/props.rs:184
+#: src/props.rs:235
 msgid "Type:"
 msgstr "Typ:"
 
-#: src/props.rs:188
+#: src/props.rs:239
 msgid "Link target:"
 msgstr "Verknüpfungsziel:"
 
-#: src/props.rs:194 src/props.rs:247
+#: src/props.rs:245 src/props.rs:298
 msgid "Counting…"
 msgstr "Wird gezählt …"
 
-#: src/props.rs:198 src/util.rs:335
+#: src/props.rs:249 src/util.rs:335
 msgid "Unknown"
 msgstr "Unbekannt"
 
-#: src/props.rs:200 src/props.rs:250
+#: src/props.rs:251 src/props.rs:301
 msgid "Contents:"
 msgstr "Inhalt:"
 
-#: src/props.rs:203
+#: src/props.rs:254
 #, rust-format
 msgid "{size} ({bytes} byte)"
 msgid_plural "{size} ({bytes} bytes)"
 msgstr[0] "{size} ({bytes} Byte)"
 msgstr[1] "{size} ({bytes} Bytes)"
 
-#: src/props.rs:204
+#: src/props.rs:255
 msgid "Size:"
 msgstr "Größe:"
 
-#: src/props.rs:208 src/props.rs:253
+#: src/props.rs:259 src/props.rs:304
 msgid "Location:"
 msgstr "Ort:"
 
-#: src/props.rs:215
+#: src/props.rs:266
 msgid "Free space:"
 msgstr "Freier Speicher:"
 
-#: src/props.rs:217
+#: src/props.rs:268
 #, rust-format
 msgid "{free} of {total}"
 msgstr "{free} von {total}"
 
-#: src/props.rs:230
+#: src/props.rs:281
 msgid "Disk usage:"
 msgstr "Speicherbelegung:"
 
-#: src/props.rs:236
+#: src/props.rs:287
 msgid "Accessed:"
 msgstr "Zugegriffen:"
 
-#: src/props.rs:236
+#: src/props.rs:287
 msgid "Created:"
 msgstr "Erstellt:"
 
-#: src/props.rs:236
+#: src/props.rs:287
 msgid "Modified:"
 msgstr "Geändert:"
 
-#: src/props.rs:255
-msgid "Basic"
-msgstr "Allgemein"
-
-#: src/props.rs:278
+#: src/props.rs:327
 msgid "Group:"
 msgstr "Gruppe:"
 
-#: src/props.rs:278
+#: src/props.rs:327
 msgid "Owner:"
 msgstr "Besitzer:"
 
-#: src/props.rs:287
+#: src/props.rs:336
 msgid "Execute"
 msgstr "Ausführen"
 
-#: src/props.rs:287
+#: src/props.rs:336
 msgid "Read"
 msgstr "Lesen"
 
-#: src/props.rs:287
+#: src/props.rs:336
 msgid "Write"
 msgstr "Schreiben"
 
-#: src/props.rs:304
+#: src/props.rs:353
 #, rust-format
 msgid "Mode: {mode}"
 msgstr "Modus: {mode}"
 
-#: src/props.rs:306
+#: src/props.rs:355
 msgid "Mode: mixed"
 msgstr "Modus: gemischt"
 
 #. TRANSLATORS: after "Mode: 0755", for folders.
-#: src/props.rs:309
+#: src/props.rs:358
 msgid "(execute = enter folder)"
 msgstr "(Ausführen = Ordner betreten)"
 
-#: src/props.rs:333
+#: src/props.rs:382
 msgid "Could not change permissions"
 msgstr "Zugriffsrechte konnten nicht geändert werden"
 
-#: src/props.rs:345
+#: src/props.rs:394
 msgid "Others"
 msgstr "Andere"
 
-#: src/props.rs:359
+#: src/props.rs:408
 msgid "Special"
 msgstr "Besondere"
 
-#: src/props.rs:365
+#: src/props.rs:414
 msgid "Run as the file’s owner, whoever starts it"
 msgstr "Als Besitzer der Datei ausführen, egal wer sie startet"
 
-#: src/props.rs:365
+#: src/props.rs:414
 msgid "Set user ID"
 msgstr "Benutzerkennung setzen"
 
-#: src/props.rs:366
-msgid ""
-"Run with the file’s group; in a folder, new items get the folder’s group"
+#: src/props.rs:415
+msgid "Run with the file’s group; in a folder, new items get the folder’s group"
 msgstr "Mit der Gruppe der Datei ausführen; in einem Ordner erhalten neue Objekte die Gruppe des Ordners"
 
-#: src/props.rs:366
+#: src/props.rs:415
 msgid "Set group ID"
 msgstr "Gruppenkennung setzen"
 
-#: src/props.rs:367
+#: src/props.rs:416
 msgid "In a folder: only an item’s owner can delete or rename it"
 msgstr "In einem Ordner: Nur der Besitzer eines Objekts kann es löschen oder umbenennen"
 
-#: src/props.rs:367
+#: src/props.rs:416
 msgid "Sticky"
 msgstr "Sticky"
 
-#: src/props.rs:381
+#: src/props.rs:430
 msgid "Apply to Enclosed Items…"
 msgstr "Auf enthaltene Objekte anwenden …"
 
-#: src/props.rs:383
-msgid ""
-"Give the folders inside these permissions and this group, and the files "
-"inside the same read and write permissions and group"
+#: src/props.rs:432
+msgid "Give the folders inside these permissions and this group, and the files inside the same read and write permissions and group"
 msgstr "Den enthaltenen Ordnern diese Zugriffsrechte und diese Gruppe geben, den enthaltenen Dateien dieselben Lese- und Schreibrechte und dieselbe Gruppe"
 
-#: src/props.rs:406
+#: src/props.rs:455
 msgid "Apply these permissions to everything inside?"
 msgstr "Diese Zugriffsrechte auf alles darin anwenden?"
 
-#: src/props.rs:409
-msgid ""
-"Every folder inside gets the same permissions, owner and group, every file "
-"the same read and write permissions, owner and group. This can’t be undone."
+#: src/props.rs:458
+msgid "Every folder inside gets the same permissions, owner and group, every file the same read and write permissions, owner and group. This can’t be undone."
 msgstr "Jeder enthaltene Ordner erhält dieselben Zugriffsrechte, denselben Besitzer und dieselbe Gruppe, jede Datei dieselben Lese- und Schreibrechte, denselben Besitzer und dieselbe Gruppe. Das kann nicht rückgängig gemacht werden."
 
-#: src/props.rs:411
-msgid ""
-"Every folder inside gets the same permissions and group, every file the same "
-"read and write permissions and group. This can’t be undone."
+#: src/props.rs:460
+msgid "Every folder inside gets the same permissions and group, every file the same read and write permissions and group. This can’t be undone."
 msgstr "Jeder enthaltene Ordner erhält dieselben Zugriffsrechte und dieselbe Gruppe, jede Datei dieselben Lese- und Schreibrechte und dieselbe Gruppe. Das kann nicht rückgängig gemacht werden."
 
-#: src/props.rs:421
+#: src/props.rs:470
 msgid "Applying…"
 msgstr "Wird angewendet …"
 
-#: src/props.rs:428
+#: src/props.rs:477
 #, rust-format
 msgid "Changed {items}."
 msgstr "{items} geändert."
 
 #. TRANSLATORS: {items} and {failed} are numbers of items: "12 items".
-#: src/props.rs:430
+#: src/props.rs:479
 #, rust-format
 msgid "Changed {items}; {failed} couldn’t be changed (not yours?)."
 msgstr "{items} geändert; {failed} konnten nicht geändert werden (nicht Ihre?)."
 
-#: src/props.rs:438
+#: src/props.rs:487
 msgid "Security context:"
 msgstr "Sicherheitskontext:"
 
-#: src/props.rs:442
+#: src/props.rs:491
 msgid "You are not the owner, so you can't change these permissions."
 msgstr "Sie sind nicht der Besitzer und können diese Zugriffsrechte daher nicht ändern."
 
-#: src/props.rs:454
+#: src/props.rs:502
 #, rust-format
-msgid ""
-"Select an application to open “{name}” and other files of type “{type}”:"
+msgid "Select an application to open “{name}” and other files of type “{type}”:"
 msgstr "Wählen Sie eine Anwendung, um „{name}“ und andere Dateien vom Typ „{type}“ zu öffnen:"
 
-#: src/props.rs:465
+#: src/props.rs:513
 msgid "_Set as Default"
 msgstr "Als _Vorgabe festlegen"
 
-#: src/props.rs:474
+#: src/props.rs:522
 msgid "Could not set default application"
 msgstr "Vorgabeanwendung konnte nicht festgelegt werden"
 
-#: src/props.rs:486
-msgid "Notes"
-msgstr "Notizen"
-
-#: src/props.rs:506 src/window/prefs.rs:603
-msgid "Media Info"
-msgstr "Medieninfo"
-
-#: src/props.rs:513 src/window/prefs.rs:56
-msgid "Checksums"
-msgstr "Prüfsummen"
-
-#: src/props.rs:532
+#: src/props.rs:542
 msgid "No checksums are chosen: pick them in Preferences → Checksums."
 msgstr "Es sind keine Prüfsummen gewählt: Wählen Sie sie unter Einstellungen → Prüfsummen."
 
-#: src/props.rs:535
-msgid ""
-"A checksum shows whether a file is exactly the one it should be: compare it "
-"with the one its source gives. Each is worked out from the whole file when "
-"you ask for it."
+#: src/props.rs:545
+msgid "A checksum shows whether a file is exactly the one it should be: compare it with the one its source gives. Each is worked out from the whole file when you ask for it."
 msgstr "Eine Prüfsumme zeigt, ob eine Datei genau die ist, die sie sein soll: Vergleichen Sie sie mit der, die ihre Quelle angibt. Jede wird auf Wunsch aus der ganzen Datei berechnet."
 
-#: src/props.rs:588
+#: src/props.rs:598
 msgid "Calculate"
 msgstr "Berechnen"
 
-#: src/props.rs:591
+#: src/props.rs:601
 msgid "Copy it to the clipboard"
 msgstr "In die Zwischenablage kopieren"
 
 #. TRANSLATORS: a button's name for screen readers: "Copy SHA-256".
-#: src/props.rs:596
+#: src/props.rs:606
 #, rust-format
 msgid "Copy {checksum}"
 msgstr "{checksum} kopieren"
 
-#: src/props.rs:617
+#: src/props.rs:627
 msgid "Calculate _All"
 msgstr "_Alle berechnen"
 
-#: src/props.rs:618
-msgid ""
-"Work out every checksum above that has no result yet (all of them again if "
-"each has one), reading the file only once"
+#: src/props.rs:628
+msgid "Work out every checksum above that has no result yet (all of them again if each has one), reading the file only once"
 msgstr "Jede Prüfsumme oben berechnen, die noch kein Ergebnis hat (alle erneut, wenn jede eines hat), wobei die Datei nur einmal gelesen wird"
 
-#: src/props.rs:663
+#: src/props.rs:673
 #, rust-format
 msgid "{checksums}: starting…"
 msgstr "{checksums}: wird gestartet …"
 
 #. TRANSLATORS: the checksums being worked out, then how far: "SHA-256: 1.2 GB of 4 GB, 10 s left".
-#: src/props.rs:692
+#: src/props.rs:702
 #, rust-format
 msgid "{checksums}: {progress}"
 msgstr "{checksums}: {progress}"
 
-#: src/props.rs:705
+#: src/props.rs:715
 #, rust-format
 msgid "Couldn’t read the file: {error}"
 msgstr "Die Datei konnte nicht gelesen werden: {error}"
 
-#: src/props.rs:748
+#: src/props.rs:758
 msgid "Reading media information…"
 msgstr "Medieninformationen werden gelesen …"
 
-#: src/props.rs:767
+#: src/props.rs:777
 #, rust-format
 msgid ""
 "mediainfo reported an error:\n"
 "{error}"
-msgstr "mediainfo hat einen Fehler gemeldet:\n{error}"
+msgstr ""
+"mediainfo hat einen Fehler gemeldet:\n"
+"{error}"
 
-#: src/props.rs:769
+#: src/props.rs:779
 msgid "mediainfo found no media information in this file."
 msgstr "mediainfo hat in dieser Datei keine Medieninformationen gefunden."
 
-#: src/props.rs:772
+#: src/props.rs:782
 #, rust-format
 msgid "Could not read mediainfo’s output: {error}"
 msgstr "Die Ausgabe von mediainfo konnte nicht gelesen werden: {error}"
 
-#: src/props.rs:774
+#: src/props.rs:784
 #, rust-format
 msgid "Could not run mediainfo: {error}"
 msgstr "mediainfo konnte nicht ausgeführt werden: {error}"
 
 #. TRANSLATORS: a drive's used space and its share: "12 GB (40 %)".
-#: src/props.rs:911
+#: src/props.rs:921
 msgid "Used:"
 msgstr "Belegt:"
 
-#: src/props.rs:911
+#: src/props.rs:921
 #, rust-format
 msgid "{size} ({percent} %)"
 msgstr "{size} ({percent} %)"
 
-#: src/props.rs:912
+#: src/props.rs:922
 msgid "Free:"
 msgstr "Frei:"
 
-#: src/props.rs:913
+#: src/props.rs:923
 msgid "Total:"
 msgstr "Gesamt:"
 
-#: src/props.rs:915
+#: src/props.rs:925
 msgid "File system:"
 msgstr "Dateisystem:"
 
-#: src/props.rs:981
+#: src/props.rs:991
 msgid "Reading…"
 msgstr "Wird gelesen …"
 
-#: src/props.rs:1011
+#: src/props.rs:1021
 msgid "Select Custom Icon"
 msgstr "Eigenes Symbol wählen"
 
-#: src/props.rs:1013
+#: src/props.rs:1023
 msgid "_Revert"
 msgstr "_Zurücksetzen"
 
-#: src/props.rs:1016 src/sidebar.rs:741 src/window/menus.rs:178
-#: src/window/menus.rs:185
+#: src/props.rs:1026 src/sidebar.rs:746 src/window/menus.rs:179
+#: src/window/menus.rs:186
 msgid "_Open"
 msgstr "Ö_ffnen"
 
-#: src/props.rs:1049
+#: src/props.rs:1059
 msgid "Could not change the icon"
 msgstr "Das Symbol konnte nicht geändert werden"
 
-#: src/props.rs:1109
+#: src/props.rs:1119
 msgid "Could not change the owner"
 msgstr "Der Besitzer konnte nicht geändert werden"
 
-#: src/props.rs:1111
+#: src/props.rs:1121
 msgid "Only the administrator (root) can give an item to someone else"
 msgstr "Nur der Administrator (root) kann ein Objekt jemand anderem übertragen"
 
-#: src/props.rs:1128
+#: src/props.rs:1138
 msgid "Could not change the group"
 msgstr "Die Gruppe konnte nicht geändert werden"
 
-#: src/props.rs:1130
+#: src/props.rs:1140
 msgid "Only the owner can change the group"
 msgstr "Nur der Besitzer kann die Gruppe ändern"
 
-#: src/props.rs:1210
+#: src/props.rs:1220
 msgid "The icon theme has no emblems."
 msgstr "Das Symbolthema enthält keine Embleme."
 
-#: src/props.rs:1282
+#: src/props.rs:1292
 msgid "Could not save the note"
 msgstr "Die Notiz konnte nicht gespeichert werden"
 
-#: src/props.rs:1314
+#: src/props.rs:1324
 msgid "A note about this item, kept with it:"
 msgstr "Eine Notiz zu diesem Objekt, die bei ihm gespeichert wird:"
 
@@ -2388,9 +2446,7 @@ msgid "Click to show this section, drag onto another heading to move it there"
 msgstr "Klicken, um diesen Abschnitt anzuzeigen, auf eine andere Überschrift ziehen, um ihn dorthin zu verschieben"
 
 #: src/sidebar.rs:478
-msgid ""
-"Click to hide this section’s entries, drag onto another heading to move it "
-"there"
+msgid "Click to hide this section’s entries, drag onto another heading to move it there"
 msgstr "Klicken, um die Einträge dieses Abschnitts zu verbergen, auf eine andere Überschrift ziehen, um ihn dorthin zu verschieben"
 
 #: src/sidebar.rs:548
@@ -2410,108 +2466,112 @@ msgstr "Auswerfen"
 msgid "Unable to mount “{name}”"
 msgstr "„{name}“ kann nicht eingehängt werden"
 
-#: src/sidebar.rs:699
+#: src/sidebar.rs:700
 #, rust-format
 msgid "Unable to unmount “{name}”"
 msgstr "„{name}“ kann nicht ausgehängt werden"
 
-#: src/sidebar.rs:704
+#: src/sidebar.rs:705
 #, rust-format
 msgid "“{name}” can be removed safely"
 msgstr "„{name}“ kann sicher entfernt werden"
 
-#: src/sidebar.rs:705
+#: src/sidebar.rs:707
 #, rust-format
 msgid "Unable to safely remove “{name}”"
 msgstr "„{name}“ kann nicht sicher entfernt werden"
 
-#: src/sidebar.rs:709
+#: src/sidebar.rs:711
 #, rust-format
 msgid "“{name}” was ejected"
 msgstr "„{name}“ wurde ausgeworfen"
 
-#: src/sidebar.rs:711 src/sidebar.rs:713 src/sidebar.rs:715
+#: src/sidebar.rs:714 src/sidebar.rs:717 src/sidebar.rs:720
 #, rust-format
 msgid "Unable to eject “{name}”"
 msgstr "„{name}“ kann nicht ausgeworfen werden"
 
-#: src/sidebar.rs:742 src/window/menus.rs:179
+#: src/sidebar.rs:747 src/window/menus.rs:180
 msgid "Open in New _Tab"
 msgstr "In neuem _Reiter öffnen"
 
-#: src/sidebar.rs:743 src/window/menus.rs:180
+#: src/sidebar.rs:748 src/window/menus.rs:181
 msgid "Open in New _Window"
 msgstr "In neuem _Fenster öffnen"
 
-#: src/sidebar.rs:750
+#: src/sidebar.rs:755
 msgid "_Mount"
 msgstr "_Einhängen"
 
-#: src/sidebar.rs:772
+#: src/sidebar.rs:777
 msgid "_Safely Remove Drive"
 msgstr "Laufwerk _sicher entfernen"
 
-#: src/sidebar.rs:777
+#: src/sidebar.rs:782
 msgid "_Check for Media"
 msgstr "Auf Datenträger _prüfen"
 
-#: src/sidebar.rs:790
+#: src/sidebar.rs:795
 msgid "Re_name…"
 msgstr "_Umbenennen …"
 
-#: src/sidebar.rs:803 src/window.rs:3077 src/window/menus.rs:36
-#: src/window/menus.rs:223
+#: src/sidebar.rs:808 src/window.rs:3090 src/window/menus.rs:37
+#: src/window/menus.rs:224
 msgid "_Empty Trash"
 msgstr "Papierkorb _leeren"
 
-#: src/sidebar.rs:817 src/window/menus.rs:35 src/window/menus.rs:220
-#: src/window/menus.rs:257
+#: src/sidebar.rs:822 src/window/menus.rs:36 src/window/menus.rs:221
+#: src/window/menus.rs:258
 msgid "_Properties"
 msgstr "_Eigenschaften"
 
-#: src/sidebar.rs:834
+#: src/sidebar.rs:839
 msgid "Rename Bookmark"
 msgstr "Lesezeichen umbenennen"
 
-#: src/sidebar.rs:1235
+#: src/sidebar.rs:1240
 #, rust-format
 msgid "{name} (not mounted)"
 msgstr "{name} (nicht eingehängt)"
 
 #. TRANSLATORS: joins the names of two programs: "udiskie and Thunar".
-#: src/sidebar.rs:1634
+#: src/sidebar.rs:1639
 msgid " and "
 msgstr " und "
 
-#: src/sidebar.rs:1641
+#: src/sidebar.rs:1646
 #, rust-format
 msgid "{names} is mounting drives too"
 msgid_plural "{names} are mounting drives too"
 msgstr[0] "{names} hängt ebenfalls Laufwerke ein"
 msgstr[1] "{names} hängen ebenfalls Laufwerke ein"
 
-#: src/sidebar.rs:1645
+#: src/sidebar.rs:1650
 #, rust-format
 msgid ""
-"It runs separately from Arkha and mounts inserted drives and media by "
-"itself, whatever Arkha’s settings are, and Arkha can’t switch it off.\n"
+"It runs separately from Arkha and mounts inserted drives and media by itself, whatever Arkha’s settings are, and Arkha can’t switch it off.\n"
 "\n"
-"To leave mounting to Arkha, stop {names} from starting with your session "
-"(for example, remove it from your window manager’s autostart) and log in "
-"again.\n"
+"To leave mounting to Arkha, stop {names} from starting with your session (for example, remove it from your window manager’s autostart) and log in again.\n"
 "\n"
 "This message isn’t shown again."
 msgid_plural ""
-"They run separately from Arkha and mount inserted drives and media by "
-"themselves, whatever Arkha’s settings are, and Arkha can’t switch them off.\n"
+"They run separately from Arkha and mount inserted drives and media by themselves, whatever Arkha’s settings are, and Arkha can’t switch them off.\n"
 "\n"
-"To leave mounting to Arkha, stop {names} from starting with your session "
-"(for example, remove them from your window manager’s autostart) and log in "
-"again.\n"
+"To leave mounting to Arkha, stop {names} from starting with your session (for example, remove them from your window manager’s autostart) and log in again.\n"
 "\n"
 "This message isn’t shown again."
-msgstr[0] "Es läuft unabhängig von Arkha und hängt eingelegte Laufwerke und Datenträger selbst ein, egal wie Arkha eingestellt ist, und Arkha kann es nicht abschalten.\n\nUm das Einhängen Arkha zu überlassen, verhindern Sie, dass {names} mit Ihrer Sitzung startet (entfernen Sie es zum Beispiel aus dem Autostart Ihres Fenstermanagers), und melden Sie sich neu an.\n\nDiese Meldung wird nicht wieder angezeigt."
-msgstr[1] "Sie laufen unabhängig von Arkha und hängen eingelegte Laufwerke und Datenträger selbst ein, egal wie Arkha eingestellt ist, und Arkha kann sie nicht abschalten.\n\nUm das Einhängen Arkha zu überlassen, verhindern Sie, dass {names} mit Ihrer Sitzung starten (entfernen Sie sie zum Beispiel aus dem Autostart Ihres Fenstermanagers), und melden Sie sich neu an.\n\nDiese Meldung wird nicht wieder angezeigt."
+msgstr[0] ""
+"Es läuft unabhängig von Arkha und hängt eingelegte Laufwerke und Datenträger selbst ein, egal wie Arkha eingestellt ist, und Arkha kann es nicht abschalten.\n"
+"\n"
+"Um das Einhängen Arkha zu überlassen, verhindern Sie, dass {names} mit Ihrer Sitzung startet (entfernen Sie es zum Beispiel aus dem Autostart Ihres Fenstermanagers), und melden Sie sich neu an.\n"
+"\n"
+"Diese Meldung wird nicht wieder angezeigt."
+msgstr[1] ""
+"Sie laufen unabhängig von Arkha und hängen eingelegte Laufwerke und Datenträger selbst ein, egal wie Arkha eingestellt ist, und Arkha kann sie nicht abschalten.\n"
+"\n"
+"Um das Einhängen Arkha zu überlassen, verhindern Sie, dass {names} mit Ihrer Sitzung starten (entfernen Sie sie zum Beispiel aus dem Autostart Ihres Fenstermanagers), und melden Sie sich neu an.\n"
+"\n"
+"Diese Meldung wird nicht wieder angezeigt."
 
 #. TRANSLATORS: a time today, in strftime's notation (%H hours, %M minutes).
 #: src/util.rs:289
@@ -2553,396 +2613,382 @@ msgstr "{name} (Kopie){extension}"
 msgid "{name} (copy {number}){extension}"
 msgstr "{name} (Kopie {number}){extension}"
 
-#: src/window.rs:183
+#: src/window.rs:184
 msgid "Move _Up"
 msgstr "Nach _oben"
 
-#: src/window.rs:184
+#: src/window.rs:185
 msgid "Move _Down"
 msgstr "Nach _unten"
 
-#: src/window.rs:185
+#: src/window.rs:186
 msgid "_Reset to Default"
 msgstr "Auf _Vorgabe zurücksetzen"
 
-#: src/window.rs:419
+#: src/window.rs:420
 msgid "Go to the previous visited location (right-click for history)"
 msgstr "Zum zuvor besuchten Ort (Rechtsklick für die Chronik)"
 
-#: src/window.rs:420
+#: src/window.rs:421
 msgid "Go to the next visited location"
 msgstr "Zum nächsten besuchten Ort"
 
-#: src/window.rs:421
+#: src/window.rs:422
 msgid "Open the parent folder"
 msgstr "Den übergeordneten Ordner öffnen"
 
-#: src/window.rs:422
+#: src/window.rs:423
 msgid "Reload the current location"
 msgstr "Den aktuellen Ort neu laden"
 
-#: src/window.rs:423
+#: src/window.rs:424
 msgid "Open your personal folder"
 msgstr "Ihren persönlichen Ordner öffnen"
 
-#: src/window.rs:424
+#: src/window.rs:425
 msgid "Browse the file system"
 msgstr "Das Dateisystem durchsuchen"
 
-#: src/window.rs:429
+#: src/window.rs:430
 msgid "Search documents and folders by name"
 msgstr "Dokumente und Ordner nach Namen suchen"
 
-#: src/window.rs:448
+#: src/window.rs:449
 msgid "Toggle between button and text-based location bar (Ctrl+L)"
 msgstr "Zwischen Knopf- und Text-Ortsleiste umschalten (Strg+L)"
 
-#: src/window.rs:464
+#: src/window.rs:465
 msgid "Type a path, e.g. ~/Documents or /etc"
 msgstr "Einen Pfad eingeben, z. B. ~/Dokumente oder /etc"
 
-#: src/window.rs:471
+#: src/window.rs:472
 msgid "_Search:"
 msgstr "_Suchen:"
 
-#: src/window.rs:500
+#: src/window.rs:501
 msgid "Icon View (Ctrl+1)"
 msgstr "Symbolansicht (Strg+1)"
 
-#: src/window.rs:501
+#: src/window.rs:502
 msgid "List View (Ctrl+2)"
 msgstr "Listenansicht (Strg+2)"
 
-#: src/window.rs:502
+#: src/window.rs:503
 msgid "Compact View (Ctrl+3)"
 msgstr "Kompakte Ansicht (Strg+3)"
 
-#: src/window.rs:503
+#: src/window.rs:504
 msgid "Columns View (Ctrl+4)"
 msgstr "Spaltenansicht (Strg+4)"
 
-#: src/window.rs:532
+#: src/window.rs:533
 msgid "Split view: show a second pane"
 msgstr "Geteilte Ansicht: eine zweite Ansicht zeigen"
 
-#: src/window.rs:538
+#: src/window.rs:539
 msgid "Swap the panes: their tabs change sides (Ctrl+U)"
 msgstr "Ansichten tauschen: Ihre Reiter wechseln die Seite (Strg+U)"
 
-#: src/window.rs:542
+#: src/window.rs:543
 msgid "Swap Panes"
 msgstr "Ansichten tauschen"
 
-#: src/window.rs:554
-msgid ""
-"Info panel: the selected item's picture and details, in this folder (F11)"
+#: src/window.rs:555
+msgid "Info panel: the selected item's picture and details, in this folder (F11)"
 msgstr "Infobereich: Bild und Details des ausgewählten Objekts, in diesem Ordner (F11)"
 
-#: src/window.rs:560 src/window.rs:1978
+#: src/window.rs:561 src/window.rs:1987
 msgid "File operations"
 msgstr "Dateivorgänge"
 
-#: src/window.rs:580
+#: src/window.rs:581
 msgid "Open in Window"
 msgstr "In Fenster öffnen"
 
-#: src/window.rs:851 src/window/menus.rs:42
+#: src/window.rs:852 src/window/menus.rs:43
 msgid "_Undo"
 msgstr "_Rückgängig"
 
-#: src/window.rs:852 src/window/menus.rs:43
+#: src/window.rs:853 src/window/menus.rs:44
 msgid "_Redo"
 msgstr "_Wiederholen"
 
-#: src/window.rs:1049
+#: src/window.rs:1050
 msgid "This location is already bookmarked"
 msgstr "Für diesen Ort gibt es bereits ein Lesezeichen"
 
-#: src/window.rs:1050
-msgid "Could not add bookmark"
-msgstr "Lesezeichen konnte nicht hinzugefügt werden"
-
-#: src/window.rs:1477
+#: src/window.rs:1486
 #, rust-format
 msgid "Could not find “{text}”"
 msgstr "„{text}“ wurde nicht gefunden"
 
-#: src/window.rs:1979
+#: src/window.rs:1988
 #, rust-format
 msgid "{n} file operation"
 msgid_plural "{n} file operations"
 msgstr[0] "{n} Dateivorgang"
 msgstr[1] "{n} Dateivorgänge"
 
-#: src/window.rs:2172
+#: src/window.rs:2181
 msgid "Visible Columns"
 msgstr "Sichtbare Spalten"
 
-#: src/window.rs:2176
+#: src/window.rs:2185
 msgid "Choose the order of information to appear in the list view."
 msgstr "Wählen Sie die Reihenfolge der Informationen in der Listenansicht."
 
-#: src/window.rs:2730
+#: src/window.rs:2743
 #, rust-format
 msgid "Could not open with {program}"
 msgstr "Öffnen mit {program} nicht möglich"
 
-#: src/window.rs:2741
+#: src/window.rs:2754
 #, rust-format
 msgid "Do you want to run “{name}”, or display its contents?"
 msgstr "Möchten Sie „{name}“ ausführen oder seinen Inhalt anzeigen?"
 
-#: src/window.rs:2743
+#: src/window.rs:2756
 #, rust-format
 msgid "“{name}” is an executable file."
 msgstr "„{name}“ ist eine ausführbare Datei."
 
-#: src/window.rs:2746
+#: src/window.rs:2759
 msgid "Run in _Terminal"
 msgstr "Im _Terminal ausführen"
 
-#: src/window.rs:2749
+#: src/window.rs:2762
 msgid "_Display"
 msgstr "_Anzeigen"
 
-#: src/window.rs:2752
+#: src/window.rs:2765
 msgid "_Run"
 msgstr "A_usführen"
 
-#: src/window.rs:2777
+#: src/window.rs:2790
 msgid "Could not run the program"
 msgstr "Das Programm konnte nicht ausgeführt werden"
 
-#: src/window.rs:2818
+#: src/window.rs:2831
 msgid "Untitled Folder"
 msgstr "Unbenannter Ordner"
 
-#: src/window.rs:2826
+#: src/window.rs:2839
 msgid "Could not create the folder"
 msgstr "Der Ordner konnte nicht angelegt werden"
 
-#: src/window.rs:2835
+#: src/window.rs:2848
 msgid "Untitled Document"
 msgstr "Unbenanntes Dokument"
 
-#: src/window.rs:2853
+#: src/window.rs:2866
 msgid "Could not create the document"
 msgstr "Das Dokument konnte nicht angelegt werden"
 
-#: src/window.rs:2859
+#: src/window.rs:2872
 msgid "File names cannot contain “/”."
 msgstr "Dateinamen dürfen kein „/“ enthalten."
 
-#: src/window.rs:2859
+#: src/window.rs:2872
 msgid "Invalid name"
 msgstr "Ungültiger Name"
 
-#: src/window.rs:2868
+#: src/window.rs:2881
 #, rust-format
 msgid "The name “{name}” is already used in this location."
 msgstr "Der Name „{name}“ wird an diesem Ort bereits verwendet."
 
-#: src/window.rs:2869
+#: src/window.rs:2882
 msgid "Please use a different name."
 msgstr "Bitte verwenden Sie einen anderen Namen."
 
-#: src/window.rs:2881
+#: src/window.rs:2894
 #, rust-format
 msgid "Could not rename “{name}”"
 msgstr "„{name}“ konnte nicht umbenannt werden"
 
-#: src/window.rs:2905
+#: src/window.rs:2918
 msgid "There is nothing on the clipboard to paste."
 msgstr "In der Zwischenablage ist nichts zum Einfügen."
 
-#: src/window.rs:2967
+#: src/window.rs:2980
 msgid "Copy To"
 msgstr "Kopieren nach"
 
-#: src/window.rs:2967
+#: src/window.rs:2980
 msgid "Move To"
 msgstr "Verschieben nach"
 
-#: src/window.rs:2970 src/window/menus.rs:45 src/window/menus.rs:174
-#: src/window/menus.rs:196
+#: src/window.rs:2983 src/window/menus.rs:46 src/window/menus.rs:175
+#: src/window/menus.rs:197
 msgid "_Copy"
 msgstr "_Kopieren"
 
-#: src/window.rs:2970
+#: src/window.rs:2983
 msgid "_Move"
 msgstr "_Verschieben"
 
-#: src/window.rs:2973
+#: src/window.rs:2986
 msgid "C_heck the copies"
 msgstr "Die Kopien _prüfen"
 
-#: src/window.rs:2975
-msgid ""
-"Each file moved to another drive is read back from there and compared with "
-"its original (CRC32), which is deleted only once they match. A move within "
-"one drive copies nothing, so there’s nothing to check."
+#: src/window.rs:2988
+msgid "Each file moved to another drive is read back from there and compared with its original (CRC32), which is deleted only once they match. A move within one drive copies nothing, so there’s nothing to check."
 msgstr "Jede auf ein anderes Laufwerk verschobene Datei wird von dort zurückgelesen und mit ihrem Original verglichen (CRC32), das erst gelöscht wird, wenn beide übereinstimmen. Ein Verschieben innerhalb eines Laufwerks kopiert nichts, daher gibt es nichts zu prüfen."
 
-#: src/window.rs:2977
-msgid ""
-"Each copy is read back from where it went and compared with its original "
-"(CRC32). It takes about as long again as the copy."
+#: src/window.rs:2990
+msgid "Each copy is read back from where it went and compared with its original (CRC32). It takes about as long again as the copy."
 msgstr "Jede Kopie wird von ihrem Ziel zurückgelesen und mit ihrem Original verglichen (CRC32). Das dauert etwa noch einmal so lange wie das Kopieren."
 
-#: src/window.rs:3013
+#: src/window.rs:3026
 #, rust-format
 msgid "“{name}” can’t be moved to the Trash. Delete it permanently?"
 msgstr "„{name}“ kann nicht in den Papierkorb verschoben werden. Endgültig löschen?"
 
-#: src/window.rs:3015
+#: src/window.rs:3028
 #, rust-format
 msgid "This item can’t be moved to the Trash. Delete it permanently?"
-msgid_plural ""
-"These {n} items can’t be moved to the Trash. Delete them permanently?"
+msgid_plural "These {n} items can’t be moved to the Trash. Delete them permanently?"
 msgstr[0] "Dieses Objekt kann nicht in den Papierkorb verschoben werden. Endgültig löschen?"
 msgstr[1] "Diese {n} Objekte können nicht in den Papierkorb verschoben werden. Endgültig löschen?"
 
-#: src/window.rs:3017
-msgid ""
-"This location has no trash. If you delete an item, it will be permanently "
-"lost."
+#: src/window.rs:3030
+msgid "This location has no trash. If you delete an item, it will be permanently lost."
 msgstr "Dieser Ort hat keinen Papierkorb. Wenn Sie ein Objekt löschen, geht es endgültig verloren."
 
-#: src/window.rs:3017 src/window.rs:3051 src/window/menus.rs:49
-#: src/window/menus.rs:209
+#: src/window.rs:3030 src/window.rs:3064 src/window/menus.rs:50
+#: src/window/menus.rs:210
 msgid "_Delete"
 msgstr "_Löschen"
 
-#: src/window.rs:3025
+#: src/window.rs:3038
 #, rust-format
 msgid "Move “{name}” to the Trash?"
 msgstr "„{name}“ in den Papierkorb verschieben?"
 
-#: src/window.rs:3027
+#: src/window.rs:3040
 #, rust-format
 msgid "Move {n} item to the Trash?"
 msgid_plural "Move {n} items to the Trash?"
 msgstr[0] "{n} Objekt in den Papierkorb verschieben?"
 msgstr[1] "{n} Objekte in den Papierkorb verschieben?"
 
-#: src/window.rs:3029
+#: src/window.rs:3042
 msgid "Move to _Trash"
 msgstr "In den _Papierkorb verschieben"
 
-#: src/window.rs:3043
+#: src/window.rs:3056
 #, rust-format
 msgid "Are you sure you want to permanently delete “{name}”?"
 msgstr "Möchten Sie „{name}“ wirklich endgültig löschen?"
 
-#: src/window.rs:3046
+#: src/window.rs:3059
 #, rust-format
 msgid "Are you sure you want to permanently delete the {n} selected item?"
-msgid_plural ""
-"Are you sure you want to permanently delete the {n} selected items?"
+msgid_plural "Are you sure you want to permanently delete the {n} selected items?"
 msgstr[0] "Möchten Sie das {n} ausgewählte Objekt wirklich endgültig löschen?"
 msgstr[1] "Möchten Sie die {n} ausgewählten Objekte wirklich endgültig löschen?"
 
-#: src/window.rs:3051
+#: src/window.rs:3064
 msgid "If you delete an item, it will be permanently lost."
 msgstr "Wenn Sie ein Objekt löschen, geht es endgültig verloren."
 
-#: src/window.rs:3075
+#: src/window.rs:3088
 msgid "Empty all items from the Trash?"
 msgstr "Alle Objekte aus dem Papierkorb löschen?"
 
-#: src/window.rs:3076
+#: src/window.rs:3089
 msgid "All items in the Trash will be permanently deleted."
 msgstr "Alle Objekte im Papierkorb werden endgültig gelöscht."
 
-#: src/window.rs:3121
+#: src/window.rs:3134
 msgid "_Move Here"
 msgstr "Hierher _verschieben"
 
-#: src/window.rs:3122
+#: src/window.rs:3135
 msgid "_Copy Here"
 msgstr "Hierher _kopieren"
 
-#: src/window.rs:3123
+#: src/window.rs:3136
 msgid "_Link Here"
 msgstr "Hierher ver_knüpfen"
 
-#: src/window.rs:3124
+#: src/window.rs:3137
 msgid "Move and C_heck Here"
 msgstr "Hierher verschieben und _prüfen"
 
-#: src/window.rs:3125
+#: src/window.rs:3138
 msgid "Copy and Ch_eck Here"
 msgstr "Hierher kopieren und p_rüfen"
 
-#: src/window.rs:3169
+#: src/window.rs:3182
 msgid "Install mate-terminal or set $TERMINAL."
 msgstr "Installieren Sie mate-terminal oder setzen Sie $TERMINAL."
 
-#: src/window.rs:3169
+#: src/window.rs:3182
 msgid "No terminal found"
 msgstr "Kein Terminal gefunden"
 
-#: src/window.rs:3177
+#: src/window.rs:3190
 msgid "Could not open a terminal"
 msgstr "Es konnte kein Terminal geöffnet werden"
 
-#: src/window.rs:3203
+#: src/window.rs:3216
 msgid "Could not start the archive manager"
 msgstr "Die Archivverwaltung konnte nicht gestartet werden"
 
-#: src/window.rs:3209
+#: src/window.rs:3222
 msgid "Select Items Matching"
 msgstr "Passende Objekte auswählen"
 
-#: src/window.rs:3212
+#: src/window.rs:3225
 msgid "_Select"
 msgstr "_Auswählen"
 
-#: src/window.rs:3218
+#: src/window.rs:3231
 msgid "Pattern (e.g. *.jpg, report-??.pdf):"
 msgstr "Muster (z. B. *.jpg, bericht-??.pdf):"
 
-#: src/window.rs:3243
+#: src/window.rs:3256
 msgid "Edit Bookmarks"
 msgstr "Lesezeichen bearbeiten"
 
-#: src/window.rs:3274
+#: src/window.rs:3291
 msgid "A fast graphical file manager."
 msgstr "Ein schneller grafischer Dateimanager."
 
-#: src/window.rs:3281 src/window/prefs.rs:808
+#: src/window.rs:3300 src/window/prefs.rs:808
 msgid "Keyboard Shortcuts"
 msgstr "Tastenkürzel"
 
-#: src/window.rs:3317
+#: src/window.rs:3336
 msgid "Mouse"
 msgstr "Maus"
 
-#: src/window.rs:3318
+#: src/window.rs:3337
 msgid "Middle-click a folder"
 msgstr "Mittelklick auf einen Ordner"
 
-#: src/window.rs:3319
+#: src/window.rs:3338
 msgid "Copy / Move / Ask"
 msgstr "Kopieren / Verschieben / Fragen"
 
-#: src/window.rs:3319
+#: src/window.rs:3338
 msgid "Drag with Ctrl / Shift / Alt"
 msgstr "Ziehen mit Strg / Umschalt / Alt"
 
-#: src/window.rs:3320
+#: src/window.rs:3339
 msgid "Ctrl+scroll"
 msgstr "Strg+Mausrad"
 
-#: src/window.rs:3320 src/window/prefs.rs:164
+#: src/window.rs:3339 src/window/prefs.rs:164
 msgid "Zoom"
 msgstr "Zoom"
 
-#: src/window.rs:3321
+#: src/window.rs:3340
 msgid "Back / Forward"
 msgstr "Zurück / Vor"
 
-#: src/window.rs:3321
+#: src/window.rs:3340
 msgid "Back / forward mouse buttons"
 msgstr "Maustasten zurück / vor"
 
@@ -2958,340 +3004,344 @@ msgstr "Neuer _Reiter"
 msgid "New _Window"
 msgstr "Neues _Fenster"
 
-#: src/window/menus.rs:32 src/window/menus.rs:225
+#: src/window/menus.rs:32 src/window/menus.rs:226
 msgid "Create _Folder"
 msgstr "_Ordner anlegen"
 
-#: src/window/menus.rs:33 src/window/menus.rs:227
+#: src/window/menus.rs:33 src/window/menus.rs:228
 msgid "Create _Document"
 msgstr "_Dokument anlegen"
 
-#: src/window/menus.rs:35 src/window/menus.rs:217 src/window/menus.rs:229
+#: src/window/menus.rs:35
+msgid "Connect to _Server…"
+msgstr "Mit _Server verbinden …"
+
+#: src/window/menus.rs:36 src/window/menus.rs:218 src/window/menus.rs:230
 msgid "Open in _Terminal"
 msgstr "Im _Terminal öffnen"
 
-#: src/window/menus.rs:37
+#: src/window/menus.rs:38
 msgid "Move Tab Ri_ght"
 msgstr "Reiter nach re_chts"
 
-#: src/window/menus.rs:37
+#: src/window/menus.rs:38
 msgid "Move Tab _Left"
 msgstr "Reiter nach _links"
 
-#: src/window/menus.rs:38
+#: src/window/menus.rs:39
 msgid "Close _All Windows"
 msgstr "_Alle Fenster schließen"
 
-#: src/window/menus.rs:38
+#: src/window/menus.rs:39
 msgid "Close _Window"
 msgstr "Fenster schl_ießen"
 
-#: src/window/menus.rs:38
+#: src/window/menus.rs:39
 msgid "_Close Tab"
 msgstr "Reiter _schließen"
 
-#: src/window/menus.rs:38
+#: src/window/menus.rs:39
 msgid "_Quit"
 msgstr "_Beenden"
 
-#: src/window/menus.rs:38
+#: src/window/menus.rs:39
 msgid "_Reopen Closed Tab"
 msgstr "Geschlossenen Reiter _wieder öffnen"
 
-#: src/window/menus.rs:39
+#: src/window/menus.rs:40
 msgid "_File"
 msgstr "_Datei"
 
-#: src/window/menus.rs:45 src/window/menus.rs:173 src/window/menus.rs:195
+#: src/window/menus.rs:46 src/window/menus.rs:174 src/window/menus.rs:196
 msgid "Cu_t"
 msgstr "_Ausschneiden"
 
-#: src/window/menus.rs:45 src/window/menus.rs:198
+#: src/window/menus.rs:46 src/window/menus.rs:199
 msgid "Paste _Into Folder"
 msgstr "In _Ordner einfügen"
 
-#: src/window/menus.rs:45 src/window/menus.rs:231
+#: src/window/menus.rs:46 src/window/menus.rs:232
 msgid "Paste and C_heck"
 msgstr "Einfügen und _prüfen"
 
-#: src/window/menus.rs:45 src/window/menus.rs:230
+#: src/window/menus.rs:46 src/window/menus.rs:231
 msgid "_Paste"
 msgstr "_Einfügen"
 
-#: src/window/menus.rs:46
+#: src/window/menus.rs:47
 msgid "Select I_tems Matching…"
 msgstr "Passende Ob_jekte auswählen …"
 
-#: src/window/menus.rs:46 src/window/menus.rs:255
+#: src/window/menus.rs:47 src/window/menus.rs:256
 msgid "Select _All"
 msgstr "Alles a_uswählen"
 
-#: src/window/menus.rs:46
+#: src/window/menus.rs:47
 msgid "_Invert Selection"
 msgstr "Auswahl _umkehren"
 
-#: src/window/menus.rs:47 src/window/menus.rs:206
+#: src/window/menus.rs:48 src/window/menus.rs:207
 msgid "Copy T_o…"
 msgstr "Kopieren _nach …"
 
-#: src/window/menus.rs:47
+#: src/window/menus.rs:48
 msgid "Dup_licate"
 msgstr "_Duplizieren"
 
-#: src/window/menus.rs:47 src/window/menus.rs:201
+#: src/window/menus.rs:48 src/window/menus.rs:202
 msgid "Ma_ke Link"
 msgstr "_Verknüpfung anlegen"
 
-#: src/window/menus.rs:47 src/window/menus.rs:207
+#: src/window/menus.rs:48 src/window/menus.rs:208
 msgid "_Move To…"
 msgstr "Verschieben n_ach …"
 
-#: src/window/menus.rs:47 src/window/menus.rs:202
+#: src/window/menus.rs:48 src/window/menus.rs:203
 msgid "_Rename…"
 msgstr "_Umbenennen …"
 
-#: src/window/menus.rs:48
+#: src/window/menus.rs:49
 msgid "Copy to Other _Pane"
 msgstr "In andere Ansicht ko_pieren"
 
-#: src/window/menus.rs:48
+#: src/window/menus.rs:49
 msgid "Move to Other Pa_ne"
 msgstr "In andere Ansicht versc_hieben"
 
-#: src/window/menus.rs:49 src/window/menus.rs:208
+#: src/window/menus.rs:50 src/window/menus.rs:209
 msgid "Mo_ve to Trash"
 msgstr "In den Papier_korb verschieben"
 
-#: src/window/menus.rs:49 src/window/menus.rs:172
+#: src/window/menus.rs:50 src/window/menus.rs:173
 msgid "_Restore"
 msgstr "_Wiederherstellen"
 
-#: src/window/menus.rs:50
+#: src/window/menus.rs:51
 msgid "Pr_eferences"
 msgstr "Ein_stellungen"
 
-#: src/window/menus.rs:50
+#: src/window/menus.rs:51
 msgid "_Backgrounds and Emblems…"
 msgstr "_Hintergründe und Embleme …"
 
-#: src/window/menus.rs:51
+#: src/window/menus.rs:52
 msgid "_Edit"
 msgstr "_Bearbeiten"
 
-#: src/window/menus.rs:54
+#: src/window/menus.rs:55
 msgid "Sto_p"
 msgstr "_Abbrechen"
 
-#: src/window/menus.rs:54 src/window/menus.rs:256
+#: src/window/menus.rs:55 src/window/menus.rs:257
 msgid "_Reload"
 msgstr "_Neu laden"
 
-#: src/window/menus.rs:55 src/window/menus.rs:236
+#: src/window/menus.rs:56 src/window/menus.rs:237
 msgid "C_olumns"
 msgstr "S_palten"
 
-#: src/window/menus.rs:55 src/window/menus.rs:236
+#: src/window/menus.rs:56 src/window/menus.rs:237
 msgid "_Compact"
 msgstr "_Kompakt"
 
-#: src/window/menus.rs:55 src/window/menus.rs:236
+#: src/window/menus.rs:56 src/window/menus.rs:237
 msgid "_Icons"
 msgstr "_Symbole"
 
-#: src/window/menus.rs:55 src/window/menus.rs:236
+#: src/window/menus.rs:56 src/window/menus.rs:237
 msgid "_List"
 msgstr "_Liste"
 
-#: src/window/menus.rs:56 src/window/menus.rs:237
+#: src/window/menus.rs:57 src/window/menus.rs:238
 msgid "E_xtra Pane"
 msgstr "_Zusätzliche Ansicht"
 
-#: src/window/menus.rs:56 src/window/menus.rs:237
+#: src/window/menus.rs:57 src/window/menus.rs:238
 msgid "Show _Hidden Files"
 msgstr "_Verborgene Dateien anzeigen"
 
-#: src/window/menus.rs:56 src/window/menus.rs:237
+#: src/window/menus.rs:57 src/window/menus.rs:238
 msgid "St_atusbar"
 msgstr "S_tatusleiste"
 
-#: src/window/menus.rs:56
+#: src/window/menus.rs:57
 msgid "_Info Panel"
 msgstr "_Infobereich"
 
-#: src/window/menus.rs:56 src/window/menus.rs:237
+#: src/window/menus.rs:57 src/window/menus.rs:238
 msgid "_Side Pane"
 msgstr "Seiten_leiste"
 
-#: src/window/menus.rs:57
+#: src/window/menus.rs:58
 msgid "S_witch to Other Pane"
 msgstr "Zur anderen Ansicht _wechseln"
 
-#: src/window/menus.rs:57
+#: src/window/menus.rs:58
 msgid "Same Location as O_ther Pane"
 msgstr "Gleicher _Ort wie andere Ansicht"
 
-#: src/window/menus.rs:57
+#: src/window/menus.rs:58
 msgid "Swap Pa_nes"
 msgstr "Ansichten _tauschen"
 
-#: src/window/menus.rs:58
+#: src/window/menus.rs:59
 msgid "Location _Bar"
 msgstr "_Ortsleiste"
 
-#: src/window/menus.rs:58
+#: src/window/menus.rs:59
 msgid "_Main Toolbar"
 msgstr "_Werkzeugleiste"
 
-#: src/window/menus.rs:62 src/window/menus.rs:249
+#: src/window/menus.rs:63 src/window/menus.rs:250
 msgid "_Folders Before Files"
 msgstr "_Ordner vor Dateien"
 
-#: src/window/menus.rs:62 src/window/menus.rs:248
+#: src/window/menus.rs:63 src/window/menus.rs:249
 msgid "_Reversed Order"
 msgstr "_Umgekehrte Reihenfolge"
 
-#: src/window/menus.rs:63 src/window/menus.rs:251
+#: src/window/menus.rs:64 src/window/menus.rs:252
 msgid "Arrange _Items"
 msgstr "Objekte an_ordnen"
 
-#: src/window/menus.rs:65
+#: src/window/menus.rs:66
 msgid "Reset View to _Defaults"
 msgstr "Ansicht auf _Vorgaben zurücksetzen"
 
-#: src/window/menus.rs:66
+#: src/window/menus.rs:67
 msgid "Normal Si_ze"
 msgstr "_Normale Größe"
 
-#: src/window/menus.rs:66
+#: src/window/menus.rs:67
 msgid "Zoom _In"
 msgstr "_Vergrößern"
 
-#: src/window/menus.rs:66
+#: src/window/menus.rs:67
 msgid "Zoom _Out"
 msgstr "Ver_kleinern"
 
-#: src/window/menus.rs:67
+#: src/window/menus.rs:68
 msgid "Loc_k Toolbar"
 msgstr "Werkzeugleiste sp_erren"
 
-#: src/window/menus.rs:68 src/window/menus.rs:240
+#: src/window/menus.rs:69 src/window/menus.rs:241
 msgid "_View"
 msgstr "_Ansicht"
 
-#: src/window/menus.rs:71
+#: src/window/menus.rs:72
 msgid "_Back"
 msgstr "_Zurück"
 
-#: src/window/menus.rs:71
+#: src/window/menus.rs:72
 msgid "_Forward"
 msgstr "_Vor"
 
-#: src/window/menus.rs:71
+#: src/window/menus.rs:72
 msgid "_Open Parent"
 msgstr "Ü_bergeordneten Ordner öffnen"
 
-#: src/window/menus.rs:72
+#: src/window/menus.rs:73
 msgid "File _System"
 msgstr "_Dateisystem"
 
-#: src/window/menus.rs:72
+#: src/window/menus.rs:73
 msgid "_Desktop"
 msgstr "_Schreibtisch"
 
-#: src/window/menus.rs:72
+#: src/window/menus.rs:73
 msgid "_Home Folder"
 msgstr "_Persönlicher Ordner"
 
-#: src/window/menus.rs:72
+#: src/window/menus.rs:73
 msgid "_Trash"
 msgstr "Papier_korb"
 
-#: src/window/menus.rs:73
+#: src/window/menus.rs:74
 msgid "_Filter…"
 msgstr "_Filter …"
 
-#: src/window/menus.rs:73
+#: src/window/menus.rs:74
 msgid "_Location…"
 msgstr "_Ort …"
 
-#: src/window/menus.rs:74
+#: src/window/menus.rs:75
 msgid "Clea_r History"
 msgstr "_Chronik leeren"
 
-#: src/window/menus.rs:75
+#: src/window/menus.rs:76
 msgid "_Go"
 msgstr "_Gehe zu"
 
-#: src/window/menus.rs:78
+#: src/window/menus.rs:79
 msgid "_Add Bookmark"
 msgstr "Lesezeichen _hinzufügen"
 
-#: src/window/menus.rs:78
+#: src/window/menus.rs:79
 msgid "_Edit Bookmarks…"
 msgstr "Lesezeichen _bearbeiten …"
 
-#: src/window/menus.rs:80
+#: src/window/menus.rs:81
 msgid "_Bookmarks"
 msgstr "_Lesezeichen"
 
-#: src/window/menus.rs:83
+#: src/window/menus.rs:84
 msgid "_Keyboard Shortcuts"
 msgstr "_Tastenkürzel"
 
-#: src/window/menus.rs:84
+#: src/window/menus.rs:85
 msgid "_About"
 msgstr "_Info"
 
-#: src/window/menus.rs:85
+#: src/window/menus.rs:86
 msgid "_Help"
 msgstr "_Hilfe"
 
-#: src/window/menus.rs:101
+#: src/window/menus.rs:102
 msgid "_Empty Document"
 msgstr "_Leeres Dokument"
 
-#: src/window/menus.rs:141
+#: src/window/menus.rs:142
 msgid "Other _Application…"
 msgstr "Andere _Anwendung …"
 
-#: src/window/menus.rs:184
+#: src/window/menus.rs:185
 #, rust-format
 msgid "_Open With {program}"
 msgstr "Mit {program} ö_ffnen"
 
-#: src/window/menus.rs:190
+#: src/window/menus.rs:191
 msgid "Open parent location"
 msgstr "Übergeordneten Ort öffnen"
 
-#: src/window/menus.rs:193
+#: src/window/menus.rs:194
 msgid "Open Wit_h"
 msgstr "Öffnen _mit"
 
-#: src/window/menus.rs:200
+#: src/window/menus.rs:201
 msgid "D_uplicate"
 msgstr "_Duplizieren"
 
-#: src/window/menus.rs:205
+#: src/window/menus.rs:206
 msgid "Advanced Re_name…"
 msgstr "Erweitertes _Umbenennen …"
 
-#: src/window/menus.rs:205
+#: src/window/menus.rs:206
 msgid "Rename _All…"
 msgstr "_Alle umbenennen …"
 
-#: src/window/menus.rs:212
+#: src/window/menus.rs:213
 msgid "E_xtract Here"
 msgstr "Hier _entpacken"
 
-#: src/window/menus.rs:214
+#: src/window/menus.rs:215
 msgid "_Compress…"
 msgstr "_Komprimieren …"
 
-#: src/window/menus.rs:253
+#: src/window/menus.rs:254
 msgid "Add _Bookmark"
 msgstr "Lesezeichen _hinzufügen"
 
-#: src/window/menus.rs:347
+#: src/window/menus.rs:348
 #, rust-format
 msgid "Could not run “{name}”"
 msgstr "„{name}“ konnte nicht ausgeführt werden"
@@ -3389,10 +3439,7 @@ msgid "Remember _view and sorting for each folder"
 msgstr "_Ansicht und Sortierung für jeden Ordner merken"
 
 #: src/window/prefs.rs:126
-msgid ""
-"Changing the view or sorting then only affects the folder you're in, and "
-"it's restored the next time you open that folder. Other folders use the "
-"defaults above."
+msgid "Changing the view or sorting then only affects the folder you're in, and it's restored the next time you open that folder. Other folders use the defaults above."
 msgstr "Eine Änderung der Ansicht oder Sortierung betrifft dann nur den aktuellen Ordner und wird beim nächsten Öffnen dieses Ordners wiederhergestellt. Andere Ordner verwenden die Vorgaben oben."
 
 #: src/window/prefs.rs:133
@@ -3411,9 +3458,7 @@ msgid "_Forget All"
 msgstr "Alle _vergessen"
 
 #: src/window/prefs.rs:139
-msgid ""
-"Forget the view and sorting of every folder, so they all use the defaults "
-"again"
+msgid "Forget the view and sorting of every folder, so they all use the defaults again"
 msgstr "Ansicht und Sortierung aller Ordner vergessen, sodass alle wieder die Vorgaben verwenden"
 
 #: src/window/prefs.rs:167
@@ -3433,9 +3478,7 @@ msgid "Zoom levels to step through"
 msgstr "Zoomstufen zum Durchschalten"
 
 #: src/window/prefs.rs:225
-msgid ""
-"Sizes in pixels (8–512) that Zoom In and Zoom Out step through, separated by "
-"commas"
+msgid "Sizes in pixels (8–512) that Zoom In and Zoom Out step through, separated by commas"
 msgstr "Größen in Pixeln (8–512), durch die „Vergrößern“ und „Verkleinern“ schalten, durch Kommas getrennt"
 
 #: src/window/prefs.rs:227
@@ -3471,16 +3514,11 @@ msgid "_Focus the pane under the mouse pointer"
 msgstr "Die Ansicht unter dem Mauszeiger _auswählen"
 
 #: src/window/prefs.rs:321
-msgid ""
-"With two panes open (F3), moving the pointer over a pane makes it the active "
-"one, without clicking (Shift+F3 switches this)"
+msgid "With two panes open (F3), moving the pointer over a pane makes it the active one, without clicking (Shift+F3 switches this)"
 msgstr "Bei zwei offenen Ansichten (F3) wird eine Ansicht aktiv, sobald der Mauszeiger über sie fährt, ohne Klick (Umschalt+F3 schaltet dies um)"
 
 #: src/window/prefs.rs:326
-msgid ""
-"How long the pointer has to stay over a pane before it becomes the active "
-"one, so passing over it on the way elsewhere (the side pane, say) doesn't "
-"change the active pane"
+msgid "How long the pointer has to stay over a pane before it becomes the active one, so passing over it on the way elsewhere (the side pane, say) doesn't change the active pane"
 msgstr "Wie lange der Mauszeiger über einer Ansicht bleiben muss, bevor sie aktiv wird, damit das Überqueren auf dem Weg anderswohin (etwa zur Seitenleiste) die aktive Ansicht nicht ändert"
 
 #: src/window/prefs.rs:332
@@ -3500,11 +3538,7 @@ msgid "Open folders when other programs _ask, also when Arkha isn't running"
 msgstr "Ordner öffnen, wenn andere Programme danach _fragen, auch wenn Arkha nicht läuft"
 
 #: src/window/prefs.rs:339
-msgid ""
-"“Show in folder” in web browsers, download lists and the like opens Arkha, "
-"with the file selected. While Arkha runs it does this anyway, unless another "
-"file manager that does it was there first; this lets programs start Arkha "
-"for it too."
+msgid "“Show in folder” in web browsers, download lists and the like opens Arkha, with the file selected. While Arkha runs it does this anyway, unless another file manager that does it was there first; this lets programs start Arkha for it too."
 msgstr "„Im Ordner anzeigen“ in Webbrowsern, Download-Listen und Ähnlichem öffnet Arkha mit ausgewählter Datei. Solange Arkha läuft, geschieht das ohnehin, außer ein anderer Dateimanager, der das tut, war zuerst da; damit können Programme Arkha dafür auch starten."
 
 #: src/window/prefs.rs:345
@@ -3516,17 +3550,11 @@ msgid "Scrolling"
 msgstr "Rollen"
 
 #: src/window/prefs.rs:353
-msgid ""
-"_Middle-click on empty space (or an item in the list view) to autoscroll"
+msgid "_Middle-click on empty space (or an item in the list view) to autoscroll"
 msgstr "_Mittelklick auf eine freie Fläche (oder ein Objekt in der Listenansicht) rollt automatisch"
 
 #: src/window/prefs.rs:354
-msgid ""
-"A marker appears where you clicked and the view scrolls towards the pointer, "
-"faster the further away it is. Click, press a key or use the wheel to stop "
-"(after dragging with the button held, letting go stops it). In the list view "
-"this works on files and folders too, if the list can scroll; otherwise, or "
-"with Shift, a middle-click opens them there (a folder in a new tab)."
+msgid "A marker appears where you clicked and the view scrolls towards the pointer, faster the further away it is. Click, press a key or use the wheel to stop (after dragging with the button held, letting go stops it). In the list view this works on files and folders too, if the list can scroll; otherwise, or with Shift, a middle-click opens them there (a folder in a new tab)."
 msgstr "An der angeklickten Stelle erscheint eine Markierung, und die Ansicht rollt in Richtung des Mauszeigers, umso schneller, je weiter er entfernt ist. Klicken, eine Taste drücken oder das Mausrad benutzen hält an (nach dem Ziehen mit gedrückter Taste hält das Loslassen an). In der Listenansicht funktioniert das auch auf Dateien und Ordnern, wenn die Liste rollen kann; sonst, oder mit Umschalt, öffnet ein Mittelklick sie dort (einen Ordner in einem neuen Reiter)."
 
 #: src/window/prefs.rs:367
@@ -3558,9 +3586,7 @@ msgid "_Bulk rename list"
 msgstr "Liste beim _Umbenennen mehrerer Dateien"
 
 #: src/window/prefs.rs:399
-msgid ""
-"Shade every second row of the file list in the Rename All… window (applies "
-"the next time it opens)"
+msgid "Shade every second row of the file list in the Rename All… window (applies the next time it opens)"
 msgstr "Jede zweite Zeile der Dateiliste im Fenster „Alle umbenennen …“ schattieren (gilt beim nächsten Öffnen)"
 
 #: src/window/prefs.rs:404
@@ -3572,9 +3598,7 @@ msgid "Show file sizes in _IEC units (KiB, MiB, GiB)"
 msgstr "Dateigrößen in _IEC-Einheiten anzeigen (KiB, MiB, GiB)"
 
 #: src/window/prefs.rs:407
-msgid ""
-"Sizes in powers of 1024 (1 KiB = 1024 bytes) instead of powers of 1000 (1 kB "
-"= 1000 bytes)"
+msgid "Sizes in powers of 1024 (1 KiB = 1024 bytes) instead of powers of 1000 (1 kB = 1000 bytes)"
 msgstr "Größen in Potenzen von 1024 (1 KiB = 1024 Bytes) statt in Potenzen von 1000 (1 kB = 1000 Bytes)"
 
 #: src/window/prefs.rs:420
@@ -3604,8 +3628,7 @@ msgid "Icon Captions"
 msgstr "Symbolbeschriftungen"
 
 #: src/window/prefs.rs:437
-msgid ""
-"What shows under the names in the icon view. More of it shows as you zoom in."
+msgid "What shows under the names in the icon view. More of it shows as you zoom in."
 msgstr "Was in der Symbolansicht unter den Namen steht. Beim Vergrößern wird mehr davon angezeigt."
 
 #: src/window/prefs.rs:442
@@ -3641,8 +3664,7 @@ msgid "Show the l_ocation bar"
 msgstr "_Ortsleiste anzeigen"
 
 #: src/window/prefs.rs:470
-msgid ""
-"Hidden, it still shows while you type a location (Ctrl+L) or search (Ctrl+F)"
+msgid "Hidden, it still shows while you type a location (Ctrl+L) or search (Ctrl+F)"
 msgstr "Verborgen erscheint sie trotzdem, während Sie einen Ort eingeben (Strg+L) oder suchen (Strg+F)"
 
 #: src/window/prefs.rs:473
@@ -3654,9 +3676,7 @@ msgid "Say how many items are _hidden"
 msgstr "Anzahl der _verborgenen Objekte nennen"
 
 #: src/window/prefs.rs:478
-msgid ""
-"The status bar adds how many items of the folder are hidden, as in “12 items "
-"(3 hidden)”"
+msgid "The status bar adds how many items of the folder are hidden, as in “12 items (3 hidden)”"
 msgstr "Die Statusleiste nennt zusätzlich, wie viele Objekte des Ordners verborgen sind, wie in „12 Objekte (3 verborgen)“"
 
 #: src/window/prefs.rs:494
@@ -3664,9 +3684,7 @@ msgid "Always show the _tab bar"
 msgstr "_Reiterleiste immer anzeigen"
 
 #: src/window/prefs.rs:495
-msgid ""
-"Also show it when a window has only one tab, so that tab can be dragged to "
-"another window or out into a new one"
+msgid "Also show it when a window has only one tab, so that tab can be dragged to another window or out into a new one"
 msgstr "Die Reiterleiste auch zeigen, wenn ein Fenster nur einen Reiter hat, damit dieser in ein anderes Fenster oder heraus in ein neues gezogen werden kann"
 
 #: src/window/prefs.rs:502
@@ -3686,8 +3704,7 @@ msgid "Always show the _location as text"
 msgstr "Den _Ort immer als Text anzeigen"
 
 #: src/window/prefs.rs:518
-msgid ""
-"Show the folder's path as editable text instead of buttons for each folder"
+msgid "Show the folder's path as editable text instead of buttons for each folder"
 msgstr "Den Pfad des Ordners als bearbeitbaren Text statt als Knöpfe für jeden Ordner anzeigen"
 
 #: src/window/prefs.rs:527
@@ -3735,10 +3752,7 @@ msgid "Buttons:"
 msgstr "Knöpfe:"
 
 #: src/window/prefs.rs:544
-msgid ""
-"Choose the order of information to appear in the list view. Columns can also "
-"be dragged to another place, and a right click on the column headers shows "
-"or hides them."
+msgid "Choose the order of information to appear in the list view. Columns can also be dragged to another place, and a right click on the column headers shows or hides them."
 msgstr "Wählen Sie die Reihenfolge der Informationen in der Listenansicht. Spalten lassen sich auch an eine andere Stelle ziehen, und ein Rechtsklick auf die Spaltenköpfe zeigt oder verbirgt sie."
 
 #: src/window/prefs.rs:561
@@ -3754,10 +3768,7 @@ msgid "Never"
 msgstr "Nie"
 
 #: src/window/prefs.rs:574
-msgid ""
-"Local files: those on this computer’s drives, network shares the system "
-"mounts included; not places opened through GVfs (smb://, sftp://, phones), "
-"which can be slow"
+msgid "Local files: those on this computer’s drives, network shares the system mounts included; not places opened through GVfs (smb://, sftp://, phones), which can be slow"
 msgstr "Lokale Dateien: die auf den Laufwerken dieses Rechners, einschließlich vom System eingehängter Netzwerkfreigaben; nicht über GVfs geöffnete Orte (smb://, sftp://, Telefone), die langsam sein können"
 
 #. TRANSLATORS: a setting's explanation, then what “local files” are.
@@ -3783,9 +3794,7 @@ msgid "Other Previewable Files"
 msgstr "Andere Dateien mit Vorschau"
 
 #: src/window/prefs.rs:580
-msgid ""
-"Images get thumbnails built in; other file types through the custom "
-"thumbnailers below, or the ones installed on the system."
+msgid "Images get thumbnails built in; other file types through the custom thumbnailers below, or the ones installed on the system."
 msgstr "Bilder erhalten Vorschaubilder eingebaut; andere Dateitypen über die eigenen Vorschauerzeuger unten oder die auf dem System installierten."
 
 #: src/window/prefs.rs:580
@@ -3793,9 +3802,7 @@ msgid "Show thumbnails:"
 msgstr "Vorschaubilder zeigen:"
 
 #: src/window/prefs.rs:590
-msgid ""
-"Bigger images get no thumbnail: decoding them takes long. Other files' "
-"thumbnailers decide for themselves."
+msgid "Bigger images get no thumbnail: decoding them takes long. Other files' thumbnailers decide for themselves."
 msgstr "Größere Bilder erhalten kein Vorschaubild: Das Dekodieren dauert lange. Die Vorschauerzeuger anderer Dateien entscheiden selbst."
 
 #: src/window/prefs.rs:597
@@ -3819,9 +3826,7 @@ msgid "Show a _Media Info tab in file properties"
 msgstr "Einen Reiter „_Medieninfo“ in den Dateieigenschaften anzeigen"
 
 #: src/window/prefs.rs:606
-msgid ""
-"Shows what the mediainfo program reports about a file: codecs, resolution, "
-"duration, bit rate and more"
+msgid "Shows what the mediainfo program reports about a file: codecs, resolution, duration, bit rate and more"
 msgstr "Zeigt, was das Programm mediainfo über eine Datei meldet: Codecs, Auflösung, Dauer, Bitrate und mehr"
 
 #: src/window/prefs.rs:613
@@ -3845,9 +3850,7 @@ msgid "_Other files"
 msgstr "_Andere Dateien"
 
 #: src/window/prefs.rs:630
-msgid ""
-"Install mediainfo to use this: the tab shows codecs, resolution, duration, "
-"bit rate and more."
+msgid "Install mediainfo to use this: the tab shows codecs, resolution, duration, bit rate and more."
 msgstr "Installieren Sie mediainfo, um dies zu nutzen: Der Reiter zeigt Codecs, Auflösung, Dauer, Bitrate und mehr."
 
 #: src/window/prefs.rs:633
@@ -3855,17 +3858,11 @@ msgid "Info Panel"
 msgstr "Infobereich"
 
 #: src/window/prefs.rs:634
-msgid ""
-"Beside the files (View → Info Panel, F11, or its toolbar button), in the "
-"folders where you turn it on. It shows the selected item: a folder's cover "
-"picture, an image, or a file's thumbnail. Only local folders are searched "
-"for covers."
+msgid "Beside the files (View → Info Panel, F11, or its toolbar button), in the folders where you turn it on. It shows the selected item: a folder's cover picture, an image, or a file's thumbnail. Only local folders are searched for covers."
 msgstr "Neben den Dateien (Ansicht → Infobereich, F11 oder sein Knopf in der Werkzeugleiste), in den Ordnern, in denen Sie ihn einschalten. Er zeigt das ausgewählte Objekt: das Titelbild eines Ordners, ein Bild oder das Vorschaubild einer Datei. Nur lokale Ordner werden nach Titelbildern durchsucht."
 
 #: src/window/prefs.rs:639
-msgid ""
-"File names to use as a folder's cover, separated by semicolons, in order of "
-"preference. Upper and lower case don't matter."
+msgid "File names to use as a folder's cover, separated by semicolons, in order of preference. Upper and lower case don't matter."
 msgstr "Dateinamen, die als Titelbild eines Ordners dienen, durch Semikolons getrennt, in der Reihenfolge des Vorzugs. Groß- und Kleinschreibung spielen keine Rolle."
 
 #: src/window/prefs.rs:656
@@ -3913,9 +3910,7 @@ msgid "Computer Entries"
 msgstr "Einträge unter „Rechner“"
 
 #: src/window/prefs.rs:685
-msgid ""
-"Unchecked entries are hidden. Drag an entry by its handle, or select it and "
-"use the arrows, to move it; they can also be dragged in the side pane itself."
+msgid "Unchecked entries are hidden. Drag an entry by its handle, or select it and use the arrows, to move it; they can also be dragged in the side pane itself."
 msgstr "Nicht angehakte Einträge sind verborgen. Ziehen Sie einen Eintrag an seinem Griff oder wählen Sie ihn aus und nutzen Sie die Pfeile, um ihn zu verschieben; sie lassen sich auch direkt in der Seitenleiste ziehen."
 
 #: src/window/prefs.rs:695
@@ -3936,16 +3931,11 @@ msgstr "Laufwerke und Datenträger beim _Einlegen einhängen"
 
 #: src/window/prefs.rs:731
 #, rust-format
-msgid ""
-"Flash drives, memory cards, discs… are mounted right away. This is "
-"{desktop}’s own setting: changing it here changes it there too. Turned off, "
-"they’re mounted when you click them in the side pane."
+msgid "Flash drives, memory cards, discs… are mounted right away. This is {desktop}’s own setting: changing it here changes it there too. Turned off, they’re mounted when you click them in the side pane."
 msgstr "USB-Sticks, Speicherkarten, Discs … werden sofort eingehängt. Dies ist eine Einstellung von {desktop}: Eine Änderung hier ändert sie auch dort. Ausgeschaltet werden sie eingehängt, wenn Sie sie in der Seitenleiste anklicken."
 
 #: src/window/prefs.rs:732
-msgid ""
-"Flash drives, memory cards, discs… inserted while Arkha runs are mounted "
-"right away. Turned off, they’re mounted when you click them in the side pane."
+msgid "Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they’re mounted when you click them in the side pane."
 msgstr "USB-Sticks, Speicherkarten, Discs …, die eingelegt werden, während Arkha läuft, werden sofort eingehängt. Ausgeschaltet werden sie eingehängt, wenn Sie sie in der Seitenleiste anklicken."
 
 #: src/window/prefs.rs:746
@@ -3953,10 +3943,7 @@ msgid "The eject button only _unmounts"
 msgstr "Der Auswurfknopf hängt nur _aus"
 
 #: src/window/prefs.rs:747
-msgid ""
-"Clicking the button next to a drive in the side pane unmounts it, but "
-"doesn't eject it or power it off (the drive stays in the list, ready to be "
-"mounted again)"
+msgid "Clicking the button next to a drive in the side pane unmounts it, but doesn't eject it or power it off (the drive stays in the list, ready to be mounted again)"
 msgstr "Ein Klick auf den Knopf neben einem Laufwerk in der Seitenleiste hängt es aus, wirft es aber nicht aus und schaltet es nicht ab (das Laufwerk bleibt in der Liste, bereit zum erneuten Einhängen)"
 
 #: src/window/prefs.rs:766
@@ -3964,10 +3951,7 @@ msgid "Context Menu Entries"
 msgstr "Einträge im Kontextmenü"
 
 #: src/window/prefs.rs:767
-msgid ""
-"Drag an entry by its handle, or select it and use the arrows, to move it. "
-"Unchecked entries are hidden. Entries that don't apply are left out of the "
-"menu (Restore outside the Trash, say)."
+msgid "Drag an entry by its handle, or select it and use the arrows, to move it. Unchecked entries are hidden. Entries that don't apply are left out of the menu (Restore outside the Trash, say)."
 msgstr "Ziehen Sie einen Eintrag an seinem Griff oder wählen Sie ihn aus und nutzen Sie die Pfeile, um ihn zu verschieben. Nicht angehakte Einträge sind verborgen. Einträge, die nicht zutreffen, fehlen im Menü (etwa „Wiederherstellen“ außerhalb des Papierkorbs)."
 
 #: src/window/prefs.rs:772
@@ -3987,277 +3971,254 @@ msgid "Checksums in Properties"
 msgstr "Prüfsummen in den Eigenschaften"
 
 #: src/window/prefs.rs:797
-msgid ""
-"Unchecked ones aren't offered. Drag one by its handle, or select it and use "
-"the arrows, to move it."
+msgid "Unchecked ones aren't offered. Drag one by its handle, or select it and use the arrows, to move it."
 msgstr "Nicht angehakte werden nicht angeboten. Ziehen Sie eine an ihrem Griff oder wählen Sie sie aus und nutzen Sie die Pfeile, um sie zu verschieben."
 
-#: src/window/prefs.rs:925 src/window/prefs.rs:1745
+#: src/window/prefs.rs:913
+msgid "_Save"
+msgstr "_Speichern"
+
+#: src/window/prefs.rs:954 src/window/prefs.rs:1756
 msgid "Move up"
 msgstr "Nach oben"
 
-#: src/window/prefs.rs:927 src/window/prefs.rs:1747
+#: src/window/prefs.rs:956 src/window/prefs.rs:1758
 msgid "Move down"
 msgstr "Nach unten"
 
-#: src/window/prefs.rs:971
+#: src/window/prefs.rs:1000
 msgid "Drag to move"
 msgstr "Zum Verschieben ziehen"
 
-#: src/window/prefs.rs:1111
+#: src/window/prefs.rs:1140
 msgid "Separator"
 msgstr "Trennlinie"
 
-#: src/window/prefs.rs:1127
+#: src/window/prefs.rs:1156
 msgid "custom action"
 msgstr "eigene Aktion"
 
-#: src/window/prefs.rs:1147
+#: src/window/prefs.rs:1176
 msgid "Add _Separator"
 msgstr "_Trennlinie hinzufügen"
 
-#: src/window/prefs.rs:1148
+#: src/window/prefs.rs:1177
 msgid "Add a separator below the selected entry"
 msgstr "Eine Trennlinie unter dem ausgewählten Eintrag hinzufügen"
 
-#: src/window/prefs.rs:1149
+#: src/window/prefs.rs:1178
 msgid "Re_move Separator"
 msgstr "Trennlinie _entfernen"
 
-#: src/window/prefs.rs:1151 src/window/prefs.rs:1272 src/window/prefs.rs:1309
+#: src/window/prefs.rs:1180 src/window/prefs.rs:1295 src/window/prefs.rs:1328
 msgid "Reset _Order"
 msgstr "_Reihenfolge zurücksetzen"
 
-#: src/window/prefs.rs:1152
-msgid ""
-"Put every entry back in its original place (which entries are hidden stays "
-"as it is)"
+#: src/window/prefs.rs:1181
+msgid "Put every entry back in its original place (which entries are hidden stays as it is)"
 msgstr "Jeden Eintrag an seinen ursprünglichen Platz zurücksetzen (welche Einträge verborgen sind, bleibt, wie es ist)"
 
-#: src/window/prefs.rs:1199
+#: src/window/prefs.rs:1222
 msgid "View submenu:"
 msgstr "Untermenü „Ansicht“:"
 
-#: src/window/prefs.rs:1273
-msgid ""
-"Put every entry back in its usual place (which entries are hidden stays as "
-"it is)"
+#: src/window/prefs.rs:1296
+msgid "Put every entry back in its usual place (which entries are hidden stays as it is)"
 msgstr "Jeden Eintrag an seinen üblichen Platz zurücksetzen (welche Einträge verborgen sind, bleibt, wie es ist)"
 
-#: src/window/prefs.rs:1310
-msgid ""
-"Put every checksum back in its usual place (which are offered stays as it is)"
+#: src/window/prefs.rs:1329
+msgid "Put every checksum back in its usual place (which are offered stays as it is)"
 msgstr "Jede Prüfsumme an ihren üblichen Platz zurücksetzen (welche angeboten werden, bleibt, wie es ist)"
 
-#: src/window/prefs.rs:1395
+#: src/window/prefs.rs:1410
 msgid "Drag to reorder. Double-click a name to rename it."
 msgstr "Zum Umordnen ziehen. Einen Namen doppelklicken, um ihn umzubenennen."
 
-#: src/window/prefs.rs:1398 src/window/prefs.rs:1741
+#: src/window/prefs.rs:1413 src/window/prefs.rs:1752
 msgid "_Add…"
 msgstr "_Hinzufügen …"
 
-#: src/window/prefs.rs:1472
+#: src/window/prefs.rs:1487
 msgid "Action"
 msgstr "Aktion"
 
-#: src/window/prefs.rs:1472
+#: src/window/prefs.rs:1487
 msgid "Shortcut"
 msgstr "Tastenkürzel"
 
-#: src/window/prefs.rs:1521
+#: src/window/prefs.rs:1536
 #, rust-format
 msgid "“{shortcut}” is already the shortcut for “{action}”"
 msgstr "„{shortcut}“ ist bereits das Tastenkürzel für „{action}“"
 
-#: src/window/prefs.rs:1523
+#: src/window/prefs.rs:1538
 #, rust-format
 msgid "Use it for “{action}” instead? “{other}” will no longer have it."
 msgstr "Stattdessen für „{action}“ verwenden? „{other}“ hat es dann nicht mehr."
 
-#: src/window/prefs.rs:1525
+#: src/window/prefs.rs:1540
 msgid "_Reassign"
 msgstr "_Neu zuweisen"
 
-#: src/window/prefs.rs:1540
+#: src/window/prefs.rs:1555
 msgid "C_hange…"
 msgstr "Ä_ndern …"
 
-#: src/window/prefs.rs:1541
+#: src/window/prefs.rs:1556
 msgid "C_lear"
 msgstr "_Leeren"
 
-#: src/window/prefs.rs:1542
+#: src/window/prefs.rs:1557
 msgid "Remove the shortcut"
 msgstr "Das Tastenkürzel entfernen"
 
-#: src/window/prefs.rs:1544
+#: src/window/prefs.rs:1559
 msgid "Go back to the default shortcut"
 msgstr "Zum vorgegebenen Tastenkürzel zurückkehren"
 
-#: src/window/prefs.rs:1545
+#: src/window/prefs.rs:1560
 msgid "Reset _All"
 msgstr "_Alle zurücksetzen"
 
-#: src/window/prefs.rs:1546
+#: src/window/prefs.rs:1561
 msgid "Go back to the default shortcuts for every action"
 msgstr "Für jede Aktion zu den vorgegebenen Tastenkürzeln zurückkehren"
 
-#: src/window/prefs.rs:1589
-msgid ""
-"Double-click an action to give it a new shortcut. Changed shortcuts are "
-"shown in bold."
+#: src/window/prefs.rs:1600
+msgid "Double-click an action to give it a new shortcut. Changed shortcuts are shown in bold."
 msgstr "Doppelklicken Sie eine Aktion, um ihr ein neues Tastenkürzel zu geben. Geänderte Tastenkürzel sind fett dargestellt."
 
-#: src/window/prefs.rs:1604
+#: src/window/prefs.rs:1615
 msgid "Set Shortcut"
 msgstr "Tastenkürzel festlegen"
 
 #. TRANSLATORS: keep <b>{action}</b>: the action's name is shown in bold.
-#: src/window/prefs.rs:1607
+#: src/window/prefs.rs:1618
 #, rust-format
 msgid ""
 "Press the new shortcut for <b>{action}</b>,\n"
 "or Escape to cancel."
-msgstr "Drücken Sie das neue Tastenkürzel für <b>{action}</b>\noder Escape zum Abbrechen."
+msgstr ""
+"Drücken Sie das neue Tastenkürzel für <b>{action}</b>\n"
+"oder Escape zum Abbrechen."
 
-#: src/window/prefs.rs:1633
+#: src/window/prefs.rs:1644
 msgid "That key needs Ctrl, Alt or Super with it."
 msgstr "Diese Taste braucht Strg, Alt oder Super dazu."
 
-#: src/window/prefs.rs:1652 src/window/prefs.rs:1887
+#: src/window/prefs.rs:1663 src/window/prefs.rs:1882
 msgid "Command"
 msgstr "Befehl"
 
-#: src/window/prefs.rs:1652
+#: src/window/prefs.rs:1663
 msgid "File types"
 msgstr "Dateitypen"
 
-#: src/window/prefs.rs:1655
+#: src/window/prefs.rs:1666
 #, rust-format
 msgid "{name} (not installed)"
 msgstr "{name} (nicht installiert)"
 
-#: src/window/prefs.rs:1660
+#: src/window/prefs.rs:1671
 msgid "Add Thumbnailer"
 msgstr "Vorschauerzeuger hinzufügen"
 
-#: src/window/prefs.rs:1661
+#: src/window/prefs.rs:1672
 msgid "Edit Thumbnailer"
 msgstr "Vorschauerzeuger bearbeiten"
 
-#: src/window/prefs.rs:1671
-msgid ""
-"Custom thumbnailers make thumbnails for other file types, e.g. videos with "
-"ffmpeg. The first one whose file types match and whose program is installed "
-"is used. File types none of them handles use the thumbnailers installed on "
-"the system: PDF with Evince, office documents, audio cover art and so on."
+#: src/window/prefs.rs:1682
+msgid "Custom thumbnailers make thumbnails for other file types, e.g. videos with ffmpeg. The first one whose file types match and whose program is installed is used. File types none of them handles use the thumbnailers installed on the system: PDF with Evince, office documents, audio cover art and so on."
 msgstr "Eigene Vorschauerzeuger erstellen Vorschaubilder für andere Dateitypen, z. B. Videos mit ffmpeg. Verwendet wird der erste, dessen Dateitypen passen und dessen Programm installiert ist. Dateitypen, die keiner davon behandelt, nutzen die auf dem System installierten Vorschauerzeuger: PDF mit Evince, Office-Dokumente, Albumcover und so weiter."
 
-#: src/window/prefs.rs:1742
+#: src/window/prefs.rs:1753
 msgid "_Edit…"
 msgstr "_Bearbeiten …"
 
-#: src/window/prefs.rs:1828 src/window/prefs.rs:1933
-msgid "_Save"
-msgstr "_Speichern"
-
-#: src/window/prefs.rs:1843
+#: src/window/prefs.rs:1838
 msgid "e.g. Videos"
 msgstr "z. B. Videos"
 
-#: src/window/prefs.rs:1844
+#: src/window/prefs.rs:1839
 msgid "e.g. video/*"
 msgstr "z. B. video/*"
 
-#: src/window/prefs.rs:1845
+#: src/window/prefs.rs:1840
 msgid "e.g. ffmpegthumbnailer -i %i -o %o -s %s -f"
 msgstr "z. B. ffmpegthumbnailer -i %i -o %o -s %s -f"
 
-#: src/window/prefs.rs:1847
-msgid ""
-"File types are MIME types, separated by “;” (“*” matches anything). In the "
-"command, %i is the file, %o the image to write (PNG or JPEG) and %s the size "
-"in pixels. It runs with sh and may take up to 30 seconds."
+#: src/window/prefs.rs:1842
+msgid "File types are MIME types, separated by “;” (“*” matches anything). In the command, %i is the file, %o the image to write (PNG or JPEG) and %s the size in pixels. It runs with sh and may take up to 30 seconds."
 msgstr "Dateitypen sind MIME-Typen, durch „;“ getrennt („*“ passt auf alles). Im Befehl ist %i die Datei, %o das zu schreibende Bild (PNG oder JPEG) und %s die Größe in Pixeln. Er läuft mit sh und darf bis zu 30 Sekunden dauern."
 
-#: src/window/prefs.rs:1852
+#: src/window/prefs.rs:1847
 msgid "File _types:"
 msgstr "Datei_typen:"
 
-#: src/window/prefs.rs:1852 src/window/prefs.rs:2001
+#: src/window/prefs.rs:1847 src/window/prefs.rs:1986
 msgid "_Command:"
 msgstr "_Befehl:"
 
-#: src/window/prefs.rs:1852 src/window/prefs.rs:2000
+#: src/window/prefs.rs:1847 src/window/prefs.rs:1985
 msgid "_Name:"
 msgstr "_Name:"
 
-#: src/window/prefs.rs:1891
+#: src/window/prefs.rs:1886
 msgid "Add Custom Action"
 msgstr "Eigene Aktion hinzufügen"
 
-#: src/window/prefs.rs:1892
+#: src/window/prefs.rs:1887
 msgid "Edit Custom Action"
 msgstr "Eigene Aktion bearbeiten"
 
-#: src/window/prefs.rs:1897
-msgid ""
-"Commands run in the current folder. %f selected file, %F all selected files, "
-"%n / %N their names, %d current folder."
+#: src/window/prefs.rs:1892
+msgid "Commands run in the current folder. %f selected file, %F all selected files, %n / %N their names, %d current folder."
 msgstr "Befehle laufen im aktuellen Ordner. %f ausgewählte Datei, %F alle ausgewählten Dateien, %n / %N ihre Namen, %d aktueller Ordner."
 
-#: src/window/prefs.rs:1903
-msgid ""
-"A shell that accepts -c, such as sh, bash, zsh or fish, or its full path. "
-"Empty means sh."
+#: src/window/prefs.rs:1898
+msgid "A shell that accepts -c, such as sh, bash, zsh or fish, or its full path. Empty means sh."
 msgstr "Eine Shell, die -c versteht, etwa sh, bash, zsh oder fish, oder ihr vollständiger Pfad. Leer bedeutet sh."
 
-#: src/window/prefs.rs:1918
+#: src/window/prefs.rs:1913
 msgid "Run commands _with:"
 msgstr "Befehle ausführen _mit:"
 
-#: src/window/prefs.rs:1953
+#: src/window/prefs.rs:1938
 msgid "e.g. gimp %F"
 msgstr "z. B. gimp %F"
 
-#: src/window/prefs.rs:1954
-msgid ""
-"%f first selected file, %F all selected files, %n / %N their names, %d "
-"current folder, %% a % sign. Paths are quoted for you."
+#: src/window/prefs.rs:1939
+msgid "%f first selected file, %F all selected files, %n / %N their names, %d current folder, %% a % sign. Paths are quoted for you."
 msgstr "%f erste ausgewählte Datei, %F alle ausgewählten Dateien, %n / %N ihre Namen, %d aktueller Ordner, %% ein %-Zeichen. Pfade werden für Sie in Anführungszeichen gesetzt."
 
-#: src/window/prefs.rs:1959
+#: src/window/prefs.rs:1944
 msgid "_Files"
 msgstr "_Dateien"
 
-#: src/window/prefs.rs:1961
+#: src/window/prefs.rs:1946
 msgid "F_olders"
 msgstr "_Ordner"
 
-#: src/window/prefs.rs:1963
+#: src/window/prefs.rs:1948
 msgid "Empty space in a _folder"
 msgstr "Freie Fläche in einem O_rdner"
 
-#: src/window/prefs.rs:1987
+#: src/window/prefs.rs:1972
 msgid "e.g. *.srt; *.nfo"
 msgstr "z. B. *.srt; *.nfo"
 
-#: src/window/prefs.rs:1988
-msgid ""
-"A file needs one of the checked types or a name matching a pattern; with "
-"neither set, the action is offered for any file. Folders only go by the "
-"patterns."
+#: src/window/prefs.rs:1973
+msgid "A file needs one of the checked types or a name matching a pattern; with neither set, the action is offered for any file. Folders only go by the patterns."
 msgstr "Eine Datei braucht einen der angehakten Typen oder einen zu einem Muster passenden Namen; ist beides nicht gesetzt, wird die Aktion für jede Datei angeboten. Bei Ordnern zählen nur die Muster."
 
-#: src/window/prefs.rs:2003
+#: src/window/prefs.rs:1988
 msgid "Show for:"
 msgstr "Anzeigen für:"
 
-#: src/window/prefs.rs:2004
+#: src/window/prefs.rs:1989
 msgid "File types:"
 msgstr "Dateitypen:"
 
-#: src/window/prefs.rs:2005
+#: src/window/prefs.rs:1990
 msgid "Name _patterns:"
 msgstr "Namens_muster:"

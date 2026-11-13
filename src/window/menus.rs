@@ -32,6 +32,7 @@ impl AppWindow {
         create.append(Some(&tr("Create _Folder")), Some("win.new-folder"));
         create.append_submenu(Some(&tr("Create _Document")), &self.templates_menu);
         file.append_section(None, &create);
+        file.append_section(None, &section(&[(n_("Connect to _Server…"), "win.connect-server")]));
         file.append_section(None, &section(&[(n_("Open in _Terminal"), "win.terminal"), (n_("_Properties"), "win.properties")]));
         file.append_section(None, &section(&[(n_("_Empty Trash"), "win.empty-trash")]));
         file.append_section(None, &section(&[(n_("Move Tab _Left"), "win.tab-left"), (n_("Move Tab Ri_ght"), "win.tab-right")]));
