@@ -1,0 +1,77 @@
+name: Bug report
+description: Something in Arkha doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please check first whether it has already been reported.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: If you can make it happen again, how?
+      placeholder: |
+        1. Open a folder with …
+        2. Select …
+        3. …
+  - type: input
+    id: version
+    attributes:
+      label: Arkha version
+      description: From Help → About.
+      placeholder: 1.0.0-dev (r150, c2b90e6)
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution
+      placeholder: Debian 13, Fedora 45, Arch Linux, …
+    validations:
+      required: true
+  - type: input
+    id: desktop
+    attributes:
+      label: Desktop
+      placeholder: MATE 1.28, GNOME 49, KDE Plasma 6.5, xmonad, …
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Display server
+      options:
+        - X11
+        - Wayland
+        - I don't know
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install Arkha?
+      options:
+        - .deb from the release page
+        - .rpm from the release page
+        - AUR (arkha)
+        - AUR (arkha-bin)
+        - AUR (arkha-git)
+        - Prebuilt tarball from the release page
+        - A package from my distribution
+        - Built from source
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Terminal output
+      description: Start Arkha from a terminal (`arkha`), make the bug happen, and paste what it printed. Please check it for anything private, such as file or folder names.
+      render: shell
