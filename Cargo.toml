@@ -5,6 +5,12 @@ edition = "2021"
 # Debian 13's; checked by clippy (incompatible_msrv).
 rust-version = "1.85"
 license = "GPL-3.0-or-later"
+description = "A fast graphical file manager"
+authors = ["dekart811 <mail@dekart811.net>"]
+repository = "https://github.com/dekart811/arkha"
+readme = "README.md"
+# An application, not a library for crates.io.
+publish = false
 
 [dependencies]
 async-channel = "2"
