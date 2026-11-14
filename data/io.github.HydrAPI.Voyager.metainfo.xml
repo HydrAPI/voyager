@@ -49,6 +49,10 @@
 
   <screenshots>
     <screenshot type="default">
+      <caption>This PC: folders, drives with how full they are, and network locations</caption>
+      <image>https://raw.githubusercontent.com/HydrAPI/voyager/master/docs/screenshots/thispc-light.png</image>
+    </screenshot>
+    <screenshot>
       <caption>The icon view, with the info panel showing the selected picture</caption>
       <image>https://raw.githubusercontent.com/HydrAPI/voyager/master/docs/screenshots/icons-light.png</image>
     </screenshot>

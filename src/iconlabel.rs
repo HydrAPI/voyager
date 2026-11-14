@@ -120,18 +120,13 @@ impl IconLabel {
     fn draw_over(&self, widget: &gtk::Widget, cr: &gtk::cairo::Context, area: &gdk::Rectangle, text: &str, selected: bool) {
         let Some((bx, by, bw, bh)) = self.text_box(widget, area, text, selected) else { return };
         let ctx = widget.style_context();
-        let bg = ctx.lookup_color("theme_selected_bg_color").unwrap_or_else(|| gdk::RGBA::new(0.08, 0.33, 0.62, 1.0));
         let layouts = self.imp().drawn_layouts(widget, text, selected);
         let (x, y) = self.text_origin(area);
         ctx.save();
         if selected {
             cr.save().ok();
-            // Explorer's selection is the cell's (see theme.rs): a light
-            // tint behind the name when it is shown whole.
-            rounded_rect(cr, bx, by, bw, bh, BOX_RADIUS);
-            cr.set_source_rgba(bg.red(), bg.green(), bg.blue(), 0.24);
-            let _ = cr.fill();
-            cr.restore().ok();
+            // Explorer's selection is the whole cell's (see theme.rs): no
+            // second box behind the name.
             ctx.set_state(ctx.state() | gtk::StateFlags::SELECTED);
             draw_lines(&ctx, cr, x, y, &layouts);
         } else {
@@ -168,12 +163,10 @@ impl Default for IconLabel {
 }
 
 /// The selection box around a name: how far it reaches past the text
-/// (Caja's TEXT_BACK_PADDING_X/Y, and at the bottom its LABEL_OFFSET too),
-/// and its corners' radius.
+/// (Caja's TEXT_BACK_PADDING_X/Y, and at the bottom its LABEL_OFFSET too).
 const BOX_PAD_X: f64 = 4.0;
 const BOX_PAD_Y: f64 = 1.0;
 const BOX_PAD_BOTTOM: f64 = 2.0;
-const BOX_RADIUS: f64 = 3.0;
 /// Caption lines are drawn this much below the name: Caja counts the
 /// name's padding into its height when drawing, not when measuring (the
 /// rows and the selection box leave it out).
@@ -197,16 +190,6 @@ fn breakable(name: &str) -> String {
 /// The height of a label's lines: the name, then its captions.
 fn lines_height(layouts: &[pango::Layout]) -> f64 {
     layouts.iter().map(|l| l.pixel_size().1).sum::<i32>() as f64
-}
-
-fn rounded_rect(cr: &gtk::cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
-    use std::f64::consts::PI;
-    cr.new_sub_path();
-    cr.arc(x + w - r, y + r, r, -PI / 2.0, 0.0);
-    cr.arc(x + w - r, y + h - r, r, 0.0, PI / 2.0);
-    cr.arc(x + r, y + h - r, r, PI / 2.0, PI);
-    cr.arc(x + r, y + r, r, PI, 3.0 * PI / 2.0);
-    cr.close_path();
 }
 
 glib::wrapper! {

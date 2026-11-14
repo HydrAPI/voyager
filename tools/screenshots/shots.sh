@@ -3,7 +3,8 @@
 # the home folder first), in target/gui-tests/screenshots-<theme>-x11/:
 # icons.png (the icon view with the info panel), split.png (split view with
 # tabs, one pane in the list view), rename.png (Rename All) and
-# checksums.png (a picture's Properties, its checksums).
+# checksums.png (a picture's Properties, its checksums) and thispc.png (This PC,
+# with the folders and the drives).
 THEME=${2:-light}
 GT_NAME=screenshots-$THEME
 GT_WM=none
@@ -14,9 +15,12 @@ HERE=$GT_ROOT/tools/screenshots
 H=$HOME
 cp -a "$GT_ROOT/target/screenshots/home/." "$H/"
 mkdir -p "$XDG_CONFIG_HOME/gtk-3.0"
-if [ "$THEME" = dark ]; then t=Adwaita-dark i=Papirus-Dark; else t=Adwaita i=Papirus; fi
-printf '[Settings]\ngtk-theme-name=%s\ngtk-icon-theme-name=%s\ngtk-font-name=Cantarell 11\n' "$t" "$i" > "$XDG_CONFIG_HOME/gtk-3.0/settings.ini"
+# GTK 3's own Adwaita has the dark variant as a setting (no Adwaita-dark theme needed).
+if [ "$THEME" = dark ]; then d=true i=Papirus-Dark; else d=false i=Papirus; fi
+printf '[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=%s\ngtk-icon-theme-name=%s\ngtk-font-name=Cantarell 11\n' "$d" "$i" > "$XDG_CONFIG_HOME/gtk-3.0/settings.ini"
 printf 'file://%s/Documents\nfile://%s/Music\nfile://%s/Pictures\nfile://%s/Projects\n' "$H" "$H" "$H" "$H" > "$XDG_CONFIG_HOME/gtk-3.0/bookmarks"
+# The user folders This PC lists (and a sidebar's Quick access), as a desktop sets them.
+printf 'XDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_DOCUMENTS_DIR="$HOME/Documents"\nXDG_DOWNLOAD_DIR="$HOME/Downloads"\nXDG_MUSIC_DIR="$HOME/Music"\nXDG_PICTURES_DIR="$HOME/Pictures"\nXDG_VIDEOS_DIR="$HOME/Videos"\n' > "$XDG_CONFIG_HOME/user-dirs.dirs"
 # English dates and numbers too, whatever this machine's locale.
 export LC_ALL=en_US.UTF-8
 
@@ -30,7 +34,7 @@ rm -f "$FLAG"
 LC_ALL=C python3 "$HERE/backdrop.py" "$FLAG" > "$OUT/backdrop.log" 2>&1 & GT_PIDS="$GT_PIDS $!"; sleep 1.5
 
 # conf WIDTH HEIGHT: Voyager's window size for the next start.
-conf() { printf '[General]\nwidth=%s\nheight=%s\n' "$1" "$2" > "$XDG_CONFIG_HOME/voyager/voyager.conf"; }
+conf() { printf '[General]\nwidth=%s\nheight=%s\nshow_menubar=false\n' "$1" "$2" > "$XDG_CONFIG_HOME/voyager/voyager.conf"; }
 # top TITLE: Voyager's window with TITLE in its title.
 top() { xdotool search --onlyvisible --pid "$VOYAGER_PID" --name "$1" 2>/dev/null | tail -1; }
 # shot NAME WINDOW: the window with its title bar and shadow, cut from the
@@ -53,6 +57,13 @@ where() { python3 "$GT_DIR/a11y.py" "$@"; }
 start() { gt_voyager "$@"; xdotool mousemove 2790 1090; }
 # apart TITLE DIALOG: the main window to the left, the dialog to the right.
 apart() { xdotool windowmove "$(top "$1")" 40 60; sleep 0.5; xdotool windowmove "$2" 1600 150; sleep 1; }
+
+# This PC: the folders, the drives and the network locations.
+conf 1180 700
+start "computer:///"
+gt_quiet; sleep 2
+shot thispc "$(top "This PC")"
+gt_quit
 
 # The icon view one size up, the info panel, a picture selected.
 conf 1180 720

@@ -22,7 +22,7 @@ mkdir -p "$root/docs/screenshots"
 for t in $themes; do
     bash "$here/shots.sh" x11 "$t"
     out=$root/target/gui-tests/screenshots-$t-x11
-    for n in icons split rename checksums; do
+    for n in thispc icons split rename checksums; do
         cp "$out/$n.png" "$root/docs/screenshots/$n-$t.png"
     done
 done

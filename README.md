@@ -4,6 +4,11 @@ A fast graphical file manager for Linux, with the look of Windows Explorer and t
 
 <!-- Light or dark, as the reader's GitHub is; made with Adwaita and Papirus. -->
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/thispc-dark.png">
+  <img src="docs/screenshots/thispc-light.png" alt="This PC: the user's folders, the drives with how full they are, and the network locations">
+</picture>
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/icons-dark.png">
   <img src="docs/screenshots/icons-light.png" alt="Voyager's icon view, with the info panel showing the selected picture">
 </picture>
