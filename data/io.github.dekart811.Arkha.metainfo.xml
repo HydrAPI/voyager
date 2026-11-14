@@ -72,5 +72,8 @@
   </supports>
   <content_rating type="oars-1.1"/>
 
-  <!-- Each release: <releases><release version="1.0.0" date="YYYY-MM-DD"/></releases> -->
+  <!-- Each release gets a line, newest first (see BUILDING.md). -->
+  <releases>
+    <release version="1.0.0" date="2026-11-14"/>
+  </releases>
 </component>
