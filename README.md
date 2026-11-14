@@ -42,11 +42,11 @@ The [full list of features](docs/FEATURES.md) has every detail.
 
 ## Installing
 
-Packages for each release are on the project's Releases page, and for Arch Linux in the AUR:
+Packages for each release are on the project's Releases page, and for Arch Linux also in the AUR:
 
 - **Debian 13 or newer, Ubuntu 26.04 or newer:** `sudo apt install ./arkha_*.deb`
 - **Fedora:** `sudo dnf install ./arkha-*.rpm`
-- **Arch Linux:** from the AUR, `arkha` (built from the release's sources), `arkha-bin` (prebuilt) or `arkha-git` (the newest development version).
+- **Arch Linux:** `sudo pacman -U ./arkha-*.pkg.tar.zst`, or from the AUR: `arkha` (built from the release's sources), `arkha-bin` (prebuilt) or `arkha-git` (the newest development version).
 
 Arkha uses GVfs for the Trash, network places and drives; most desktops have it already. To build it yourself, see [BUILDING.md](BUILDING.md). If you package Arkha for a distribution, build it from a release's git tag, never from the prebuilt files: see [Packaging Arkha for a distribution](BUILDING.md#packaging-arkha-for-a-distribution).
 

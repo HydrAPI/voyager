@@ -2,7 +2,7 @@
 
 - **Debian 13 or newer, Ubuntu 26.04 or newer:** the `.deb`, installed with `sudo apt install ./arkha_*.deb`
 - **Fedora:** the `.rpm`, installed with `sudo dnf install ./arkha-*.rpm`
-- **Arch Linux:** `arkha`, `arkha-bin` or `arkha-git` from the AUR
+- **Arch Linux:** the `.pkg.tar.zst`, installed with `sudo pacman -U ./arkha-*.pkg.tar.zst`, or `arkha`, `arkha-bin` or `arkha-git` from the AUR
 - **Other distributions:** `arkha-<version>-x86_64.tar.gz`, the program to run from its folder (it needs GTK 3 and GVfs)
 
 `SHA256SUMS` has the files' checksums.

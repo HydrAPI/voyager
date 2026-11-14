@@ -1,7 +1,7 @@
 # Builds a release's files when its tag (v1.0.0) is pushed: the prebuilt
 # program for the AUR's arkha-bin (arkha-<version>-x86_64.tar.gz), the .deb
-# (built on Debian 13, also for Ubuntu 26.04) and the .rpm (Fedora), with
-# their SHA-256 sums, and puts them on a draft release: write its notes and
+# (built on Debian 13, also for Ubuntu 26.04), the .rpm (Fedora) and the
+# Arch Linux package (.pkg.tar.zst), with their SHA-256 sums, and puts them on a draft release: write its notes and
 # publish it on GitHub. The notes start with .github/release-notes.md
 # (the downloads, and the advice for packagers), then GitHub's list of
 # changes. The tag has to match Cargo.toml's version.
@@ -90,9 +90,33 @@ jobs:
           path: target/rpm/*.rpm
           if-no-files-found: error
 
+  arch:
+    name: Arch Linux package
+    needs: version
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - name: Install the build dependencies
+        run: pacman -Syu --noconfirm --needed base-devel git cargo gettext gtk3 gvfs hicolor-icon-theme
+      # The whole history and the tags: the PKGBUILD's version comes from them.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # makepkg won't run as root.
+      - name: Build
+        run: |
+          useradd -m builder
+          chown -R builder: .
+          su builder -c 'cd packaging/arch && ARKHA_BUILD= makepkg --noconfirm'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arch
+          path: packaging/arch/*.pkg.tar.zst
+          if-no-files-found: error
+
   release:
     name: Draft release
-    needs: [version, tarball, deb, rpm]
+    needs: [version, tarball, deb, rpm, arch]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

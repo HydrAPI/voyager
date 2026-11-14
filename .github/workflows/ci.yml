@@ -1,7 +1,8 @@
 # Checks every push to master and every pull request: the build, the tests,
 # clippy, the translations and their {placeholders}, that Arkha still
 # builds with its oldest supported Rust (Debian 13's), and that it builds
-# and installs as a Fedora package (as the release workflow makes it).
+# and installs as a Fedora and an Arch Linux package (as the release
+# workflow makes them).
 name: CI
 
 on:
@@ -72,3 +73,25 @@ jobs:
       # Its dependencies resolve, from Fedora's own repositories.
       - name: Install it
         run: dnf install -y target/rpm/*.rpm
+
+  arch:
+    name: Arch Linux package
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - name: Install the build dependencies
+        run: pacman -Syu --noconfirm --needed base-devel git cargo gettext gtk3 gvfs hicolor-icon-theme
+      # The whole history: the package's version counts the commits.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # makepkg won't run as root.
+      - name: Build the package
+        run: |
+          useradd -m builder
+          chown -R builder: .
+          su builder -c 'cd packaging/arch && makepkg --noconfirm'
+      - name: Its files
+        run: pacman -Qlp packaging/arch/*.pkg.tar.zst
+      - name: Install it
+        run: pacman -U --noconfirm packaging/arch/*.pkg.tar.zst
