@@ -20,7 +20,7 @@ jobs:
     name: Build, tests, clippy, translations
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install GTK 3 and gettext
         run: |
           sudo apt-get update
@@ -52,6 +52,6 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates cargo rustc libgtk-3-dev gettext pkg-config build-essential
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build
         run: cargo build --locked

@@ -24,7 +24,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: version
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
@@ -39,7 +39,7 @@ jobs:
     needs: version
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install GTK 3 and gettext
         run: |
           sudo apt-get update
@@ -48,7 +48,7 @@ jobs:
       - name: Build
         # A release's About window shows just its version (see build.rs).
         run: ARKHA_BUILD= packaging/tarball/build.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tarball
           path: target/tarball/*.tar.gz
@@ -64,10 +64,10 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git cargo rustc libgtk-3-dev gettext pkg-config build-essential dpkg-dev
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build
         run: ARKHA_BUILD= sh packaging/deb/build.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deb
           path: target/deb/*.deb
@@ -81,10 +81,10 @@ jobs:
     steps:
       - name: Install the build dependencies
         run: dnf install -y git cargo rust gcc gtk3-devel gettext rpm-build
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build
         run: ARKHA_BUILD= sh packaging/rpm/build.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rpm
           path: target/rpm/*.rpm
@@ -98,8 +98,8 @@ jobs:
       contents: write
     steps:
       # For the notes on the release page (.github/release-notes.md).
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
