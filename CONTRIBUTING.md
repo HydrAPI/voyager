@@ -8,7 +8,7 @@ Say what you did, what you expected and what happened instead, and include the v
 
 ## Testing
 
-Every push to `master` and every pull request is checked on GitHub (`.github/workflows/ci.yml`): the build, the unit tests, clippy (no warnings), the translations and their placeholders, and a build with Debian 13's Rust 1.85, the oldest Arkha supports.
+Every push to `master` and every pull request is checked on GitHub (`.github/workflows/ci.yml`): the build, the unit tests, clippy (no warnings), the translations and their placeholders, a build with Debian 13's Rust 1.85, the oldest Arkha supports, and a Fedora package built and installed in a Fedora container, as the release makes it.
 
 ```sh
 cargo test --release                                  # unit tests (no display needed)
