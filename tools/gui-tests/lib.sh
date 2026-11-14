@@ -4,27 +4,27 @@
 # (target/gui-tests/<test>-<backend>/) with a home and settings of its own,
 # then runs the script again inside a private D-Bus session with its own
 # runtime folder, so nothing of the user's desktop is touched (its GVfs, its
-# Trash, its accessibility bus, its running Arkha). Inside, gt_display starts
+# Trash, its accessibility bus, its running Voyager). Inside, gt_display starts
 # a headless X server, and xmonad (X11) or Weston's kiosk shell in it
 # (Wayland). Afterwards the outer run prints the test's PASS and FAIL lines
-# and the warnings in Arkha's log, and exits 1 if anything failed.
+# and the warnings in Voyager's log, and exits 1 if anything failed.
 #
 # The test's own variables:
 #   GT_NAME      the test's name (default: the script's)
-#   GT_CONF      lines for arkha.conf's [General] group
+#   GT_CONF      lines for voyager.conf's [General] group
 #   GT_A11Y=1    accessibility on (needed by gt_a11y)
 #   GT_WARNINGS=allow   warnings in the log don't fail the test
 #   GT_WM=none   no window manager on X11 (the benchmarks)
 #   GT_WESTON_SHELL=desktop   Weston's desktop shell on Wayland (default: kiosk)
 #   GT_BENCH=1   a benchmark: its results are shown, nothing is checked
-# From outside: ARKHA (the binary, default target/release/arkha).
+# From outside: VOYAGER (the binary, default target/release/voyager).
 
 GT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 GT_DIR=$GT_ROOT/tools/gui-tests
 GT_FIX=$GT_ROOT/target/gui-fixtures
-ARKHA=${ARKHA:-$GT_ROOT/target/release/arkha}
-APP_ID=io.github.dekart811.Arkha
-APP_PATH=/io/github/dekart811/Arkha
+VOYAGER=${VOYAGER:-$GT_ROOT/target/release/voyager}
+APP_ID=io.github.HydrAPI.Voyager
+APP_PATH=/io/github/HydrAPI/Voyager
 
 # gt_session BACKEND [ARGS...]: see above. Returns only inside the session,
 # with OUT (the run folder), BACKEND and HOME set.
@@ -42,13 +42,13 @@ gt_session() {
     cd "$OUT" || exit 1
     return 0
   fi
-  [ -x "$ARKHA" ] || { echo "no $ARKHA: cargo build --release first" >&2; exit 2; }
+  [ -x "$VOYAGER" ] || { echo "no $VOYAGER: cargo build --release first" >&2; exit 2; }
   "$GT_DIR/fixtures.sh" base >/dev/null || exit 2
-  rm -rf "$OUT"; mkdir -p "$OUT/home" "$OUT/config/arkha"
-  printf '[General]\n%s\n' "${GT_CONF:-}" > "$OUT/config/arkha/arkha.conf"
+  rm -rf "$OUT"; mkdir -p "$OUT/home" "$OUT/config/voyager"
+  printf '[General]\n%s\n' "${GT_CONF:-}" > "$OUT/config/voyager/voyager.conf"
   : > "$OUT/result"
   local rt status
-  rt=$(mktemp -d /tmp/arkha-gt.XXXXXX)
+  rt=$(mktemp -d /tmp/voyager-gt.XXXXXX)
   # The home is set before the session starts, so the services D-Bus starts
   # (GVfs's Trash and metadata) use the test home too, never the user's.
   HOME=$OUT/home XDG_CONFIG_HOME=$OUT/config XDG_CACHE_HOME=$OUT/home/.cache XDG_DATA_HOME=$OUT/home/.local/share \
@@ -60,10 +60,10 @@ gt_session() {
   rm -rf "$rt"
   [ $status -ne 0 ] && echo "FAIL the test script ended with status $status (see $OUT/session.log)" >> "$OUT/result"
   local warn
-  warn=$(grep -hE "CRITICAL|WARNING|panicked" "$OUT"/arkha*.log 2>/dev/null | sed -E 's/\(arkha:[0-9]+\)/(arkha)/; s/[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+/T/' | sort | uniq -c)
+  warn=$(grep -hE "CRITICAL|WARNING|panicked" "$OUT"/voyager*.log 2>/dev/null | sed -E 's/\(voyager:[0-9]+\)/(voyager)/; s/[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+/T/' | sort | uniq -c)
   if [ -n "$warn" ]; then
-    if [ "$GT_WARNINGS" = allow ]; then echo "NOTE warnings in Arkha's log (allowed here):" >> "$OUT/result"
-    else echo "FAIL warnings in Arkha's log:" >> "$OUT/result"; fi
+    if [ "$GT_WARNINGS" = allow ]; then echo "NOTE warnings in Voyager's log (allowed here):" >> "$OUT/result"
+    else echo "FAIL warnings in Voyager's log:" >> "$OUT/result"; fi
     echo "$warn" | sed 's/^/       /' >> "$OUT/result"
   fi
   echo "== $GT_NAME on $BACKEND"
@@ -100,11 +100,11 @@ gt_display() {
   fi
 }
 
-# gt_arkha ARGS...: starts Arkha (log in arkha.log, appended), waits until its
-# first window is there and the main thread is quiet. ARKHA_PID is set.
-gt_arkha() {
-  "$ARKHA" "$@" >> "$OUT/arkha.log" 2>&1 &
-  ARKHA_PID=$!
+# gt_voyager ARGS...: starts Voyager (log in voyager.log, appended), waits until its
+# first window is there and the main thread is quiet. VOYAGER_PID is set.
+gt_voyager() {
+  "$VOYAGER" "$@" >> "$OUT/voyager.log" 2>&1 &
+  VOYAGER_PID=$!
   for _ in $(seq 100); do
     gdbus introspect --session --dest $APP_ID --object-path $APP_PATH/window/1 >/dev/null 2>&1 && break
     sleep 0.1
@@ -115,13 +115,13 @@ gt_arkha() {
   [ -n "$GT_BENCH" ] || { xdotool mousemove 600 450; sleep 0.2; }
 }
 
-# gt_quiet: waits until Arkha's main thread has used no CPU for 0.4 s (at most 20 s).
+# gt_quiet: waits until Voyager's main thread has used no CPU for 0.4 s (at most 20 s).
 gt_quiet() {
   local last t quiet=0 n=0
-  last=$(awk '{print $14+$15}' /proc/$ARKHA_PID/task/$ARKHA_PID/stat 2>/dev/null)
+  last=$(awk '{print $14+$15}' /proc/$VOYAGER_PID/task/$VOYAGER_PID/stat 2>/dev/null)
   while [ $quiet -lt 4 ] && [ $n -lt 200 ]; do
     sleep 0.1; n=$((n+1))
-    t=$(awk '{print $14+$15}' /proc/$ARKHA_PID/task/$ARKHA_PID/stat 2>/dev/null) || return
+    t=$(awk '{print $14+$15}' /proc/$VOYAGER_PID/task/$VOYAGER_PID/stat 2>/dev/null) || return
     if [ "$t" = "$last" ]; then quiet=$((quiet+1)); else quiet=0; fi; last=$t
   done
 }
@@ -143,7 +143,7 @@ gt_click() { xdotool mousemove "$1" "$2" click "${3:-1}"; sleep 0.5; gt_quiet; }
 # gt_shot NAME: a screenshot of the whole screen, NAME.png in the run folder.
 gt_shot() { import -window root "$OUT/$1.png" 2>/dev/null; }
 
-# gt_a11y QUERY: what accessibility shows of Arkha (GT_A11Y=1): see a11y.py.
+# gt_a11y QUERY: what accessibility shows of Voyager (GT_A11Y=1): see a11y.py.
 # Each query is an accessibility client that comes and goes. GTK 3 crashes
 # when a key arrives while its AT-SPI bridge takes its key snooper away for
 # a client that left (it calls the freed snooper; seen as segfaults in
@@ -165,19 +165,19 @@ gt_ok() {
   if "$@"; then echo "PASS $name" >> "$OUT/result"; else echo "FAIL $name" >> "$OUT/result"; fi
 }
 
-# gt_quit: quits Arkha (as File → Quit does), killed if it doesn't end.
+# gt_quit: quits Voyager (as File → Quit does), killed if it doesn't end.
 gt_quit() {
-  if [ -n "$ARKHA_PID" ] && kill -0 "$ARKHA_PID" 2>/dev/null; then
+  if [ -n "$VOYAGER_PID" ] && kill -0 "$VOYAGER_PID" 2>/dev/null; then
     timeout 10 gdbus call --session --dest $APP_ID --object-path $APP_PATH \
       --method org.gtk.Actions.Activate quit [] {} >/dev/null 2>&1
-    for _ in $(seq 30); do kill -0 "$ARKHA_PID" 2>/dev/null || break; sleep 0.1; done
-    kill "$ARKHA_PID" 2>/dev/null && echo "NOTE Arkha didn't quit within 3 s" >> "$OUT/result"
-    wait "$ARKHA_PID" 2>/dev/null
+    for _ in $(seq 30); do kill -0 "$VOYAGER_PID" 2>/dev/null || break; sleep 0.1; done
+    kill "$VOYAGER_PID" 2>/dev/null && echo "NOTE Voyager didn't quit within 3 s" >> "$OUT/result"
+    wait "$VOYAGER_PID" 2>/dev/null
   fi
-  ARKHA_PID=
+  VOYAGER_PID=
 }
 
-# gt_end: quits Arkha and stops the display.
+# gt_end: quits Voyager and stops the display.
 gt_end() {
   gt_quit
   # shellcheck disable=SC2086

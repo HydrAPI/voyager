@@ -9,11 +9,11 @@
 # kiosk shell nested in it), in its own D-Bus session and runtime folder
 # (services started in the session, such as the accessibility bus, would
 # otherwise put their sockets over the desktop's in /run/user) and with its own settings, so the real
-# desktop, settings and a running Arkha are never touched. X11 runs under
+# desktop, settings and a running Voyager are never touched. X11 runs under
 # xmonad (as on the author's system), if it's installed.
 #
-# A drag counts as started when Arkha logs "bar drag started" (a GLib debug
-# message, shown with G_MESSAGES_DEBUG=arkha), and as dropped when the bar
+# A drag counts as started when Voyager logs "bar drag started" (a GLib debug
+# message, shown with G_MESSAGES_DEBUG=voyager), and as dropped when the bar
 # order in the settings changes: the view buttons, dropped on the right half
 # of the zoom group, go behind it. Every run starts with the order written
 # out, so saving the settings for another reason doesn't look like a drop.
@@ -28,7 +28,7 @@
 
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BIN=$ROOT/target/release/arkha
+BIN=$ROOT/target/release/voyager
 OUT=$ROOT/target/lockbar-test
 DRAG=${DRAG:-"908 87 1128 87"}
 MENU=${MENU:-}
@@ -37,7 +37,7 @@ if [ -z "${LOCKBAR_INNER:-}" ]; then
     [ -x "$BIN" ] || { echo "Build first: cargo build --release"; exit 2; }
     mkdir -p "$OUT"
     # A short path: Wayland sockets allow 107 bytes.
-    XDG_RUNTIME_DIR=$(mktemp -d /tmp/arkha-rt.XXXXXX)
+    XDG_RUNTIME_DIR=$(mktemp -d /tmp/voyager-rt.XXXXXX)
     export XDG_RUNTIME_DIR
     trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
     fails=0
@@ -61,7 +61,7 @@ backend=$1
 fails=0
 CFG=$OUT/$backend-config
 LOG=$OUT/$backend.log
-export DISPLAY=:71 GSETTINGS_BACKEND=memory GVFS_DISABLE_FUSE=1 NO_AT_BRIDGE=1 GTK_A11Y=none XDG_CONFIG_HOME=$CFG G_MESSAGES_DEBUG=arkha
+export DISPLAY=:71 GSETTINGS_BACKEND=memory GVFS_DISABLE_FUSE=1 NO_AT_BRIDGE=1 GTK_A11Y=none XDG_CONFIG_HOME=$CFG G_MESSAGES_DEBUG=voyager
 Xvfb :71 -screen 0 1200x800x24 -nolisten tcp >/dev/null 2>&1 &
 XP=$!
 sleep 1
@@ -82,9 +82,9 @@ else
 fi
 
 ORDER='bar_order=path;ops;split;view;zoom;info;'
-order() { grep -h '^bar_order' "$CFG/arkha/arkha.conf" 2>/dev/null; }
+order() { grep -h '^bar_order' "$CFG/voyager/voyager.conf" 2>/dev/null; }
 # Fresh settings: the default order, and the lock as given.
-settings() { rm -rf "$CFG"; mkdir -p "$CFG/arkha"; printf '[General]\n%s\nlock_bar=%s\n' "$ORDER" "$1" > "$CFG/arkha/arkha.conf"; }
+settings() { rm -rf "$CFG"; mkdir -p "$CFG/voyager"; printf '[General]\n%s\nlock_bar=%s\n' "$ORDER" "$1" > "$CFG/voyager/voyager.conf"; }
 drags() { grep -c 'bar drag started' "$LOG"; }
 
 drag() {
@@ -155,7 +155,7 @@ one_drag "locked" true no
 settings false
 start
 toggle_from_menu
-if grep -q '^lock_bar=true' "$CFG/arkha/arkha.conf"; then
+if grep -q '^lock_bar=true' "$CFG/voyager/voyager.conf"; then
     echo "  PASS  $backend: View → Lock Toolbar saves the lock"
 else
     echo "  FAIL  $backend: View → Lock Toolbar didn't save the lock"; fails=$((fails + 1))

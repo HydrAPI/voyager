@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""What accessibility (AT-SPI) shows of Arkha, for the GUI tests: works the
+"""What accessibility (AT-SPI) shows of Voyager, for the GUI tests: works the
 same on X11 and Wayland, where window titles can't be read otherwise.
 
-    a11y.py windows     the titles of Arkha's windows, one per line
+    a11y.py windows     the titles of Voyager's windows, one per line
     a11y.py tabs        the tab names of its first window, in order
     a11y.py dialogs     its open dialogs' titles
     a11y.py headers     the column headers of its first window's list
@@ -31,11 +31,11 @@ gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi, GLib  # noqa: E402
 
 
-def arkha():
+def voyager():
     desk = Atspi.get_desktop(0)
     for i in range(desk.get_child_count()):
         app = desk.get_child_at_index(i)
-        if app and app.get_name() == "arkha":
+        if app and app.get_name() == "voyager":
             return app
     return None
 
@@ -75,7 +75,7 @@ def main():
         GLib.timeout_add_seconds(int(sys.argv[2]) if len(sys.argv) > 2 else 30, lambda: Atspi.event_quit())
         Atspi.event_main()
         return
-    app = arkha()
+    app = voyager()
     if not app:
         return
     if what == "windows":

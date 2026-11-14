@@ -3,7 +3,7 @@
 # views, as set in Preferences (buttons 8 and 9, swapped, or turned off), in
 # the icon, list and compact views; then a right click on an item and on
 # empty space, and a middle click on a folder (it opens in a new tab).
-# Arkha starts in nav/a/b and goes up twice (to nav), then a button is
+# Voyager starts in nav/a/b and goes up twice (to nav), then a button is
 # clicked over empty space in the view: it must show "a" (back), and after
 # the other button "nav" again.
 GT_A11Y=1
@@ -16,8 +16,8 @@ title() { gt_a11y windows | head -1; }
 n=0
 while read -r name view settings b1 b2 want1 want2; do
   n=$((n+1))
-  printf '[General]\ndefault_view=%s\n%s\n' "$view" "$(echo "$settings" | tr ',' '\n')" > "$XDG_CONFIG_HOME/arkha/arkha.conf"
-  gt_arkha "$HOME/nav/a/b"
+  printf '[General]\ndefault_view=%s\n%s\n' "$view" "$(echo "$settings" | tr ',' '\n')" > "$XDG_CONFIG_HOME/voyager/voyager.conf"
+  gt_voyager "$HOME/nav/a/b"
   gt_act up; gt_act up
   xdotool mousemove 900 650; sleep 0.2
   gt_click 900 650 "$b1"; gt_shot "$name-1"; gt_check "$name: button $b1" "$(title)" "$want1"

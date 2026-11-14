@@ -284,7 +284,7 @@ fn rename_css() -> gtk::CssProvider {
     thread_local! {
         static CSS: gtk::CssProvider = {
             let css = gtk::CssProvider::new();
-            let _ = css.load_from_data(b"frame.arkha-rename, textview, textview text { background-color: @theme_base_color; color: @theme_text_color; }");
+            let _ = css.load_from_data(b"frame.voyager-rename, textview, textview text { background-color: @theme_base_color; color: @theme_text_color; }");
             css
         };
     }
@@ -3768,7 +3768,7 @@ impl Pane {
         view.set_right_margin(2);
         if let Some(b) = view.buffer() { b.set_text(&row.name) }
         let frame = gtk::Frame::new(None);
-        frame.style_context().add_class("arkha-rename");
+        frame.style_context().add_class("voyager-rename");
         frame.style_context().add_provider(&rename_css(), gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
         view.style_context().add_provider(&rename_css(), gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
         frame.add(&view);
@@ -4213,12 +4213,12 @@ fn debug_once(uri: &str, what: &str) {
     }
     // Only kept while debug messages are shown (G_MESSAGES_DEBUG).
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    let on = ON.get_or_init(|| std::env::var("G_MESSAGES_DEBUG").is_ok_and(|v| v.split([',', ' ']).any(|d| d == "all" || d == "arkha")));
+    let on = ON.get_or_init(|| std::env::var("G_MESSAGES_DEBUG").is_ok_and(|v| v.split([',', ' ']).any(|d| d == "all" || d == "voyager")));
     if !on {
         return;
     }
     if TOLD.with(|t| t.borrow_mut().insert(uri.to_string())) {
-        glib::g_debug!("arkha", "thumbnail: {what} ({uri})");
+        glib::g_debug!("voyager", "thumbnail: {what} ({uri})");
     }
 }
 

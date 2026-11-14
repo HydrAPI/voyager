@@ -12,7 +12,7 @@ for n in a b c; do echo "$n" > "$T/$n.txt"; done
 chmod 644 "$T/a.txt"; chmod 600 "$T/b.txt"; chmod 755 "$T/c.txt"
 echo x > "$HOME/gone.txt"
 gt_display
-gt_arkha "$T"
+gt_voyager "$T"
 gt_act view-mode "<'list'>"
 headers() { gt_a11y headers | tr '\n' ' '; }
 names() { gt_a11y cells | grep '\.txt$' | tr '\n' ' '; }
@@ -23,7 +23,7 @@ y=120
 gt_click 700 $y 3; gt_shot header-menu
 gt_key Down Down Down Down Down Down Return
 gt_check "Owner added from the header menu" "$(headers)" "Name Size Type Modified Owner "
-gt_check "and kept" "$(grep '^list_columns=' "$XDG_CONFIG_HOME/arkha/arkha.conf")" "list_columns=size;type;mtime;owner;"
+gt_check "and kept" "$(grep '^list_columns=' "$XDG_CONFIG_HOME/voyager/voyager.conf")" "list_columns=size;type;mtime;owner;"
 gt_act sort-by "<'permissions'>"; gt_shot sorted
 gt_check "sorted by permissions (600, 644, 755)" "$(names)" "b.txt a.txt c.txt "
 gt_act sort-by "<'name'>"

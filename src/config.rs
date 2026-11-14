@@ -1,4 +1,4 @@
-//! Persistent settings in ~/.config/arkha/arkha.conf
+//! Persistent settings in ~/.config/voyager/voyager.conf
 
 use std::cell::RefCell;
 
@@ -94,7 +94,7 @@ pub struct Settings {
     pub unmount_only: bool,
     /// Separate automounters (udiskie, …) already told about, once each.
     pub automounters_noticed: Vec<String>,
-    /// What happens with media Arkha mounts when inserted (see autorun.rs),
+    /// What happens with media Voyager mounts when inserted (see autorun.rs),
     /// as the desktop's media-handling keys say, which are these otherwise
     /// (without one of GNOME, Cinnamon or MATE).
     pub autorun_never: bool,
@@ -148,10 +148,10 @@ pub struct Settings {
     pub iec_units: bool,
     /// How dates are shown: "informal" (Today 14:00), "locale" or "iso".
     pub date_format: String,
-    /// The language of Arkha's texts (a translation's code, "en"), or ""
-    /// for the system's; applies when Arkha starts (see i18n).
+    /// The language of Voyager's texts (a translation's code, "en"), or ""
+    /// for the system's; applies when Voyager starts (see i18n).
     pub language: String,
-    /// Arkha's own font (a Pango description, "Sans 11"), or "" for the system's.
+    /// Voyager's own font (a Pango description, "Sans 11"), or "" for the system's.
     pub font: String,
     /// Folder covers (see info.rs): the file names looked for, ';'-separated
     /// and in order of preference, matched ignoring case.
@@ -354,13 +354,53 @@ pub fn config_home() -> std::path::PathBuf {
     return std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("test-config");
 }
 
-/// A file in Arkha's own settings folder.
-pub fn arkha_file(name: &str) -> std::path::PathBuf {
-    config_home().join("arkha").join(name)
+/// A file in Voyager's own settings folder.
+pub fn voyager_file(name: &str) -> std::path::PathBuf {
+    config_home().join("voyager").join(name)
 }
 
 fn path() -> std::path::PathBuf {
-    arkha_file("arkha.conf")
+    voyager_file("voyager.conf")
+}
+
+/// Copies a folder with what's in it; files that are there already stay.
+#[cfg(not(test))]
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    if std::fs::create_dir_all(to).is_err() {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(from) else { return };
+    for e in entries.flatten() {
+        let (src, dst) = (e.path(), to.join(e.file_name()));
+        if src.is_dir() {
+            copy_tree(&src, &dst);
+        } else if !dst.exists() {
+            let _ = std::fs::copy(&src, &dst);
+        }
+    }
+}
+
+/// Voyager started as Arkha: the first time, its settings (and the patterns
+/// you added) are copied from Arkha's folders, which stay as they are. Run
+/// before anything reads the settings.
+pub fn migrate_from_arkha() {
+    #[cfg(not(test))]
+    {
+        let new = config_home().join("voyager");
+        let old = config_home().join("arkha");
+        if !new.exists() && old.is_dir() {
+            copy_tree(&old, &new);
+            let conf = new.join("arkha.conf");
+            if conf.exists() {
+                let _ = std::fs::rename(&conf, new.join("voyager.conf"));
+            }
+        }
+        let new_data = glib::user_data_dir().join("voyager");
+        let old_data = glib::user_data_dir().join("arkha");
+        if !new_data.exists() && old_data.is_dir() {
+            copy_tree(&old_data, &new_data);
+        }
+    }
 }
 
 fn load() -> Settings {

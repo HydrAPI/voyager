@@ -1,5 +1,5 @@
 #!/bin/bash
-# speed.sh OLD NEW [DIRS...]: opening folders with two Arkha builds (say
+# speed.sh OLD NEW [DIRS...]: opening folders with two Voyager builds (say
 # the last package's and this one), alternating, 3 runs each: when the main
 # thread stays idle, its CPU and all threads', in the icon view, the list
 # view, and the list view with every column. Default folders: /usr/lib and
@@ -24,9 +24,9 @@ for dir in $DIRS; do
         icon) printf '[General]\nper_folder=false\n' ;;
         list) printf '[General]\nper_folder=false\ndefault_view=list\n' ;;
         all) printf '[General]\nper_folder=false\ndefault_view=list\nlist_columns=size;type;mtime;atime;btime;owner;group;permissions;octal;mime;extension;location;disk;\n' ;;
-      esac > "$XDG_CONFIG_HOME/arkha/arkha.conf"
+      esac > "$XDG_CONFIG_HOME/voyager/voyager.conf"
       b=$OLD; [ $bin = new ] && b=$NEW
-      t0=$(date +%s%N); "$b" "$dir" >> "$OUT/arkha-$bin.log" 2>&1 & P=$!
+      t0=$(date +%s%N); "$b" "$dir" >> "$OUT/voyager-$bin.log" 2>&1 & P=$!
       last=0 quiet=0 busy=0
       while true; do
         sleep 0.1

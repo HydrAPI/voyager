@@ -1,6 +1,6 @@
 //! Custom thumbnailers: commands the user sets up to make thumbnails for
 //! file types the built-in (image) thumbnailer doesn't handle, e.g. videos
-//! with ffmpeg. Stored in ~/.config/arkha/thumbnailers.conf.
+//! with ffmpeg. Stored in ~/.config/voyager/thumbnailers.conf.
 //!
 //! Also the thumbnailers installed on the system (`system`), as Caja and
 //! other file managers use them: PDF with Evince, office documents with
@@ -26,7 +26,7 @@ pub struct Thumbnailer {
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 fn path() -> PathBuf {
-    crate::config::arkha_file("thumbnailers.conf")
+    crate::config::voyager_file("thumbnailers.conf")
 }
 
 /// Used until the user changes the list: ffmpegthumbnailer, else ffmpeg,

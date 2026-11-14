@@ -84,7 +84,7 @@ thread_local! {
     /// Changes when ICONS is emptied: the pictures kept on icons (see
     /// icon_pixbuf) are then out of date.
     static ICONS_GEN: Cell<u32> = const { Cell::new(0) };
-    static PICTURES_KEY: glib::Quark = glib::Quark::from_str("arkha-icon-pictures");
+    static PICTURES_KEY: glib::Quark = glib::Quark::from_str("voyager-icon-pictures");
 }
 
 /// Pictures kept on an icon: (ICONS_GEN, size, picture).
@@ -94,7 +94,7 @@ type KeptPictures = RefCell<Vec<(u32, i32, Option<Pixbuf>)>>;
 /// what views do for every item each time they measure them, so it's
 /// kept on the icon.
 fn icon_key(icon: &gio::Icon) -> String {
-    let quark = glib::Quark::from_str("arkha-icon-key");
+    let quark = glib::Quark::from_str("voyager-icon-key");
     unsafe {
         if let Some(k) = icon.qdata::<String>(quark) {
             return k.as_ref().clone();
@@ -317,7 +317,7 @@ pub fn emblem_title(icon: &str) -> String {
 /// Marks icons made from a custom icon (see item_icon): no thumbnail
 /// replaces them, as in Caja.
 fn custom_quark() -> glib::Quark {
-    glib::Quark::from_str("arkha-custom-icon")
+    glib::Quark::from_str("voyager-custom-icon")
 }
 
 pub fn is_custom(icon: &gio::Icon) -> bool {
@@ -886,10 +886,10 @@ fn makers() -> Arc<Pool<ThumbJob>> {
     q
 }
 
-/// Where Arkha notes the files it couldn't make a thumbnail of, as the
+/// Where Voyager notes the files it couldn't make a thumbnail of, as the
 /// thumbnail spec has it, so they aren't tried every time they're shown.
 fn fail_dir() -> std::path::PathBuf {
-    glib::user_cache_dir().join("thumbnails").join("fail").join("arkha")
+    glib::user_cache_dir().join("thumbnails").join("fail").join("voyager")
 }
 
 fn fail_path_for(uri: &str) -> std::path::PathBuf {
@@ -907,8 +907,8 @@ fn record_failure(job: &ThumbJob) {
         return;
     }
     let mtime = job.mtime.to_string();
-    if let Err(e) = pb.savev(&out, "png", &[("tEXt::Thumb::URI", job.uri.as_str()), ("tEXt::Thumb::MTime", mtime.as_str()), ("tEXt::Software", "Arkha")]) {
-        glib::g_debug!("arkha", "thumbnail: couldn't note the failure in {}: {e}", out.display());
+    if let Err(e) = pb.savev(&out, "png", &[("tEXt::Thumb::URI", job.uri.as_str()), ("tEXt::Thumb::MTime", mtime.as_str()), ("tEXt::Software", "Voyager")]) {
+        glib::g_debug!("voyager", "thumbnail: couldn't note the failure in {}: {e}", out.display());
     }
 }
 
@@ -916,7 +916,7 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
     // First: a thumbnailer writes its picture there too.
     if let Some(d) = job.out.parent() {
         if let Err(e) = std::fs::create_dir_all(d) {
-            glib::g_debug!("arkha", "thumbnail: couldn't make {}: {e}", d.display());
+            glib::g_debug!("voyager", "thumbnail: couldn't make {}: {e}", d.display());
             return None;
         }
         #[cfg(unix)]
@@ -929,8 +929,8 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
         // The command writes some image; it's then stored like any other
         // thumbnail (scaled, with the Thumb::URI/MTime the cache needs).
         Some(t) => {
-            let raw = job.out.with_extension(format!("arkha-{}.raw.png", std::process::id()));
-            glib::g_debug!("arkha", "thumbnail: running “{}” for {}", t.name, job.uri);
+            let raw = job.out.with_extension(format!("voyager-{}.raw.png", std::process::id()));
+            glib::g_debug!("voyager", "thumbnail: running “{}” for {}", t.name, job.uri);
             let start = std::time::Instant::now();
             let ran = thumbnailers::run(t, &job.src, &raw, 256);
             let pb = ran
@@ -940,7 +940,7 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
             match pb {
                 Ok(pb) => pb,
                 Err(e) => {
-                    glib::g_debug!("arkha", "thumbnail: {e} ({})", job.uri);
+                    glib::g_debug!("voyager", "thumbnail: {e} ({})", job.uri);
                     return None;
                 }
             }
@@ -950,13 +950,13 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
             match load_at_scale(&job.src, 256) {
                 Ok(pb) => pb.apply_embedded_orientation().unwrap_or(pb),
                 Err(e) => {
-                    glib::g_debug!("arkha", "thumbnail: couldn't load the image: {e} ({})", job.uri);
+                    glib::g_debug!("voyager", "thumbnail: couldn't load the image: {e} ({})", job.uri);
                     return None;
                 }
             }
         }
     };
-    let tmp = job.out.with_extension(format!("arkha-{}.tmp", std::process::id()));
+    let tmp = job.out.with_extension(format!("voyager-{}.tmp", std::process::id()));
     let mtime = job.mtime.to_string();
     let saved = pb
         .savev(
@@ -965,7 +965,7 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
             &[
                 ("tEXt::Thumb::URI", job.uri.as_str()),
                 ("tEXt::Thumb::MTime", mtime.as_str()),
-                ("tEXt::Software", "Arkha"),
+                ("tEXt::Software", "Voyager"),
                 // About 2 ms instead of 12–26 for 256 px, the file about
                 // as small (from a photo's 82 KB to 79, a drawing's 48 to 58).
                 ("compression", "1"),
@@ -974,15 +974,15 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
         .map_err(|e| e.to_string())
         .and_then(|()| std::fs::rename(&tmp, &job.out).map_err(|e| e.to_string()));
     if let Err(e) = saved {
-        glib::g_debug!("arkha", "thumbnail: couldn't save {}: {e} ({})", job.out.display(), job.uri);
+        glib::g_debug!("voyager", "thumbnail: couldn't save {}: {e} ({})", job.out.display(), job.uri);
         return None;
     }
-    glib::g_debug!("arkha", "thumbnail: made {} ({})", job.out.display(), job.uri);
+    glib::g_debug!("voyager", "thumbnail: made {} ({})", job.out.display(), job.uri);
     Some(job.out.to_string_lossy().to_string())
 }
 
 /// Memory for the pictures being decoded for thumbnails at once. Decoding
-/// one takes some 20 bytes a pixel until it's scaled down: 3–4 in Arkha,
+/// one takes some 20 bytes a pixel until it's scaled down: 3–4 in Voyager,
 /// 8–27 in gdk-pixbuf's (glycin) loader process, by format. With all
 /// makers busy on big pictures that added up to gigabytes (3 GB for
 /// GNOME's 4096 × 4096 wallpapers). A maker waits while what it would
@@ -1090,7 +1090,7 @@ pub fn request_thumbnail(uri: &str, path: &std::path::Path, mtime: i64, size: u6
     let custom = custom_for(ctype);
     // Big images are slow to decode; custom thumbnailers (videos…) decide themselves.
     if custom.is_none() && (!builtin_can(ctype) || size > crate::config::with(|s| s.thumbnail_limit)) {
-        glib::g_debug!("arkha", "thumbnail: none for {ctype} of {size} bytes ({uri})");
+        glib::g_debug!("voyager", "thumbnail: none for {ctype} of {size} bytes ({uri})");
         return;
     }
     let first = QUEUED.with(|q| q.borrow_mut().insert((uri.to_string(), mtime)));
@@ -1103,10 +1103,10 @@ pub fn request_thumbnail(uri: &str, path: &std::path::Path, mtime: i64, size: u6
         return;
     }
     if png_thumb_mtime(&fail_path_for(uri)) == Some(mtime.to_string()) {
-        glib::g_debug!("arkha", "thumbnail: failed before, not tried again until the file changes ({uri})");
+        glib::g_debug!("voyager", "thumbnail: failed before, not tried again until the file changes ({uri})");
         return;
     }
-    glib::g_debug!("arkha", "thumbnail: asked for {ctype} ({uri})");
+    glib::g_debug!("voyager", "thumbnail: asked for {ctype} ({uri})");
     makers().push(ThumbJob {
         uri: uri.to_string(),
         src: path.to_path_buf(),
@@ -1350,7 +1350,7 @@ mod tests {
     #[test]
     fn existing_thumbnails() {
         let i = gio::FileInfo::new();
-        let uri = "file:///no/such/arkha-test-file.png";
+        let uri = "file:///no/such/voyager-test-file.png";
         assert_eq!(existing_thumbnail(&i, uri, 5), None);
         i.set_attribute_byte_string("thumbnail::path", "/x/t.png");
         assert_eq!(existing_thumbnail(&i, uri, 5).as_deref(), Some("/x/t.png"));

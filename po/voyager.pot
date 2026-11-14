@@ -1,14 +1,14 @@
 # SOME DESCRIPTIVE TITLE.
 # Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the Arkha package.
+# This file is distributed under the same license as the Voyager package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Arkha 1.1.0-dev\n"
+"Project-Id-Version: Voyager 1.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-14 21:21+0100\n"
+"POT-Creation-Date: 2026-11-14 21:47+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -353,13 +353,13 @@ msgstr ""
 #: src/autorun.rs:438
 #, rust-format
 msgid ""
-"What happens when you insert media or connect devices that Arkha mounts. "
+"What happens when you insert media or connect devices that Voyager mounts. "
 "These are {desktop}’s own settings."
 msgstr ""
 
 #: src/autorun.rs:439
 msgid ""
-"What happens when you insert media or connect devices that Arkha mounts."
+"What happens when you insert media or connect devices that Voyager mounts."
 msgstr ""
 
 #: src/autorun.rs:473
@@ -748,7 +748,7 @@ msgstr ""
 msgid ""
 "Windows shares need GVfs's SMB support, which isn't installed. Install the "
 "package gvfs-smb (and gvfs-wsdd or gvfs-dnssd to find computers in the "
-"network), then restart Arkha."
+"network), then restart Voyager."
 msgstr ""
 
 #: src/connect.rs:111
@@ -2622,19 +2622,20 @@ msgstr[1] ""
 #: src/sidebar.rs:1748
 #, rust-format
 msgid ""
-"It runs separately from Arkha and mounts inserted drives and media by "
-"itself, whatever Arkha’s settings are, and Arkha can’t switch it off.\n"
+"It runs separately from Voyager and mounts inserted drives and media by "
+"itself, whatever Voyager’s settings are, and Voyager can’t switch it off.\n"
 "\n"
-"To leave mounting to Arkha, stop {names} from starting with your session "
+"To leave mounting to Voyager, stop {names} from starting with your session "
 "(for example, remove it from your window manager’s autostart) and log in "
 "again.\n"
 "\n"
 "This message isn’t shown again."
 msgid_plural ""
-"They run separately from Arkha and mount inserted drives and media by "
-"themselves, whatever Arkha’s settings are, and Arkha can’t switch them off.\n"
+"They run separately from Voyager and mount inserted drives and media by "
+"themselves, whatever Voyager’s settings are, and Voyager can’t switch them "
+"off.\n"
 "\n"
-"To leave mounting to Arkha, stop {names} from starting with your session "
+"To leave mounting to Voyager, stop {names} from starting with your session "
 "(for example, remove them from your window manager’s autostart) and log in "
 "again.\n"
 "\n"
@@ -3678,15 +3679,15 @@ msgid "Other Programs"
 msgstr ""
 
 #: src/window/prefs.rs:379
-msgid "Open folders when other programs _ask, also when Arkha isn't running"
+msgid "Open folders when other programs _ask, also when Voyager isn't running"
 msgstr ""
 
 #: src/window/prefs.rs:380
 msgid ""
-"“Show in folder” in web browsers, download lists and the like opens Arkha, "
-"with the file selected. While Arkha runs it does this anyway, unless another "
-"file manager that does it was there first; this lets programs start Arkha "
-"for it too."
+"“Show in folder” in web browsers, download lists and the like opens Voyager, "
+"with the file selected. While Voyager runs it does this anyway, unless "
+"another file manager that does it was there first; this lets programs start "
+"Voyager for it too."
 msgstr ""
 
 #: src/window/prefs.rs:386
@@ -3732,7 +3733,7 @@ msgid "System default"
 msgstr ""
 
 #: src/window/prefs.rs:445
-msgid "Applies the next time Arkha starts."
+msgid "Applies the next time Voyager starts."
 msgstr ""
 
 #: src/window/prefs.rs:457
@@ -4134,7 +4135,7 @@ msgstr ""
 
 #: src/window/prefs.rs:799
 msgid ""
-"Flash drives, memory cards, discs… inserted while Arkha runs are mounted "
+"Flash drives, memory cards, discs… inserted while Voyager runs are mounted "
 "right away. Turned off, they’re mounted when you click them in the side pane."
 msgstr ""
 

@@ -1,5 +1,5 @@
 //! View, sorting and the info panel remembered for individual folders, in
-//! ~/.config/arkha/folders.conf (one group per folder URI). Used when the
+//! ~/.config/voyager/folders.conf (one group per folder URI). Used when the
 //! "remember view and sorting for each folder" preference is on. Only what
 //! differs from the defaults (Preferences) is kept: a setting set back to
 //! its default goes, and so does a folder with nothing left.
@@ -19,7 +19,7 @@ thread_local! {
 }
 
 fn path() -> std::path::PathBuf {
-    crate::config::arkha_file("folders.conf")
+    crate::config::voyager_file("folders.conf")
 }
 
 fn with_store<R>(f: impl FnOnce(&glib::KeyFile) -> R) -> R {

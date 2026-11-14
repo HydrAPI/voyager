@@ -808,7 +808,7 @@ impl Worker {
             }
         }
         let b = self.crc32(dst, true, base + size / 2, &label)?;
-        glib::g_debug!("arkha", "check: {} {} (CRC32 {a}, copy {b})", dst.uri(), if a == b { "matches" } else { "differs" });
+        glib::g_debug!("voyager", "check: {} {} (CRC32 {a}, copy {b})", dst.uri(), if a == b { "matches" } else { "differs" });
         Ok(a == b)
     }
 
@@ -2006,7 +2006,7 @@ fn find_in_trash(paths: &[String], since: i64) -> Vec<(String, String)> {
 fn check_report(parent: Option<&gtk::Window>, matched: u64, failed: &[String]) {
     if failed.is_empty() {
         let files = fill(&trn("{n} file", "{n} files", matched), &[("n", &matched)]);
-        util::notify("Arkha", &fill(&tr("Checked {files}: every copy matches its original."), &[("files", &files)]));
+        util::notify("Voyager", &fill(&tr("Checked {files}: every copy matches its original."), &[("files", &files)]));
         return;
     }
     let list = failed.iter().take(20).map(|n| format!("• {n}")).collect::<Vec<_>>().join("\n");
@@ -2034,7 +2034,7 @@ fn check_report(parent: Option<&gtk::Window>, matched: u64, failed: &[String]) {
 fn notify_done(parent: &Option<gtk::Window>) {
     let watched = |w: &gtk::Window| w.is_visible() && w.is_active();
     if !parent.as_ref().is_some_and(watched) && !OPS_WINDOW.with(|w| w.borrow().as_ref().is_some_and(watched)) {
-        util::notify("Arkha", &tr("Process completed"));
+        util::notify("Voyager", &tr("Process completed"));
     }
 }
 
@@ -3238,10 +3238,10 @@ mod tests {
     }
 
     fn files_count() -> usize {
-        std::env::var("ARKHA_STRESS_FILES").ok().and_then(|v| v.parse().ok()).unwrap_or(3000)
+        std::env::var("VOYAGER_STRESS_FILES").ok().and_then(|v| v.parse().ok()).unwrap_or(3000)
     }
 
-    /// cargo test -- --ignored (ARKHA_STRESS_FILES=n for another size).
+    /// cargo test -- --ignored (VOYAGER_STRESS_FILES=n for another size).
     #[test]
     #[ignore = "stress test: run with --ignored"]
     fn stress_big_tree_copy_move_delete() {

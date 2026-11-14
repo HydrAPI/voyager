@@ -10,8 +10,8 @@ gt_session "$@"
 
 echo hello > "$HOME/a.txt"
 gt_display
-gt_arkha "$HOME"
-hidden() { sed -n 's/^hidden_props_tabs=//p' "$XDG_CONFIG_HOME/arkha/arkha.conf"; }
+gt_voyager "$HOME"
+hidden() { sed -n 's/^hidden_props_tabs=//p' "$XDG_CONFIG_HOME/voyager/voyager.conf"; }
 tabs() { gt_a11y dialog-tabs | tr '\n' ' '; }
 prefs() {
   gdbus call --session --dest $APP_ID --object-path $APP_PATH/window/1 \

@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in Arkha doesn't work as it should
+description: Something in Voyager doesn't work as it should
 labels: [bug]
 body:
   - type: markdown
@@ -25,7 +25,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Arkha version
+      label: Voyager version
       description: From Help → About.
       placeholder: 1.0.0-dev (r150, c2b90e6)
     validations:
@@ -57,13 +57,13 @@ body:
   - type: dropdown
     id: install
     attributes:
-      label: How did you install Arkha?
+      label: How did you install Voyager?
       options:
         - .deb from the release page
         - .rpm from the release page
-        - AUR (arkha)
-        - AUR (arkha-bin)
-        - AUR (arkha-git)
+        - AUR (voyager)
+        - AUR (voyager-bin)
+        - AUR (voyager-git)
         - Prebuilt tarball from the release page
         - A package from my distribution
         - Built from source
@@ -73,5 +73,5 @@ body:
     id: log
     attributes:
       label: Terminal output
-      description: Start Arkha from a terminal (`arkha`), make the bug happen, and paste what it printed. Please check it for anything private, such as file or folder names.
+      description: Start Voyager from a terminal (`voyager`), make the bug happen, and paste what it printed. Please check it for anything private, such as file or folder names.
       render: shell

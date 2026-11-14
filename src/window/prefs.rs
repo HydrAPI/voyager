@@ -376,8 +376,8 @@ impl AppWindow {
         let confirm = setting_check(&tr("Ask before moving files to the T_rash"), None, s.confirm_trash, |s, v| s.confirm_trash = v, |_| {});
         f.indent(&b, confirm.upcast_ref());
         f.head(&b, &tr("Other Programs"));
-        let fm1 = f.check(&tr("Open folders when other programs _ask, also when Arkha isn't running"));
-        fm1.set_tooltip_text(Some(&tr("“Show in folder” in web browsers, download lists and the like opens Arkha, with the file selected. While Arkha runs it does this anyway, unless another file manager that does it was there first; this lets programs start Arkha for it too.")));
+        let fm1 = f.check(&tr("Open folders when other programs _ask, also when Voyager isn't running"));
+        fm1.set_tooltip_text(Some(&tr("“Show in folder” in web browsers, download lists and the like opens Voyager, with the file selected. While Voyager runs it does this anyway, unless another file manager that does it was there first; this lets programs start Voyager for it too.")));
         fm1.set_active(crate::fm1::activation_on());
         {
             let d = f.dialog.clone();
@@ -442,7 +442,7 @@ impl AppWindow {
         if !lang.set_active_id(Some(&s.language)) {
             lang.set_active_id(Some(""));
         }
-        let restart = gtk::Label::new(Some(&tr("Applies the next time Arkha starts.")));
+        let restart = gtk::Label::new(Some(&tr("Applies the next time Voyager starts.")));
         restart.set_xalign(0.0);
         restart.style_context().add_class("dim-label");
         restart.set_no_show_all(true);
@@ -650,7 +650,7 @@ impl AppWindow {
             limit.append(Some(&bytes.to_string()), name);
         }
         if !limit.set_active_id(Some(&s.thumbnail_limit.to_string())) {
-            // A value set by hand in arkha.conf.
+            // A value set by hand in voyager.conf.
             limit.append(Some(&s.thumbnail_limit.to_string()), &util::format_size(s.thumbnail_limit));
             limit.set_active_id(Some(&s.thumbnail_limit.to_string()));
         }
@@ -796,7 +796,7 @@ impl AppWindow {
         let automount = f.check(&tr("Mount drives and media when they're _inserted"));
         automount.set_tooltip_text(Some(&match crate::sidebar::automount_desktop() {
             Some(desktop) => fill(&tr("Flash drives, memory cards, discs… are mounted right away. This is {desktop}’s own setting: changing it here changes it there too. Turned off, they’re mounted when you click them in the side pane."), &[("desktop", &desktop)]),
-            None => tr("Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they’re mounted when you click them in the side pane."),
+            None => tr("Flash drives, memory cards, discs… inserted while Voyager runs are mounted right away. Turned off, they’re mounted when you click them in the side pane."),
         }));
         automount.set_active(crate::sidebar::automount_on());
         automount.connect_toggled(|c| crate::sidebar::set_automount(c.is_active()));
@@ -985,17 +985,17 @@ fn mark_hits(content: &gtk::Widget, q: &str) {
     for (w, t) in all {
         let ctx = w.style_context();
         if !q.is_empty() && t.contains(q) && (w.is::<gtk::Label>() || w.is::<gtk::Button>()) {
-            ctx.add_class("arkha-search-hit");
+            ctx.add_class("voyager-search-hit");
         } else {
-            ctx.remove_class("arkha-search-hit");
+            ctx.remove_class("voyager-search-hit");
         }
     }
 }
 
-const MENU_ROW_TARGET: &str = "ARKHA_MENU_ROW";
-const PLACE_ROW_TARGET: &str = "ARKHA_PLACE_ROW";
-const CHECKSUM_ROW_TARGET: &str = "ARKHA_CHECKSUM_ROW";
-const PROPS_TAB_ROW_TARGET: &str = "ARKHA_PROPS_TAB_ROW";
+const MENU_ROW_TARGET: &str = "VOYAGER_MENU_ROW";
+const PLACE_ROW_TARGET: &str = "VOYAGER_PLACE_ROW";
+const CHECKSUM_ROW_TARGET: &str = "VOYAGER_CHECKSUM_ROW";
+const PROPS_TAB_ROW_TARGET: &str = "VOYAGER_PROPS_TAB_ROW";
 
 /// A check box for a setting: `set` stores it when it's toggled, then
 /// `then` applies it.

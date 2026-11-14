@@ -7,7 +7,7 @@ gt_session "$@"
 
 T=$HOME/bg; mkdir -p "$T/docs"; for n in alpha beta; do echo $n > "$T/$n.txt"; done
 gt_display
-gt_arkha "$T"
+gt_voyager "$T"
 gt_act backgrounds
 gt_check "it opens" "$(gt_a11y dialogs)" "Backgrounds and Emblems"
 gt_shot patterns

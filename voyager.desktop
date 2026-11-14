@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
-Name=Arkha
+Name=Voyager
 GenericName=File Manager
 GenericName[de]=Dateimanager
 Comment=Browse the file system
 Comment[de]=Das Dateisystem durchsuchen
-Exec=arkha %U
-Icon=arkha
+Exec=voyager %U
+Icon=voyager
 Terminal=false
 StartupNotify=true
 Categories=GTK;System;Core;FileManager;
@@ -18,4 +18,4 @@ Actions=new-window;
 [Desktop Action new-window]
 Name=New Window
 Name[de]=Neues Fenster
-Exec=arkha
+Exec=voyager

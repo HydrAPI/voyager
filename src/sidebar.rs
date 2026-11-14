@@ -4,7 +4,7 @@
 //!
 //! Devices (drives, partitions, phones over MTP, network mounts) are mounted
 //! by clicking them, and unmounted / ejected / safely removed with the button
-//! next to them or the context menu. Arkha mounts newly inserted media
+//! next to them or the context menu. Voyager mounts newly inserted media
 //! itself (see `init_automount`), unless that's turned off in the
 //! preferences, a setting shared with the desktop's own (see
 //! `DesktopMount`).
@@ -126,12 +126,12 @@ pub fn ask_name(parent: Option<&gtk::Window>, title: &str, current: &str) -> Opt
 /// Whether device rows have a button to unmount / eject them.
 const SHOW_EJECT_BUTTONS: bool = false;
 
-const SECTION_TARGET: &str = "ARKHA_SIDEBAR_SECTION";
-const BOOKMARK_TARGET: &str = "ARKHA_SIDEBAR_BOOKMARK";
+const SECTION_TARGET: &str = "VOYAGER_SIDEBAR_SECTION";
+const BOOKMARK_TARGET: &str = "VOYAGER_SIDEBAR_BOOKMARK";
 /// A Computer entry being dragged to another place in its section. Only
 /// this (no file list) goes with it, so it can't be dropped on a folder,
 /// here or anywhere, and move the folder.
-const PLACE_TARGET: &str = "ARKHA_SIDEBAR_PLACE";
+const PLACE_TARGET: &str = "VOYAGER_SIDEBAR_PLACE";
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum OpenIn {
@@ -227,7 +227,7 @@ impl Sidebar {
         let list = gtk::ListBox::new();
         list.set_selection_mode(gtk::SelectionMode::Single);
         list.style_context().add_class("sidebar");
-        list.style_context().add_class("arkha-sidebar");
+        list.style_context().add_class("voyager-sidebar");
         let widget = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
         widget.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
         widget.style_context().add_class("sidebar");
@@ -257,7 +257,7 @@ impl Sidebar {
     /// The background chosen for the side pane (a colour or pattern dropped
     /// on it), or the theme's.
     pub fn show_background(&self) {
-        // One setting for every window: on the screen, for Arkha's side
+        // One setting for every window: on the screen, for Voyager's side
         // panes only (their rows included, rebuilt as they are).
         thread_local! {
             static CSS: gtk::CssProvider = {
@@ -269,10 +269,10 @@ impl Sidebar {
             };
         }
         let (color, image) = config::with(|s| (s.side_pane_color.clone(), s.side_pane_image.clone()));
-        let mut css = crate::backgrounds::css("list.arkha-sidebar", &color, &image);
+        let mut css = crate::backgrounds::css("list.voyager-sidebar", &color, &image);
         // The rows show it through, but keep the theme's look when hovered or selected.
         if !css.is_empty() {
-            css.push_str("\nlist.arkha-sidebar row:not(:selected):not(:hover) { background-color: transparent; background-image: none; }");
+            css.push_str("\nlist.voyager-sidebar row:not(:selected):not(:hover) { background-color: transparent; background-image: none; }");
         }
         CSS.with(|p| {
             let _ = p.load_from_data(css.as_bytes());
@@ -1414,11 +1414,11 @@ pub fn drag_picture(w: &gtk::Widget, ctx: &gdk::DragContext) {
     }
 }
 
-/// The desktop's own setting for mounting inserted media. Arkha's "Mount
+/// The desktop's own setting for mounting inserted media. Voyager's "Mount
 /// drives and media when they're inserted" is that same setting, as Caja's
-/// is MATE's: changing it in one place changes it in the other, and Arkha
-/// never changes it on its own, so nothing is left to undo when Arkha is
-/// removed. Without a desktop (a plain window manager) Arkha keeps its own.
+/// is MATE's: changing it in one place changes it in the other, and Voyager
+/// never changes it on its own, so nothing is left to undo when Voyager is
+/// removed. Without a desktop (a plain window manager) Voyager keeps its own.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum DesktopMount {
     /// GNOME, Cinnamon and MATE (Caja): the schema, and the desktop's name.
@@ -1572,7 +1572,7 @@ impl DesktopMount {
 }
 
 /// Whether inserted media are mounted: the desktop's own setting, or
-/// Arkha's without a desktop.
+/// Voyager's without a desktop.
 pub fn automount_on() -> bool {
     DesktopMount::get().map_or_else(|| config::with(|s| s.automount), DesktopMount::is_on)
 }
@@ -1706,7 +1706,7 @@ fn poll_removable_media(monitor: &gio::VolumeMonitor) {
 
 /// Programs run on their own (often with a plain window manager) that mount
 /// inserted media. They have no setting to switch off, only not starting
-/// them, so Arkha can't do that for the user; it says so, once for each.
+/// them, so Voyager can't do that for the user; it says so, once for each.
 const AUTOMOUNTERS: &[&str] = &["udiskie", "devmon", "ldm", "udisks-glue"];
 
 fn running_automounters() -> Vec<&'static str> {
@@ -1745,8 +1745,8 @@ fn notice_automounters() {
     );
     d.set_secondary_text(Some(&fill(
         &trn(
-            "It runs separately from Arkha and mounts inserted drives and media by itself, whatever Arkha’s settings are, and Arkha can’t switch it off.\n\nTo leave mounting to Arkha, stop {names} from starting with your session (for example, remove it from your window manager’s autostart) and log in again.\n\nThis message isn’t shown again.",
-            "They run separately from Arkha and mount inserted drives and media by themselves, whatever Arkha’s settings are, and Arkha can’t switch them off.\n\nTo leave mounting to Arkha, stop {names} from starting with your session (for example, remove them from your window manager’s autostart) and log in again.\n\nThis message isn’t shown again.",
+            "It runs separately from Voyager and mounts inserted drives and media by itself, whatever Voyager’s settings are, and Voyager can’t switch it off.\n\nTo leave mounting to Voyager, stop {names} from starting with your session (for example, remove it from your window manager’s autostart) and log in again.\n\nThis message isn’t shown again.",
+            "They run separately from Voyager and mount inserted drives and media by themselves, whatever Voyager’s settings are, and Voyager can’t switch them off.\n\nTo leave mounting to Voyager, stop {names} from starting with your session (for example, remove them from your window manager’s autostart) and log in again.\n\nThis message isn’t shown again.",
             n,
         ),
         &[("names", &names)],
@@ -1756,7 +1756,7 @@ fn notice_automounters() {
 }
 
 /// Mounts removable media when they're inserted (per the settings). Runs
-/// once for the whole program; only media inserted while Arkha runs.
+/// once for the whole program; only media inserted while Voyager runs.
 pub fn init_automount() {
     thread_local! {
         static MONITOR: RefCell<Option<gio::VolumeMonitor>> = const { RefCell::new(None) };
@@ -1789,7 +1789,7 @@ pub fn init_automount() {
                 });
             };
             // A desktop mounts media itself (and may open a window for them,
-            // per its settings), so it gets the first go; Arkha mounts what
+            // per its settings), so it gets the first go; Voyager mounts what
             // it left, in case its automounter isn't running.
             if DesktopMount::get().is_some() {
                 let v = v.clone();

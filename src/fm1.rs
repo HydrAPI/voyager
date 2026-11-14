@@ -3,9 +3,9 @@
 //! folder ("Show in folder" in browsers, download lists, …) or show their
 //! properties.
 //!
-//! Arkha takes the name when it starts, if no one has it; otherwise it
+//! Voyager takes the name when it starts, if no one has it; otherwise it
 //! waits its turn (a running Caja keeps it). So that programs can also start
-//! Arkha for it, Preferences can put a D-Bus activation file in the user's
+//! Voyager for it, Preferences can put a D-Bus activation file in the user's
 //! own folder, which goes before the system's (Caja's, Nemo's).
 
 use gio::prelude::*;
@@ -125,7 +125,7 @@ fn show_properties(uris: &[String], startup_id: &str) {
     let Some(app) = app() else { return };
     let files: Vec<gio::File> = uris.iter().map(|u| gio::File::for_uri(u)).collect();
     let Some(first) = files.first() else { return };
-    // On a window of Arkha's: the last one used, or one at the items' folder.
+    // On a window of Voyager's: the last one used, or one at the items' folder.
     let w = match crate::window::all_windows().into_iter().last() {
         Some(w) => w,
         None => crate::window::AppWindow::new(&app, &[first.parent().unwrap_or_else(|| first.clone())]),
@@ -139,12 +139,12 @@ fn service_file() -> std::path::PathBuf {
     glib::user_data_dir().join("dbus-1").join("services").join(format!("{NAME}.service"))
 }
 
-/// Whether programs start Arkha (through the user's activation file).
+/// Whether programs start Voyager (through the user's activation file).
 pub fn activation_on() -> bool {
-    std::fs::read_to_string(service_file()).is_ok_and(|t| t.contains("arkha"))
+    std::fs::read_to_string(service_file()).is_ok_and(|t| t.contains("voyager"))
 }
 
-/// Writes or removes the user's activation file (only one of Arkha's).
+/// Writes or removes the user's activation file (only one of Voyager's).
 pub fn set_activation(on: bool) -> std::io::Result<()> {
     let path = service_file();
     if on {

@@ -1,5 +1,5 @@
-//! Translations: Arkha's texts in the user's language, from gettext
-//! catalogs (po/<language>.po, built into arkha.mo files by build.rs). The
+//! Translations: Voyager's texts in the user's language, from gettext
+//! catalogs (po/<language>.po, built into voyager.mo files by build.rs). The
 //! language is the system's unless one is chosen in Preferences, which then
 //! applies to GTK's own texts (dialogs, standard buttons) too.
 //!
@@ -19,7 +19,7 @@ extern "C" {
     fn textdomain(domain: *const c_char) -> *mut c_char;
 }
 
-const DOMAIN: &CStr = c"arkha";
+const DOMAIN: &CStr = c"voyager";
 
 // LANGUAGES: the translations there are, (code, name in its own language),
 // from build.rs.
@@ -31,7 +31,7 @@ include!(concat!(env!("OUT_DIR"), "/languages.rs"));
 pub fn init(language: &str) {
     if !language.is_empty() {
         // LANGUAGE picks the messages' language over LANG and LC_MESSAGES,
-        // for GTK's catalogs as well as Arkha's.
+        // for GTK's catalogs as well as Voyager's.
         std::env::set_var("LANGUAGE", language);
     }
     // SAFETY: plain C calls with valid NUL-terminated strings; nothing else
@@ -52,7 +52,7 @@ pub fn init(language: &str) {
 fn locale_dir() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let bin = exe.parent()?;
-    let has_catalogs = |d: &PathBuf| LANGUAGES.iter().any(|(code, _)| d.join(code).join("LC_MESSAGES/arkha.mo").is_file());
+    let has_catalogs = |d: &PathBuf| LANGUAGES.iter().any(|(code, _)| d.join(code).join("LC_MESSAGES/voyager.mo").is_file());
     [bin.join("locale"), bin.parent()?.join("share/locale")].into_iter().find(has_catalogs)
 }
 

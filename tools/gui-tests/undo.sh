@@ -9,7 +9,7 @@ T=$HOME/undo; TRASH=$HOME/.local/share/Trash/files
 mkdir -p "$T/src/sub" "$T/dest"; echo a > "$T/src/a.txt"; echo c > "$T/src/sub/c"
 state() { echo "src: $(cd "$T/src" && find . -mindepth 1 | LC_ALL=C sort | tr '\n' ' ')| dest: $(cd "$T/dest" && find . -mindepth 1 | LC_ALL=C sort | tr '\n' ' ')| trash: $(ls "$TRASH" 2>/dev/null | tr '\n' ' ')"; }
 gt_display
-gt_arkha "$T/src"
+gt_voyager "$T/src"
 gt_click 900 650
 gt_key ctrl+a; gt_key ctrl+c; gt_key ctrl+v; sleep 1
 gt_check "copied" "$(state)" "src: ./a (copy).txt ./a.txt ./sub ./sub (copy) ./sub (copy)/c ./sub/c | dest: | trash: "

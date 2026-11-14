@@ -3,11 +3,11 @@
 # the type (a Windows share has a share and a domain, SSH hasn't); Connect
 # with "Add bookmark" bookmarks the address under its name and opens it,
 # which mounts it: here a server that refuses (127.0.0.1, port 1), so the
-# window says it couldn't open it. With ARKHA_TEST_SFTP=HOST (an SSH host
+# window says it couldn't open it. With VOYAGER_TEST_SFTP=HOST (an SSH host
 # reached without a password, e.g. one of ~/.ssh/config's), sftp://HOST/ is
 # also opened from the location bar: mounted, its files listed, and the
 # path bar's first button named after the mount, not "File System". With
-# ARKHA_TEST_SMB=USER@HOST/SHARE (a share that wants a password; needs
+# VOYAGER_TEST_SMB=USER@HOST/SHARE (a share that wants a password; needs
 # gvfs-smb), opening it brings up GTK's password dialog, and cancelling it
 # leaves no error behind.
 GT_A11Y=1
@@ -15,7 +15,7 @@ GT_A11Y=1
 gt_session "$@"
 
 gt_display
-gt_arkha "$HOME"
+gt_voyager "$HOME"
 labels() { gt_a11y labels | tr '\n' '|'; }
 has() { case "|$1" in *"|$2|"*) echo yes ;; *) echo "no: $1" ;; esac; }
 
@@ -40,18 +40,18 @@ w=$(gt_a11y window-labels | tr '\n' '|')
 case "$w" in *"Could not open “sftp://127.0.0.1:1/srv”"*) s=yes ;; *) s="no: $w" ;; esac
 gt_check "a server that refuses: the window says so" "$s" "yes"
 
-if [ -n "$ARKHA_TEST_SFTP" ]; then
-  gt_key ctrl+l; gt_type "sftp://$ARKHA_TEST_SFTP/"; gt_key Return; sleep 4; gt_quiet
+if [ -n "$VOYAGER_TEST_SFTP" ]; then
+  gt_key ctrl+l; gt_type "sftp://$VOYAGER_TEST_SFTP/"; gt_key Return; sleep 4; gt_quiet
   w=$(gt_a11y window-labels | tr '\n' '|')
-  case "$w" in *"|$ARKHA_TEST_SFTP|"*) s=yes ;; *) s="no: $w" ;; esac
-  gt_check "sftp://$ARKHA_TEST_SFTP/ mounted (in the side pane)" "$s" "yes"
+  case "$w" in *"|$VOYAGER_TEST_SFTP|"*) s=yes ;; *) s="no: $w" ;; esac
+  gt_check "sftp://$VOYAGER_TEST_SFTP/ mounted (in the side pane)" "$s" "yes"
   case "$w" in *" items, "*) s=yes ;; *) s="no: $w" ;; esac
   gt_check "and its files listed" "$s" "yes"
-  gt_ok "the path bar's first button named after the mount" gt_a11y where "$ARKHA_TEST_SFTP"
+  gt_ok "the path bar's first button named after the mount" gt_a11y where "$VOYAGER_TEST_SFTP"
 fi
 
-if [ -n "$ARKHA_TEST_SMB" ]; then
-  gt_key ctrl+l; gt_type "smb://$ARKHA_TEST_SMB"; gt_key Return; sleep 3
+if [ -n "$VOYAGER_TEST_SMB" ]; then
+  gt_key ctrl+l; gt_type "smb://$VOYAGER_TEST_SMB"; gt_key Return; sleep 3
   l=$(labels)
   gt_check "smb://: GTK asks for the password" "$(has "$l" "Authentication Required")" "yes"
   gt_key Escape; sleep 2; gt_quiet

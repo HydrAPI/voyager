@@ -1,8 +1,8 @@
 # Checks every push to master and every pull request: the build, the tests,
 # clippy, the translations and their {placeholders}, and a package for
-# every distribution Arkha supports, built and installed in a container of
+# every distribution Voyager supports, built and installed in a container of
 # that distribution as the release workflow makes it: Debian 13 (with its
-# Rust 1.85, the oldest Arkha supports), Ubuntu 26.04 (also the Debian
+# Rust 1.85, the oldest Voyager supports), Ubuntu 26.04 (also the Debian
 # package, which the release offers for it), Fedora and Arch Linux, and the
 # prebuilt program for the others.
 name: CI
@@ -57,7 +57,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git cargo rustc libgtk-3-dev gettext pkg-config build-essential dpkg-dev
       - uses: actions/checkout@v7
-      # Debian's own Rust: 1.85, the oldest Arkha supports.
+      # Debian's own Rust: 1.85, the oldest Voyager supports.
       - name: Build the package
         run: sh packaging/deb/build.sh
       - name: Its files
@@ -94,7 +94,7 @@ jobs:
           path: debian-deb
       - name: Install the Debian package instead
         run: |
-          apt-get remove -y arkha
+          apt-get remove -y voyager
           apt-get install -y ./debian-deb/*.deb
 
   prebuilt:

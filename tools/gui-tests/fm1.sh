@@ -1,6 +1,6 @@
 #!/bin/bash
 # fm1.sh x11|wayland: "Show in folder" for other programs, through the
-# org.freedesktop.FileManager1 D-Bus service Arkha offers: ShowItems opens
+# org.freedesktop.FileManager1 D-Bus service Voyager offers: ShowItems opens
 # the folder with the item selected, ShowFolders opens folders, and
 # ShowItemProperties opens Properties.
 GT_A11Y=1
@@ -11,9 +11,9 @@ T=$HOME/fm1; mkdir -p "$T/A/sub" "$T/B"; echo a > "$T/A/alpha.txt"; echo b > "$T
 call() { gdbus call --session --dest org.freedesktop.FileManager1 --object-path /org/freedesktop/FileManager1 \
   --method "org.freedesktop.FileManager1.$1" "$2" "" >/dev/null 2>&1; sleep 1.5; gt_quiet; }
 gt_display
-gt_arkha "$T/B"
-gt_check "the service is Arkha's" "$(gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
-  --method org.freedesktop.DBus.GetConnectionUnixProcessID org.freedesktop.FileManager1 2>/dev/null | sed -n 's/.*uint32 \([0-9]*\).*/\1/p')" "$ARKHA_PID"
+gt_voyager "$T/B"
+gt_check "the service is Voyager's" "$(gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+  --method org.freedesktop.DBus.GetConnectionUnixProcessID org.freedesktop.FileManager1 2>/dev/null | sed -n 's/.*uint32 \([0-9]*\).*/\1/p')" "$VOYAGER_PID"
 call ShowItems "['file://$T/A/beta.txt']"; gt_shot items
 gt_check "ShowItems opens the item's folder" "$(gt_a11y windows | sort | tr '\n' ' ')" "A B "
 call ShowFolders "['file://$T/A/sub', 'file://$T/B']"; gt_shot folders

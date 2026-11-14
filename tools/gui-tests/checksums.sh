@@ -13,7 +13,7 @@ gt_session "$@"
 head -c $((300 << 20)) /dev/urandom > "$HOME/big.bin"
 want=$(sha256sum "$HOME/big.bin" | cut -d' ' -f1)
 gt_display
-gt_arkha "$HOME"
+gt_voyager "$HOME"
 gt_click 900 650; gt_type big; gt_key Escape
 gdbus call --session --dest $APP_ID --object-path $APP_PATH/window/1 \
   --method org.gtk.Actions.Activate properties [] {} >/dev/null & sleep 1.5
@@ -22,7 +22,7 @@ gt_ok "the Checksums tab" gt_a11y tab Checksums; sleep 0.5; gt_shot tab
 rows() { python3 - "$@" <<'PY'
 import sys, gi; gi.require_version('Atspi', '2.0'); from gi.repository import Atspi
 Atspi.init(); d = Atspi.get_desktop(0)
-app = [d.get_child_at_index(i) for i in range(d.get_child_count()) if d.get_child_at_index(i).get_name() == 'arkha'][0]
+app = [d.get_child_at_index(i) for i in range(d.get_child_count()) if d.get_child_at_index(i).get_name() == 'voyager'][0]
 dlg = [app.get_child_at_index(i) for i in range(app.get_child_count()) if app.get_child_at_index(i).get_role_name() == 'dialog'][0]
 stack, found = [dlg], []
 while stack:

@@ -1,6 +1,6 @@
 //! Context menu customization: built-in items the user can hide and
 //! reorder, and custom actions (shell commands) stored in
-//! ~/.config/arkha/actions.conf.
+//! ~/.config/voyager/actions.conf.
 
 use crate::i18n::n_;
 use std::path::{Path, PathBuf};
@@ -155,7 +155,7 @@ pub struct CustomAction {
 }
 
 fn path() -> PathBuf {
-    crate::config::arkha_file("actions.conf")
+    crate::config::voyager_file("actions.conf")
 }
 
 pub fn load() -> Vec<CustomAction> {

@@ -1,12 +1,12 @@
 //! What happens when a medium is inserted, as in Caja (caja-autorun.c):
 //! for what it holds (an audio CD, a video DVD, a camera's photos, a music
 //! player, software, …) start a program, open its folder, do nothing, or
-//! ask. Only for media Arkha mounted itself when they were inserted: what a
+//! ask. Only for media Voyager mounted itself when they were inserted: what a
 //! desktop mounts, its own file manager or shell sees to.
 //!
 //! The choices are the desktop's media-handling settings with GNOME,
-//! Cinnamon and MATE (so Caja's are Arkha's and the other way round), and
-//! Arkha's own otherwise.
+//! Cinnamon and MATE (so Caja's are Voyager's and the other way round), and
+//! Voyager's own otherwise.
 
 use crate::i18n::{fill, n_, tr};
 use gio::prelude::*;
@@ -145,7 +145,7 @@ pub struct Medium {
     pub mount: Option<gio::Mount>,
 }
 
-/// After Arkha mounted a newly inserted medium.
+/// After Voyager mounted a newly inserted medium.
 pub fn on_mounted(mount: &gio::Mount) {
     if never() {
         return;
@@ -158,7 +158,7 @@ pub fn on_mounted(mount: &gio::Mount) {
 }
 
 /// The flow for `folder` as if it were a medium just inserted (for tests:
-/// ARKHA_AUTORUN_TRY, see main.rs).
+/// VOYAGER_AUTORUN_TRY, see main.rs).
 pub fn try_folder(folder: &gio::File) {
     let medium = Medium { name: crate::util::display_name(folder), icon: Some(gio::ThemedIcon::new("media-removable").upcast()), root: folder.clone(), mount: None };
     let types: Vec<String> = gio::content_type_guess_for_tree(folder).iter().map(|t| t.to_string()).collect();
@@ -435,8 +435,8 @@ pub fn preferences_page() -> gtk::Box {
     b.add(&head(&tr("Media Handling"), false));
     let where_ = match crate::sidebar::automount_desktop().filter(|_| crate::sidebar::media_settings().is_some()) {
         // TRANSLATORS: {desktop} is a desktop's name, such as MATE or GNOME.
-        Some(desktop) => fill(&tr("What happens when you insert media or connect devices that Arkha mounts. These are {desktop}’s own settings."), &[("desktop", &desktop)]),
-        None => tr("What happens when you insert media or connect devices that Arkha mounts."),
+        Some(desktop) => fill(&tr("What happens when you insert media or connect devices that Voyager mounts. These are {desktop}’s own settings."), &[("desktop", &desktop)]),
+        None => tr("What happens when you insert media or connect devices that Voyager mounts."),
     };
     b.add(&note(&where_));
     let grid = gtk::Grid::new();

@@ -10,7 +10,7 @@ gt_session "$@"
 
 mkdir -p "$HOME/left" "$HOME/left2" "$HOME/right" "$HOME/more"
 gt_display
-gt_arkha "$HOME/left"
+gt_voyager "$HOME/left"
 gt_act new-tab; gt_key ctrl+l; gt_type "$HOME/left2"; gt_key Return; gt_key ctrl+Page_Up
 tabs() { gt_a11y tabs | tr '\n' ' '; }
 focused() { gt_a11y windows | head -1; }

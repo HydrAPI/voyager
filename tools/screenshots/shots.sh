@@ -29,10 +29,10 @@ FLAG=$OUT/backdrop-black
 rm -f "$FLAG"
 LC_ALL=C python3 "$HERE/backdrop.py" "$FLAG" > "$OUT/backdrop.log" 2>&1 & GT_PIDS="$GT_PIDS $!"; sleep 1.5
 
-# conf WIDTH HEIGHT: Arkha's window size for the next start.
-conf() { printf '[General]\nwidth=%s\nheight=%s\n' "$1" "$2" > "$XDG_CONFIG_HOME/arkha/arkha.conf"; }
-# top TITLE: Arkha's window with TITLE in its title.
-top() { xdotool search --onlyvisible --pid "$ARKHA_PID" --name "$1" 2>/dev/null | tail -1; }
+# conf WIDTH HEIGHT: Voyager's window size for the next start.
+conf() { printf '[General]\nwidth=%s\nheight=%s\n' "$1" "$2" > "$XDG_CONFIG_HOME/voyager/voyager.conf"; }
+# top TITLE: Voyager's window with TITLE in its title.
+top() { xdotool search --onlyvisible --pid "$VOYAGER_PID" --name "$1" 2>/dev/null | tail -1; }
 # shot NAME WINDOW: the window with its title bar and shadow, cut from the
 # screen on white and on black, made into NAME.png with transparency.
 shot() {
@@ -49,8 +49,8 @@ shot() {
   gt_ok "$1.png taken" test -s "$OUT/$1.png"
 }
 where() { python3 "$GT_DIR/a11y.py" "$@"; }
-# start ARGS: Arkha, with the pointer out of the way (no hover effects).
-start() { gt_arkha "$@"; xdotool mousemove 2790 1090; }
+# start ARGS: Voyager, with the pointer out of the way (no hover effects).
+start() { gt_voyager "$@"; xdotool mousemove 2790 1090; }
 # apart TITLE DIALOG: the main window to the left, the dialog to the right.
 apart() { xdotool windowmove "$(top "$1")" 40 60; sleep 0.5; xdotool windowmove "$2" 1600 150; sleep 1; }
 

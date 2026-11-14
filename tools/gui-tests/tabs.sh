@@ -9,7 +9,7 @@ gt_session "$@"
 
 mkdir -p "$HOME/top"/{alpha/xray,alpha/yankee,bravo,charlie}
 gt_display
-gt_arkha "$HOME/top"
+gt_voyager "$HOME/top"
 pick() { gt_type "$1"; sleep 0.4; gt_key Escape; }
 for n in alpha bravo charlie; do pick $n; gt_act open-new-tab; done
 gt_shot first

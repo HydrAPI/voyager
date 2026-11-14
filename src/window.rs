@@ -55,7 +55,7 @@ fn reapply_view_settings() {
 }
 
 /// The window that holds `pane` now (tabs can move between windows).
-const BAR_TARGET: &str = "ARKHA_BAR_GROUP";
+const BAR_TARGET: &str = "VOYAGER_BAR_GROUP";
 
 thread_local! {
     /// The buttons that drag their bar group (see enable_bar_drag).
@@ -95,8 +95,8 @@ fn enable_bar_drag(button: &gtk::Widget, id: &'static str, group: &gtk::Widget) 
     {
         let group = group.clone();
         button.connect_drag_begin(move |_, ctx| {
-            // For tools/lockbar-test.sh (G_MESSAGES_DEBUG=arkha).
-            glib::g_debug!("arkha", "bar drag started: {id}");
+            // For tools/lockbar-test.sh (G_MESSAGES_DEBUG=voyager).
+            glib::g_debug!("voyager", "bar drag started: {id}");
             // Drag a picture of the whole group.
             let (w, h) = (group.allocated_width(), group.allocated_height());
             if let Ok(surface) = gtk::cairo::ImageSurface::create(gtk::cairo::Format::ARgb32, w, h) {
@@ -396,7 +396,7 @@ impl AppWindow {
         let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 2);
         toolbar.set_border_width(4);
         toolbar.style_context().add_class("primary-toolbar");
-        toolbar.style_context().add_class("arkha-commandbar");
+        toolbar.style_context().add_class("voyager-commandbar");
         // Button texts, kept to show or hide them (Preferences → Display).
         let toolbar_labels: RefCell<Vec<gtk::Label>> = RefCell::new(vec![]);
         // `always`: the text is part of the button (like Explorer's "New"),
@@ -501,7 +501,7 @@ impl AppWindow {
         // ---------------- location bar
         let locbar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         locbar.set_border_width(4);
-        locbar.style_context().add_class("arkha-locbar");
+        locbar.style_context().add_class("voyager-locbar");
         locbar.pack_start(&nav_box, false, false, 0);
         let loc_toggle = gtk::ToggleButton::new();
         loc_toggle.add(&gtk::Image::from_icon_name(Some("document-edit-symbolic"), gtk::IconSize::Button));
@@ -519,7 +519,7 @@ impl AppWindow {
         path_scroll.set_policy(gtk::PolicyType::External, gtk::PolicyType::Never);
         path_scroll.add(&path_box);
         path_scroll.set_hexpand(true);
-        path_scroll.style_context().add_class("arkha-address");
+        path_scroll.style_context().add_class("voyager-address");
         let location_entry = gtk::Entry::new();
         location_entry.set_hexpand(true);
         location_entry.set_placeholder_text(Some(&tr("Type a path, e.g. ~/Documents or /etc")));
@@ -700,7 +700,7 @@ impl AppWindow {
         // Themes like Adwaita put a margin around each tab; make the tabs
         // touch. In split view the pane without focus is dimmed.
         let css = gtk::CssProvider::new();
-        let _ = css.load_from_data(b"notebook > header tabs { padding-left: 0; padding-right: 0; } notebook > header tabs tab { margin-left: 0; margin-right: 0; } notebook.arkha-inactive { opacity: 0.7; }");
+        let _ = css.load_from_data(b"notebook > header tabs { padding-left: 0; padding-right: 0; } notebook > header tabs tab { margin-left: 0; margin-right: 0; } notebook.voyager-inactive { opacity: 0.7; }");
         let new_notebook = || {
             let nb = gtk::Notebook::new();
             nb.set_scrollable(true);
@@ -708,7 +708,7 @@ impl AppWindow {
             nb.style_context().add_provider(&css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
             // Shared group: tabs can be dragged between windows (see
             // adopt_page) and panes, or out of a window into a new one.
-            nb.set_group_name(Some("arkha-tabs"));
+            nb.set_group_name(Some("voyager-tabs"));
             nb
         };
         let notebook = new_notebook();
@@ -725,7 +725,7 @@ impl AppWindow {
 
         // ---------------- status bar
         let statusbar = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        statusbar.style_context().add_class("arkha-statusbar");
+        statusbar.style_context().add_class("voyager-statusbar");
         statusbar.set_border_width(3);
         let status = gtk::Label::new(None);
         status.set_xalign(0.0);
@@ -1681,7 +1681,7 @@ impl AppWindow {
                 })
             });
             // The last window closed while operations still run: show them
-            // in their own window. They keep Arkha running, and it exits
+            // in their own window. They keep Voyager running, and it exits
             // when they're done (the window closes with the last one).
             if WINDOWS.with(|ws| ws.borrow().is_empty()) && ops::is_busy() {
                 ops::open_window();
@@ -1842,9 +1842,9 @@ impl AppWindow {
         for nb in [&self.notebook, &self.notebook2] {
             let ctx = nb.style_context();
             if split && *nb != active {
-                ctx.add_class("arkha-inactive");
+                ctx.add_class("voyager-inactive");
             } else {
-                ctx.remove_class("arkha-inactive");
+                ctx.remove_class("voyager-inactive");
             }
         }
     }
@@ -2107,9 +2107,16 @@ impl AppWindow {
         ];
         let Some(bar) = self.path_area.parent().and_then(|p| p.downcast::<gtk::Box>().ok()) else { return };
         // The navigation buttons stay in front of the address.
-        for (i, id) in config::get().bar_order.iter().enumerate() {
+        // Only what's in this bar (the split, info and operations buttons
+        // sit in the command bar).
+        let mut pos = 1;
+        for id in config::get().bar_order.iter() {
             if let Some((_, w)) = items.iter().find(|(wid, _)| wid == id) {
-                bar.reorder_child(w, i as i32 + 1);
+                if w.parent().as_ref() != Some(bar.upcast_ref::<gtk::Widget>()) {
+                    continue;
+                }
+                bar.reorder_child(w, pos);
+                pos += 1;
             }
         }
     }
@@ -2571,7 +2578,7 @@ impl AppWindow {
             // A chevron between the folders, as Explorer's address bar.
             if !self.path_box.children().is_empty() {
                 let chevron = gtk::Image::from_icon_name(Some("go-next-symbolic"), gtk::IconSize::Menu);
-                chevron.style_context().add_class("arkha-chevron");
+                chevron.style_context().add_class("voyager-chevron");
                 chevron.set_opacity(0.6);
                 self.path_box.pack_start(&chevron, false, false, 0);
             }
@@ -3389,9 +3396,9 @@ impl AppWindow {
         let d = gtk::AboutDialog::new();
         d.set_transient_for(Some(&self.window));
         d.set_modal(true);
-        d.set_program_name("Arkha");
+        d.set_program_name("Voyager");
         // With the build (see build.rs), for bug reports: "1.0.0-dev (r142, 6a7d287)".
-        d.set_version(Some(&match env!("ARKHA_BUILD") {
+        d.set_version(Some(&match env!("VOYAGER_BUILD") {
             "" => env!("CARGO_PKG_VERSION").to_string(),
             build => format!("{} ({build})", env!("CARGO_PKG_VERSION")),
         }));
@@ -3471,9 +3478,9 @@ fn apply_sidebar_css() {
     let h = config::with(|s| s.sidebar_row_height);
     // The eject buttons are no taller than their icon, so device rows can be
     // as low as the others.
-    let mut data = String::from("list.arkha-sidebar button.sidebar-button { min-height: 0; min-width: 0; padding: 2px; margin: 0; }");
+    let mut data = String::from("list.voyager-sidebar button.sidebar-button { min-height: 0; min-width: 0; padding: 2px; margin: 0; }");
     if h > 0 {
-        data.push_str(&format!(" list.arkha-sidebar row.sidebar-row {{ min-height: {h}px; }}"));
+        data.push_str(&format!(" list.voyager-sidebar row.sidebar-row {{ min-height: {h}px; }}"));
     }
     SIDEBAR_CSS.with(|css| {
         let _ = css.load_from_data(data.as_bytes());

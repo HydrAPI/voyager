@@ -13,7 +13,7 @@ impl TestDir {
 
     /// One in `base` instead: another file system (/dev/shm), say.
     pub fn in_dir(base: &Path, name: &str) -> TestDir {
-        let p = base.join(format!("arkha-test-{}-{name}", std::process::id()));
+        let p = base.join(format!("voyager-test-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).unwrap();
         TestDir(p)
@@ -91,10 +91,10 @@ impl Rng {
 }
 
 /// Runs `f` for `n` random cases, each with its own generator; a panic
-/// names the case's seed, to run it again alone. ARKHA_RANDOM_CASES=k runs
+/// names the case's seed, to run it again alone. VOYAGER_RANDOM_CASES=k runs
 /// k times as many (a longer stability run).
 pub fn cases(n: u64, f: impl Fn(&mut Rng)) {
-    let factor: u64 = std::env::var("ARKHA_RANDOM_CASES").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+    let factor: u64 = std::env::var("VOYAGER_RANDOM_CASES").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
     for seed in 1..=n * factor.max(1) {
         let mut r = Rng::new(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
         if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut r))).is_err() {

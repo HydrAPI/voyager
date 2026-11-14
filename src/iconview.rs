@@ -15,7 +15,7 @@
 //! are drawn, found from GtkIconView's own positions, each item painted as
 //! gtk_icon_view_paint_item does (GTK 3.24). Whatever this doesn't cover
 //! (a drag over the view, a rubber band, right-to-left text, or positions
-//! not as expected) is left to GtkIconView. ARKHA_GTK_DRAW=1 always does,
+//! not as expected) is left to GtkIconView. VOYAGER_GTK_DRAW=1 always does,
 //! to compare.
 
 use std::cell::{Cell, RefCell};
@@ -158,7 +158,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for IconView {
-        const NAME: &'static str = "ArkhaIconView";
+        const NAME: &'static str = "VoyagerIconView";
         type Type = super::IconView;
         type ParentType = gtk::IconView;
     }
@@ -472,7 +472,7 @@ mod imp {
         /// rows in sight. False if it can't be done here.
         fn draw_items(&self, cr: &gtk::cairo::Context) -> bool {
             let iv = self.obj();
-            if self.pressed.get() || !iv.children().is_empty() || std::env::var_os("ARKHA_GTK_DRAW").is_some() {
+            if self.pressed.get() || !iv.children().is_empty() || std::env::var_os("VOYAGER_GTK_DRAW").is_some() {
                 return false;
             }
             // A drop target is marked by GtkIconView.
@@ -636,7 +636,7 @@ mod imp {
         /// state and after each style change. Most themes draw neither for
         /// an item that isn't selected.
         fn cell_shows(&self, state: gtk::StateFlags) -> bool {
-            if std::env::var_os("ARKHA_GTK_DRAW").is_some() {
+            if std::env::var_os("VOYAGER_GTK_DRAW").is_some() {
                 return true;
             }
             if let Some(shows) = self.cell_painted.borrow().get(&state.bits()) {

@@ -282,7 +282,7 @@ fn surface_of(p: &gdk_pixbuf::Pixbuf) -> Option<gtk::cairo::Surface> {
     if p.width() * p.height() > KEPT_SURFACE_PIXELS {
         return None;
     }
-    thread_local! { static KEY: glib::Quark = glib::Quark::from_str("arkha-surface"); }
+    thread_local! { static KEY: glib::Quark = glib::Quark::from_str("voyager-surface"); }
     let key = KEY.with(|k| *k);
     // SAFETY: only ever set here, with this type.
     if let Some(s) = unsafe { p.qdata::<gtk::cairo::Surface>(key) } {
@@ -358,7 +358,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for IconLabel {
-        const NAME: &'static str = "ArkhaIconLabel";
+        const NAME: &'static str = "VoyagerIconLabel";
         type Type = super::IconLabel;
         type ParentType = gtk::CellRendererText;
     }
@@ -622,7 +622,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for IconImage {
-        const NAME: &'static str = "ArkhaIconImage";
+        const NAME: &'static str = "VoyagerIconImage";
         type Type = super::IconImage;
         type ParentType = gtk::CellRendererPixbuf;
     }
@@ -651,7 +651,7 @@ mod imp {
         /// drawn both ways, for each state and after each style change.
         fn direct_ok(&self, widget: &gtk::Widget) -> bool {
             // (As GtkIconView would, to compare: see iconview.rs.)
-            if std::env::var_os("ARKHA_GTK_DRAW").is_some() {
+            if std::env::var_os("VOYAGER_GTK_DRAW").is_some() {
                 return false;
             }
             let key = widget.state_flags().bits();

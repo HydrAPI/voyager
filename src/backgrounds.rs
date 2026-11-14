@@ -2,7 +2,7 @@
 //! colours and patterns dragged onto a folder's view (its background, kept
 //! as GVfs metadata on the folder, as Caja keeps it) or the side pane, and
 //! emblems dragged onto items. The drags use Caja's own types, so its
-//! window's colours, patterns and emblems can be dropped on Arkha too, and
+//! window's colours, patterns and emblems can be dropped on Voyager too, and
 //! the other way round. Your own colours, patterns and emblems can be
 //! added: emblems where Caja puts them (~/.icons/hicolor/48x48/emblems),
 //! so both show them.
@@ -103,7 +103,7 @@ const COLORS: &[&str] = &[
 
 /// Where your own patterns are kept.
 fn patterns_dir() -> std::path::PathBuf {
-    glib::user_data_dir().join("arkha").join("patterns")
+    glib::user_data_dir().join("voyager").join("patterns")
 }
 
 /// Patterns: Caja's, if it's installed, then your own.

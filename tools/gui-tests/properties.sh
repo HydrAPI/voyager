@@ -11,7 +11,7 @@ T=$HOME/props; mkdir -p "$T"; for n in alpha beta gamma; do echo $n > "$T/$n.txt
 meta() { gio info -a "metadata::$2" "$T/$1" | sed -n "s/^ *metadata::$2: //p"; }
 gt_display
 gio set -t stringv "$T/gamma.txt" metadata::emblems important
-gt_arkha "$T"
+gt_voyager "$T"
 gt_click 900 650
 gt_type gam; gt_key Escape
 gt_act properties; sleep 1; gt_shot basic

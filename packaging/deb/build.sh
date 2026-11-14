@@ -1,5 +1,5 @@
 #!/bin/sh
-# build.sh: builds Arkha's .deb, on Debian 13 or newer (or a relative such
+# build.sh: builds Voyager's .deb, on Debian 13 or newer (or a relative such
 # as Ubuntu 26.04): run in a copy of the sources made by build-on.sh (the
 # crates in vendor/, built without internet; the version in VERSION), or
 # in a checkout with internet for the crates. Needs cargo and rustc 1.85+,
@@ -15,26 +15,26 @@ offline=
 cargo build --release --locked $offline
 
 out=$top/target/deb
-stage=$out/arkha_${version}-1_${arch}
+stage=$out/voyager_${version}-1_${arch}
 rm -rf "$out"
 mkdir -p "$stage/DEBIAN"
-install -Dm755 target/release/arkha "$stage/usr/bin/arkha"
-install -Dm644 arkha.desktop "$stage/usr/share/applications/arkha.desktop"
-install -Dm644 data/arkha.svg "$stage/usr/share/icons/hicolor/scalable/apps/arkha.svg"
-install -Dm644 data/io.github.dekart811.Arkha.metainfo.xml "$stage/usr/share/metainfo/io.github.dekart811.Arkha.metainfo.xml"
+install -Dm755 target/release/voyager "$stage/usr/bin/voyager"
+install -Dm644 voyager.desktop "$stage/usr/share/applications/voyager.desktop"
+install -Dm644 data/voyager.svg "$stage/usr/share/icons/hicolor/scalable/apps/voyager.svg"
+install -Dm644 data/io.github.HydrAPI.Voyager.metainfo.xml "$stage/usr/share/metainfo/io.github.HydrAPI.Voyager.metainfo.xml"
 # The translations build.rs made from po/*.po.
-for mo in target/release/locale/*/LC_MESSAGES/arkha.mo; do
+for mo in target/release/locale/*/LC_MESSAGES/voyager.mo; do
     [ -e "$mo" ] && install -Dm644 "$mo" "$stage/usr/share/locale/${mo#target/release/locale/}"
 done
-install -Dm644 README.md "$stage/usr/share/doc/arkha/README.md"
+install -Dm644 README.md "$stage/usr/share/doc/voyager/README.md"
 # Debian keeps the GPL's text in base-files' /usr/share/common-licenses.
-cat > "$stage/usr/share/doc/arkha/copyright" <<EOF
+cat > "$stage/usr/share/doc/voyager/copyright" <<EOF
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: Arkha
-Source: https://github.com/dekart811/arkha
+Upstream-Name: Voyager
+Source: https://github.com/HydrAPI/voyager
 
 Files: *
-Copyright: 2026 dekart811
+Copyright: 2026 HydrAPI, dekart811 (Arkha)
 License: GPL-3.0+
 Comment: Some texts and the search's groups of file types come from Caja
  (GPL-2.0-or-later), by the MATE developers.
@@ -52,17 +52,17 @@ EOF
 # The libraries it's linked with, by their Debian package names and the
 # versions it needs (dpkg-shlibdeps wants a debian/control to run in).
 mkdir -p "$out/debian"
-printf 'Source: arkha\n' > "$out/debian/control"
-depends=$(cd "$out" && dpkg-shlibdeps -O -e "$stage/usr/bin/arkha" 2>/dev/null | sed -n 's/^shlibs:Depends=//p')
+printf 'Source: voyager\n' > "$out/debian/control"
+depends=$(cd "$out" && dpkg-shlibdeps -O -e "$stage/usr/bin/voyager" 2>/dev/null | sed -n 's/^shlibs:Depends=//p')
 [ -n "$depends" ] || { echo "dpkg-shlibdeps found no dependencies" >&2; exit 1; }
 
 # The menu entry's and the icon's caches are updated by dpkg's triggers
 # (desktop-file-utils, hicolor-icon-theme): no maintainer scripts needed.
 cat > "$stage/DEBIAN/control" <<EOF
-Package: arkha
+Package: voyager
 Version: ${version}-1
 Architecture: ${arch}
-Maintainer: ${DEB_MAINTAINER:-dekart811 <mail@dekart811.net>}
+Maintainer: ${DEB_MAINTAINER:-HydrAPI <245955427+HydrAPI@users.noreply.github.com>}
 Installed-Size: $(du -sk --exclude=DEBIAN "$stage" | cut -f1)
 Depends: ${depends}
 Recommends: gvfs
@@ -70,7 +70,7 @@ Suggests: gvfs-backends, ffmpegthumbnailer | ffmpeg, mediainfo, engrampa | file-
 Section: utils
 Priority: optional
 Description: fast graphical file manager
- Arkha is a file manager for GTK desktops: icon, list, compact and columns
+ Voyager is a file manager for GTK desktops: icon, list, compact and columns
  views, tabs and split view, an info panel, bulk renaming, checksums,
  checked copies, custom actions and thumbnailers, and undo for file
  operations. It uses the desktop's GTK theme, icons and bookmarks, and

@@ -10,7 +10,7 @@ T=$HOME/ur; TRASH=$HOME/.local/share/Trash/files
 mkdir -p "$T"; echo a > "$T/a.txt"; echo b > "$T/b.txt"
 state() { echo "$(cd "$T" && ls | tr '\n' ' ')| trash: $(ls "$TRASH" 2>/dev/null | tr '\n' ' ')"; }
 gt_display
-gt_arkha "$T"
+gt_voyager "$T"
 gt_click 900 650
 gt_key Home
 gt_key Delete; sleep 0.5; gt_key Return

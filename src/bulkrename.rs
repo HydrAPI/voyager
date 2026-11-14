@@ -1,6 +1,6 @@
 //! "Rename All…": renaming several items at once, the way MATE's caja-rename
 //! extension (25.1.1) does it: Case / Insert / Remove / Replace / Enumerate
-//! tabs, a live preview, and Apply, which keeps the dialog open. Arkha adds
+//! tabs, a live preview, and Apply, which keeps the dialog open. Voyager adds
 //! a Regex tab and options to work before/after the file extension.
 
 use crate::i18n::{fill, n_, tr};
@@ -27,7 +27,7 @@ pub struct Options {
     pub case: Case,
     pub insert_text: String,
     pub insert_pos: usize,
-    /// Arkha's additions: count Position back from the end, and/or only
+    /// Voyager's additions: count Position back from the end, and/or only
     /// within the name before the extension (they combine).
     pub insert_from_end: bool,
     pub insert_before_ext: bool,
@@ -35,16 +35,16 @@ pub struct Options {
     pub remove_len: usize,
     pub replace_target: String,
     pub replace_with: String,
-    /// Replace only in the name, not in its extension (Arkha's addition).
+    /// Replace only in the name, not in its extension (Voyager's addition).
     pub replace_keep_ext: bool,
-    /// Regex tab (Arkha's addition): the compiled pattern (None = off),
+    /// Regex tab (Voyager's addition): the compiled pattern (None = off),
     /// its replacement ($1, ${name}, $0, $$), and leaving the extension out.
     pub regex: Option<regex::Regex>,
     pub regex_with: String,
     pub regex_keep_ext: bool,
     pub digits: usize,
     pub start: u64,
-    /// Arkha's additions: put the number at the end instead of in front,
+    /// Voyager's additions: put the number at the end instead of in front,
     /// and there before the extension.
     pub number_at_end: bool,
     pub number_before_ext: bool,

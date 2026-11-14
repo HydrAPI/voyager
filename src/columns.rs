@@ -36,16 +36,16 @@ pub fn style_column(w: &gtk::ScrolledWindow, on: bool) {
     thread_local! {
         static CSS: gtk::CssProvider = {
             let css = gtk::CssProvider::new();
-            let _ = css.load_from_data(b"scrolledwindow.arkha-column { border-right: 1px solid @borders; }");
+            let _ = css.load_from_data(b"scrolledwindow.voyager-column { border-right: 1px solid @borders; }");
             css
         };
     }
     let ctx = w.style_context();
     if on {
         CSS.with(|c| ctx.add_provider(c, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION));
-        ctx.add_class("arkha-column");
+        ctx.add_class("voyager-column");
     } else {
-        ctx.remove_class("arkha-column");
+        ctx.remove_class("voyager-column");
     }
 }
 

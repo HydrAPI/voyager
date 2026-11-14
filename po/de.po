@@ -1,10 +1,10 @@
-# German translations for Arkha package
-# German translation for Arkha.
-# This file is distributed under the same license as the Arkha package.
+# German translations for Voyager package
+# German translation for Voyager.
+# This file is distributed under the same license as the Voyager package.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: Arkha 0.1.0\n"
+"Project-Id-Version: Voyager 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-11-14 21:21+0100\n"
 "PO-Revision-Date: 2026-11-12 21:59+0100\n"
@@ -347,12 +347,12 @@ msgstr "Umgang mit Datenträgern"
 #. TRANSLATORS: {desktop} is a desktop's name, such as MATE or GNOME.
 #: src/autorun.rs:438
 #, rust-format
-msgid "What happens when you insert media or connect devices that Arkha mounts. These are {desktop}’s own settings."
-msgstr "Was geschieht, wenn Sie Datenträger einlegen oder Geräte anschließen, die Arkha einhängt. Dies sind die Einstellungen von {desktop}."
+msgid "What happens when you insert media or connect devices that Voyager mounts. These are {desktop}’s own settings."
+msgstr "Was geschieht, wenn Sie Datenträger einlegen oder Geräte anschließen, die Voyager einhängt. Dies sind die Einstellungen von {desktop}."
 
 #: src/autorun.rs:439
-msgid "What happens when you insert media or connect devices that Arkha mounts."
-msgstr "Was geschieht, wenn Sie Datenträger einlegen oder Geräte anschließen, die Arkha einhängt."
+msgid "What happens when you insert media or connect devices that Voyager mounts."
+msgstr "Was geschieht, wenn Sie Datenträger einlegen oder Geräte anschließen, die Voyager einhängt."
 
 #: src/autorun.rs:473
 msgid "Other Media"
@@ -732,8 +732,8 @@ msgid "Secure WebDAV (HTTPS)"
 msgstr "Sicheres WebDAV (HTTPS)"
 
 #: src/connect.rs:104
-msgid "Windows shares need GVfs's SMB support, which isn't installed. Install the package gvfs-smb (and gvfs-wsdd or gvfs-dnssd to find computers in the network), then restart Arkha."
-msgstr "Windows-Freigaben brauchen die SMB-Unterstützung von GVfs, die nicht installiert ist. Installiere das Paket gvfs-smb (und gvfs-wsdd oder gvfs-dnssd, um Computer im Netzwerk zu finden) und starte Arkha neu."
+msgid "Windows shares need GVfs's SMB support, which isn't installed. Install the package gvfs-smb (and gvfs-wsdd or gvfs-dnssd to find computers in the network), then restart Voyager."
+msgstr "Windows-Freigaben brauchen die SMB-Unterstützung von GVfs, die nicht installiert ist. Installiere das Paket gvfs-smb (und gvfs-wsdd oder gvfs-dnssd, um Computer im Netzwerk zu finden) und starte Voyager neu."
 
 #: src/connect.rs:111
 msgid "Map Network Drive"
@@ -2593,27 +2593,27 @@ msgstr[1] "{names} hängen ebenfalls Laufwerke ein"
 #: src/sidebar.rs:1748
 #, rust-format
 msgid ""
-"It runs separately from Arkha and mounts inserted drives and media by itself, whatever Arkha’s settings are, and Arkha can’t switch it off.\n"
+"It runs separately from Voyager and mounts inserted drives and media by itself, whatever Voyager’s settings are, and Voyager can’t switch it off.\n"
 "\n"
-"To leave mounting to Arkha, stop {names} from starting with your session (for example, remove it from your window manager’s autostart) and log in again.\n"
+"To leave mounting to Voyager, stop {names} from starting with your session (for example, remove it from your window manager’s autostart) and log in again.\n"
 "\n"
 "This message isn’t shown again."
 msgid_plural ""
-"They run separately from Arkha and mount inserted drives and media by themselves, whatever Arkha’s settings are, and Arkha can’t switch them off.\n"
+"They run separately from Voyager and mount inserted drives and media by themselves, whatever Voyager’s settings are, and Voyager can’t switch them off.\n"
 "\n"
-"To leave mounting to Arkha, stop {names} from starting with your session (for example, remove them from your window manager’s autostart) and log in again.\n"
+"To leave mounting to Voyager, stop {names} from starting with your session (for example, remove them from your window manager’s autostart) and log in again.\n"
 "\n"
 "This message isn’t shown again."
 msgstr[0] ""
-"Es läuft unabhängig von Arkha und hängt eingelegte Laufwerke und Datenträger selbst ein, egal wie Arkha eingestellt ist, und Arkha kann es nicht abschalten.\n"
+"Es läuft unabhängig von Voyager und hängt eingelegte Laufwerke und Datenträger selbst ein, egal wie Voyager eingestellt ist, und Voyager kann es nicht abschalten.\n"
 "\n"
-"Um das Einhängen Arkha zu überlassen, verhindern Sie, dass {names} mit Ihrer Sitzung startet (entfernen Sie es zum Beispiel aus dem Autostart Ihres Fenstermanagers), und melden Sie sich neu an.\n"
+"Um das Einhängen Voyager zu überlassen, verhindern Sie, dass {names} mit Ihrer Sitzung startet (entfernen Sie es zum Beispiel aus dem Autostart Ihres Fenstermanagers), und melden Sie sich neu an.\n"
 "\n"
 "Diese Meldung wird nicht wieder angezeigt."
 msgstr[1] ""
-"Sie laufen unabhängig von Arkha und hängen eingelegte Laufwerke und Datenträger selbst ein, egal wie Arkha eingestellt ist, und Arkha kann sie nicht abschalten.\n"
+"Sie laufen unabhängig von Voyager und hängen eingelegte Laufwerke und Datenträger selbst ein, egal wie Voyager eingestellt ist, und Voyager kann sie nicht abschalten.\n"
 "\n"
-"Um das Einhängen Arkha zu überlassen, verhindern Sie, dass {names} mit Ihrer Sitzung starten (entfernen Sie sie zum Beispiel aus dem Autostart Ihres Fenstermanagers), und melden Sie sich neu an.\n"
+"Um das Einhängen Voyager zu überlassen, verhindern Sie, dass {names} mit Ihrer Sitzung starten (entfernen Sie sie zum Beispiel aus dem Autostart Ihres Fenstermanagers), und melden Sie sich neu an.\n"
 "\n"
 "Diese Meldung wird nicht wieder angezeigt."
 
@@ -3631,12 +3631,12 @@ msgid "Other Programs"
 msgstr "Andere Programme"
 
 #: src/window/prefs.rs:379
-msgid "Open folders when other programs _ask, also when Arkha isn't running"
-msgstr "Ordner öffnen, wenn andere Programme danach _fragen, auch wenn Arkha nicht läuft"
+msgid "Open folders when other programs _ask, also when Voyager isn't running"
+msgstr "Ordner öffnen, wenn andere Programme danach _fragen, auch wenn Voyager nicht läuft"
 
 #: src/window/prefs.rs:380
-msgid "“Show in folder” in web browsers, download lists and the like opens Arkha, with the file selected. While Arkha runs it does this anyway, unless another file manager that does it was there first; this lets programs start Arkha for it too."
-msgstr "„Im Ordner anzeigen“ in Webbrowsern, Download-Listen und Ähnlichem öffnet Arkha mit ausgewählter Datei. Solange Arkha läuft, geschieht das ohnehin, außer ein anderer Dateimanager, der das tut, war zuerst da; damit können Programme Arkha dafür auch starten."
+msgid "“Show in folder” in web browsers, download lists and the like opens Voyager, with the file selected. While Voyager runs it does this anyway, unless another file manager that does it was there first; this lets programs start Voyager for it too."
+msgstr "„Im Ordner anzeigen“ in Webbrowsern, Download-Listen und Ähnlichem öffnet Voyager mit ausgewählter Datei. Solange Voyager läuft, geschieht das ohnehin, außer ein anderer Dateimanager, der das tut, war zuerst da; damit können Programme Voyager dafür auch starten."
 
 #: src/window/prefs.rs:386
 msgid "Could not change it"
@@ -3675,8 +3675,8 @@ msgid "System default"
 msgstr "Systemvorgabe"
 
 #: src/window/prefs.rs:445
-msgid "Applies the next time Arkha starts."
-msgstr "Gilt beim nächsten Start von Arkha."
+msgid "Applies the next time Voyager starts."
+msgstr "Gilt beim nächsten Start von Voyager."
 
 #: src/window/prefs.rs:457
 msgid "Language:"
@@ -4040,8 +4040,8 @@ msgid "Flash drives, memory cards, discs… are mounted right away. This is {des
 msgstr "USB-Sticks, Speicherkarten, Discs … werden sofort eingehängt. Dies ist eine Einstellung von {desktop}: Eine Änderung hier ändert sie auch dort. Ausgeschaltet werden sie eingehängt, wenn Sie sie in der Seitenleiste anklicken."
 
 #: src/window/prefs.rs:799
-msgid "Flash drives, memory cards, discs… inserted while Arkha runs are mounted right away. Turned off, they’re mounted when you click them in the side pane."
-msgstr "USB-Sticks, Speicherkarten, Discs …, die eingelegt werden, während Arkha läuft, werden sofort eingehängt. Ausgeschaltet werden sie eingehängt, wenn Sie sie in der Seitenleiste anklicken."
+msgid "Flash drives, memory cards, discs… inserted while Voyager runs are mounted right away. Turned off, they’re mounted when you click them in the side pane."
+msgstr "USB-Sticks, Speicherkarten, Discs …, die eingelegt werden, während Voyager läuft, werden sofort eingehängt. Ausgeschaltet werden sie eingehängt, wenn Sie sie in der Seitenleiste anklicken."
 
 #: src/window/prefs.rs:813
 msgid "The eject button only _unmounts"

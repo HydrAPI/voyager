@@ -1,4 +1,4 @@
-//! Arkha — a Caja-style file manager in Rust + GTK 3.
+//! Voyager — a file manager with the look of Windows Explorer in Rust + GTK 3.
 
 mod a11y;
 mod actions;
@@ -40,6 +40,8 @@ use gio::prelude::*;
 use gtk::prelude::*;
 
 fn main() -> glib::ExitCode {
+    // Before anything reads the settings.
+    config::migrate_from_arkha();
     // First: it may set LANGUAGE, which threads mustn't see change.
     i18n::init(&config::with(|s| s.language.clone()));
     pane::quiet_header_drags();
@@ -47,7 +49,7 @@ fn main() -> glib::ExitCode {
     util::tell_metadata_store_in_background();
     let app = gtk::Application::new(
         // The same as the AppStream metainfo's (data/), its D-Bus name.
-        Some("io.github.dekart811.Arkha"),
+        Some("io.github.HydrAPI.Voyager"),
         gio::ApplicationFlags::HANDLES_OPEN,
     );
     app.connect_startup(|app| {
@@ -78,12 +80,12 @@ fn main() -> glib::ExitCode {
         // "Show in folder" for other programs.
         fm1::init();
         // Started by D-Bus for that (--gapplication-service): staying a
-        // moment for the call. (Otherwise Arkha quits with its last window.)
+        // moment for the call. (Otherwise Voyager quits with its last window.)
         if app.flags().contains(gio::ApplicationFlags::IS_SERVICE) {
             app.set_inactivity_timeout(10_000);
         }
         // For tests: what inserting a medium does, with a folder for it.
-        if let Some(dir) = std::env::var_os("ARKHA_AUTORUN_TRY") {
+        if let Some(dir) = std::env::var_os("VOYAGER_AUTORUN_TRY") {
             let f = gio::File::for_path(dir);
             glib::timeout_add_local_once(std::time::Duration::from_secs(1), move || autorun::try_folder(&f));
         }

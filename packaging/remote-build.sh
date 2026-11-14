@@ -3,8 +3,8 @@
 # machine reached as `ssh HOST`, for deb/build-on.sh and rpm/build-on.sh:
 # copies this checkout's files (tracked and new ones, not the ignored) with
 # the crates (cargo vendor, so the build needs no internet) there with
-# rsync, into ~/arkha-build, runs SCRIPT there (a path in the checkout),
-# and fetches RESULTS (a pattern in ~/arkha-build) into OUT. The file
+# rsync, into ~/voyager-build, runs SCRIPT there (a path in the checkout),
+# and fetches RESULTS (a pattern in ~/voyager-build) into OUT. The file
 # VERSION has the version for the packages, Cargo.toml's with the build:
 # "1.0.0-dev+r142.g6a7d287" (".dirty" with uncommitted changes), or just
 # "1.0.0" for a release (the commit tagged v1.0.0); deb/build.sh and
@@ -36,8 +36,8 @@ if [ -n "$dirty" ] || ! git describe --exact-match --tags --match "v$version" >/
 fi
 echo "$version" > "$st/VERSION"
 
-rsync -az --delete --exclude=/target "$st/" "$host:arkha-build/"
-ssh "$host" "sh arkha-build/$script"
-rsync -a "$host:arkha-build/$results" "$out/"
+rsync -az --delete --exclude=/target "$st/" "$host:voyager-build/"
+ssh "$host" "sh voyager-build/$script"
+rsync -a "$host:voyager-build/$results" "$out/"
 # shellcheck disable=SC2086
 ls -l "$out"/$(basename "$results")

@@ -2,7 +2,7 @@
 # check-copies.sh x11|wayland: copies checked against their originals,
 # started the three ways there are: Edit → Paste and Check (Shift+Ctrl+V),
 # the Copy To dialog's "Check the copies" box, and "Copy and Check Here" in
-# the menu of a drop made with Alt. Each copy must be there and Arkha's log
+# the menu of a drop made with Alt. Each copy must be there and Voyager's log
 # must show it was read back and matched; plain copies aren't checked.
 GT_A11Y=1
 . "$(dirname "$0")/lib.sh"
@@ -10,14 +10,14 @@ gt_session "$@"
 
 W=$HOME/work; mkdir -p "$W/dest" "$W/to" "$W/plain"
 head -c 3000000 /dev/urandom > "$W/a.bin"; echo hello > "$W/b.txt"
-export G_MESSAGES_DEBUG=arkha
-checks() { grep -c "check: .* matches" "$OUT/arkha.log"; }
+export G_MESSAGES_DEBUG=voyager
+checks() { grep -c "check: .* matches" "$OUT/voyager.log"; }
 # checked N: waits (at most 15 s) until N copies have been checked: a copy
 # is read back and compared on a worker thread after it's made, which can
 # take a while on a busy disk, so the main thread being idle says nothing.
 checked() { local n=150; while [ $n -gt 0 ] && [ "$(checks)" -lt "$1" ]; do sleep 0.1; n=$((n - 1)); done; }
 gt_display
-gt_arkha "$W"
+gt_voyager "$W"
 # A plain paste: no checking.
 gt_click 900 650; gt_type b.t; gt_key Escape; gt_key ctrl+c
 gt_key ctrl+l; gt_type "$W/plain"; gt_key Return; gt_key ctrl+v; sleep 1; gt_quiet

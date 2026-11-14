@@ -151,7 +151,7 @@ fn when_shown(view: &gtk::TreeView, path: &gtk::TreePath, f: impl Fn(&gtk::TreeV
 /// Hands memory freed in bulk (a closed tab, a big folder left) back to
 /// the system, a moment later and once for several. Folders are many small
 /// pieces (a row, its texts), and the allocator keeps the pages they leave
-/// for later: Arkha would go on showing the most it ever used.
+/// for later: Voyager would go on showing the most it ever used.
 pub fn release_memory_soon() {
     thread_local! { static PENDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
     if PENDING.with(|p| p.replace(true)) {
@@ -205,18 +205,18 @@ pub fn save_settings(kf: &glib::KeyFile, path: &std::path::Path) {
     }
 }
 
-/// Arkha's own icon (`arkha`, installed in the hicolor theme), or the icon
+/// Voyager's own icon (`voyager`, installed in the hicolor theme), or the icon
 /// theme's file manager icon where it isn't installed, as when run from the
 /// build folder.
 pub fn app_icon() -> &'static str {
     static ICON: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
     ICON.get_or_init(|| {
-        let ours = gtk::IconTheme::default().is_some_and(|t| t.has_icon("arkha"));
-        if ours { "arkha" } else { "system-file-manager" }
+        let ours = gtk::IconTheme::default().is_some_and(|t| t.has_icon("voyager"));
+        if ours { "voyager" } else { "system-file-manager" }
     })
 }
 
-/// Shows a desktop notification from Arkha (as libnotify does, which Caja
+/// Shows a desktop notification from Voyager (as libnotify does, which Caja
 /// uses: clicking it does nothing).
 pub fn notify(summary: &str, body: &str) {
     send_notification(&Notification { summary, body, icon: app_icon(), sticky: false }, |_| {});
@@ -234,12 +234,12 @@ pub struct Notification<'a> {
 
 /// Sends `n`; `shown` gets its id (0 if it couldn't be shown).
 pub fn send_notification(n: &Notification, shown: impl FnOnce(u32) + 'static) {
-    let mut hints: std::collections::HashMap<String, glib::Variant> = [("desktop-entry".to_string(), "arkha".to_variant())].into();
+    let mut hints: std::collections::HashMap<String, glib::Variant> = [("desktop-entry".to_string(), "voyager".to_variant())].into();
     if n.sticky {
         hints.insert("urgency".to_string(), 2u8.to_variant());
         hints.insert("transient".to_string(), true.to_variant());
     }
-    let args = ("Arkha", 0u32, n.icon, n.summary, n.body, Vec::<String>::new(), hints, -1i32).to_variant();
+    let args = ("Voyager", 0u32, n.icon, n.summary, n.body, Vec::<String>::new(), hints, -1i32).to_variant();
     notifications_call("Notify", args, move |reply| shown(reply.and_then(|r| r.child_value(0).get::<u32>()).unwrap_or(0)));
 }
 

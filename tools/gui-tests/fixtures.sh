@@ -2,8 +2,8 @@
 # fixtures.sh base|bench: makes what the GUI tests and benchmarks need, in
 # target/gui-fixtures (once; delete a folder there to make it again).
 #   base   share-noapps/: /usr/share without applications (as XDG_DATA_DIRS,
-#            Arkha finds no program to open a file with, and starts none);
-#          xmonad/: xmonad with Super as its modifier (Alt stays Arkha's).
+#            Voyager finds no program to open a file with, and starts none);
+#          xmonad/: xmonad with Super as its modifier (Alt stays Voyager's).
 #   bench  big20k/: 20,000 empty files; thumbtest/: one file of each of 30
 #          or so types that get thumbnails (made with ImageMagick, ffmpeg and
 #          Python; types a missing tool would make are left out).

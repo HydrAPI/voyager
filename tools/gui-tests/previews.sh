@@ -11,24 +11,24 @@ T=$HOME/pics; mkdir -p "$T/folder"; touch "$T/folder/x" "$T/folder/y"
 for c in red green blue; do magick -size 200x150 "xc:$c" "$T/$c.png"; done
 magick -size 1000x1000 xc: +noise Random "$T/big.png"     # about 3 MB
 thumbs() { find "$HOME/.cache/thumbnails" -name '*.png' -not -path '*/fail/*' 2>/dev/null | wc -l; }
-conf() { printf '[General]\nper_folder=false\n%s\n' "$1" > "$XDG_CONFIG_HOME/arkha/arkha.conf"; rm -rf "$HOME/.cache/thumbnails"; }
+conf() { printf '[General]\nper_folder=false\n%s\n' "$1" > "$XDG_CONFIG_HOME/voyager/voyager.conf"; rm -rf "$HOME/.cache/thumbnails"; }
 gt_display
 conf 'show_thumbnails=always
 thumbnail_limit=1048576'
-gt_arkha "$T"; sleep 3; gt_quiet; gt_shot always
+gt_voyager "$T"; sleep 3; gt_quiet; gt_shot always
 gt_check "thumbnails always, up to 1 MB: the three small pictures" "$(thumbs)" "3"
 gt_quit
 conf 'show_thumbnails=never'
-gt_arkha "$T"; sleep 3; gt_quiet; gt_shot never
+gt_voyager "$T"; sleep 3; gt_quiet; gt_shot never
 gt_check "thumbnails never" "$(thumbs)" "0"
 gt_quit
 conf 'default_view=list
 count_items=always'
-gt_arkha "$T"; gt_shot counted
+gt_voyager "$T"; gt_shot counted
 gt_check "item counts always" "$(gt_a11y cells | grep -c '^2 items$')" "1"
 gt_quit
 conf 'default_view=list
 count_items=never'
-gt_arkha "$T"; gt_shot not-counted
+gt_voyager "$T"; gt_shot not-counted
 gt_check "item counts never" "$(gt_a11y cells | grep -c '^—$')" "1"
 gt_end

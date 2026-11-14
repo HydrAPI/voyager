@@ -1,35 +1,35 @@
-# Contributing to Arkha
+# Contributing to Voyager
 
-Bug reports, translations and code are welcome. This file has the technical side: testing, translating and how the code is laid out; building Arkha and its packages is described in [BUILDING.md](BUILDING.md). What you contribute is published under Arkha's license, the [GPL, version 3 or later](LICENSE).
+Bug reports, translations and code are welcome. This file has the technical side: testing, translating and how the code is laid out; building Voyager and its packages is described in [BUILDING.md](BUILDING.md). What you contribute is published under Voyager's license, the [GPL, version 3 or later](LICENSE).
 
 ## Reporting a bug
 
-Say what you did, what you expected and what happened instead, and include the version from Help → About (for example "1.0.0-dev (r143, 87938a8)"), your distribution and your desktop (and whether it runs on X11 or Wayland). Messages Arkha prints when started from a terminal help too.
+Say what you did, what you expected and what happened instead, and include the version from Help → About (for example "1.0.0-dev (r143, 87938a8)"), your distribution and your desktop (and whether it runs on X11 or Wayland). Messages Voyager prints when started from a terminal help too.
 
 ## Testing
 
-Every push to `master` and every pull request is checked on GitHub (`.github/workflows/ci.yml`): the build, the unit tests, clippy (no warnings), the translations and their placeholders, and a package for every distribution Arkha supports, each built and installed in a container of that distribution as the release makes it: Debian 13 (with its Rust 1.85, the oldest Arkha supports), Ubuntu 26.04 (its own package and the Debian one, which the release offers for it), Fedora and Arch Linux, and the prebuilt program for the others.
+Every push to `master` and every pull request is checked on GitHub (`.github/workflows/ci.yml`): the build, the unit tests, clippy (no warnings), the translations and their placeholders, and a package for every distribution Voyager supports, each built and installed in a container of that distribution as the release makes it: Debian 13 (with its Rust 1.85, the oldest Voyager supports), Ubuntu 26.04 (its own package and the Debian one, which the release offers for it), Fedora and Arch Linux, and the prebuilt program for the others.
 
 ```sh
 cargo test --release                                  # unit tests (no display needed)
 cargo test                                            # the same as a debug build, as CI runs them (also checks what's handed to GLib)
-ARKHA_RANDOM_CASES=50 cargo test --release random     # the randomized tests, 50 times as many inputs
-cargo test --release -- --ignored stress              # file operation stress tests (ARKHA_STRESS_FILES=n)
+VOYAGER_RANDOM_CASES=50 cargo test --release random     # the randomized tests, 50 times as many inputs
+cargo test --release -- --ignored stress              # file operation stress tests (VOYAGER_STRESS_FILES=n)
 tools/soak.py --backend x11 --minutes 30              # the whole program, driven at random
 tools/soak.py --backend wayland --minutes 30 --cycle  # one round repeated: does memory keep growing?
 tools/soak.py --backend x11 --minutes 10 --heaptrack   # memory recorded by heaptrack
 tools/gui-tests/run-all.sh                            # the GUI tests, X11 and Wayland (cargo build --release first)
 tools/gui-tests/undo.sh wayland                       # one of them
 tools/bench/compare.sh                                # speed and memory against Caja and Nemo
-tools/bench/speed.sh OLD-BINARY target/release/arkha  # opening folders, two builds compared
+tools/bench/speed.sh OLD-BINARY target/release/voyager  # opening folders, two builds compared
 tools/check-placeholders.py                           # every {place} in a translatable text filled, in the code and the .po files
-tools/soak.py --backend x11 --minutes 7 --language de  # a soak run with Arkha in German
+tools/soak.py --backend x11 --minutes 7 --language de  # a soak run with Voyager in German
 tools/screenshots/take.sh                             # the README's screenshots again (light and dark)
 ```
 
-`tools/soak.py` runs Arkha in a bubblewrap sandbox (the system read-only, `/home` and `/mnt` hidden, its own D-Bus session, a headless X server, and for Wayland Weston inside it) and drives it through its D-Bus actions, keyboard and mouse input (clicks, drags, the wheel, keys, typeahead, inline renames, search; xdotool) and its dialogs through accessibility (AT-SPI), while files keep changing underneath. The sandbox has no applications, so opening a file never starts another program. It reports crashes (with backtraces, as Arkha runs under gdb), GLib/GTK warnings, slow or missing responses, and memory over time, in `target/soak/<run>/`. `--fatal-criticals` stops at the first critical warning for its backtrace; `--name` keeps runs of the same seed apart (`target/soak/<backend>-seed<N>-<name>`). Its once-a-minute status line includes the sandbox home's free space: GTK and GVfs warnings about writing files there mean the 1 GiB home has filled up. For test coverage, give it a binary built with `RUSTFLAGS="-C instrument-coverage"` (`--binary`) and `LLVM_PROFILE_FILE=/tmp/soak-run/arkha-%p-%m.profraw`: the profiles land in the run's folder. Needs `bubblewrap`, `xorg-server-xvfb`, `weston`, `gdb`, `xdotool`, `at-spi2-core` and `python-gobject`.
+`tools/soak.py` runs Voyager in a bubblewrap sandbox (the system read-only, `/home` and `/mnt` hidden, its own D-Bus session, a headless X server, and for Wayland Weston inside it) and drives it through its D-Bus actions, keyboard and mouse input (clicks, drags, the wheel, keys, typeahead, inline renames, search; xdotool) and its dialogs through accessibility (AT-SPI), while files keep changing underneath. The sandbox has no applications, so opening a file never starts another program. It reports crashes (with backtraces, as Voyager runs under gdb), GLib/GTK warnings, slow or missing responses, and memory over time, in `target/soak/<run>/`. `--fatal-criticals` stops at the first critical warning for its backtrace; `--name` keeps runs of the same seed apart (`target/soak/<backend>-seed<N>-<name>`). Its once-a-minute status line includes the sandbox home's free space: GTK and GVfs warnings about writing files there mean the 1 GiB home has filled up. For test coverage, give it a binary built with `RUSTFLAGS="-C instrument-coverage"` (`--binary`) and `LLVM_PROFILE_FILE=/tmp/soak-run/voyager-%p-%m.profraw`: the profiles land in the run's folder. Needs `bubblewrap`, `xorg-server-xvfb`, `weston`, `gdb`, `xdotool`, `at-spi2-core` and `python-gobject`.
 
-The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse input and read the result back from the files, from Arkha's log, or through accessibility (window titles, tabs and dialogs, the same on X11 and Wayland). Each runs in a private D-Bus session with its own runtime folder, home and settings, in a headless X server with xmonad, or Weston's kiosk shell in it for Wayland, and fails on any GLib/GTK warning in Arkha's log. It prints a PASS or FAIL line per check; screenshots and logs are in `target/gui-tests/<test>-<backend>/`. `lib.sh` holds what they share (writing another test is a few lines of `gt_click`, `gt_key`, `gt_act` and `gt_check`), `fixtures.sh` makes what they need in `target/gui-fixtures/` (a `/usr/share` without applications, so nothing else is ever started; an xmonad build; for the benchmarks 20,000 files and sample files of 30 or so types). `tools/lockbar-test.sh` checks Lock Toolbar with real drags.
+The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse input and read the result back from the files, from Voyager's log, or through accessibility (window titles, tabs and dialogs, the same on X11 and Wayland). Each runs in a private D-Bus session with its own runtime folder, home and settings, in a headless X server with xmonad, or Weston's kiosk shell in it for Wayland, and fails on any GLib/GTK warning in Voyager's log. It prints a PASS or FAIL line per check; screenshots and logs are in `target/gui-tests/<test>-<backend>/`. `lib.sh` holds what they share (writing another test is a few lines of `gt_click`, `gt_key`, `gt_act` and `gt_check`), `fixtures.sh` makes what they need in `target/gui-fixtures/` (a `/usr/share` without applications, so nothing else is ever started; an xmonad build; for the benchmarks 20,000 files and sample files of 30 or so types). `tools/lockbar-test.sh` checks Lock Toolbar with real drags.
 
 | Test | What it checks |
 |---|---|
@@ -39,7 +39,7 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `selection` | After a paste exactly the copies are selected (50 and 1,500 files) |
 | `rename` | Renaming in place: Enter, Escape, a click elsewhere, a reload meanwhile |
 | `fm1` | "Show in folder" for other programs (org.freedesktop.FileManager1) |
-| `metadata-stuck` | Arkha keeps answering while GVfs's metadata service doesn't |
+| `metadata-stuck` | Voyager keeps answering while GVfs's metadata service doesn't |
 | `prefs` | Every Preferences page; adding and removing a custom action |
 | `backgrounds` | Backgrounds and Emblems opens and closes |
 | `focuscol` | No accessibility assertion after the columns view hides the cursor's column |
@@ -54,18 +54,18 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `tab-order` | Properties' and Rename All's tabs dragged into another order, which is kept |
 | `props-tabs` | Properties tabs hidden and shown again in Preferences → Properties, and hidden with a right-click on the tab (X11); Basic can't be hidden |
 | `previews` | Thumbnails always (with a size limit) or never; folders' item counts always or never |
-| `connect` | Connect to Server: the fields for each type, the bookmark, a server that refuses; with `ARKHA_TEST_SFTP=HOST` also a real SFTP mount and the path bar naming it, with `ARKHA_TEST_SMB=USER@HOST/SHARE` the password dialog, cancelled |
+| `connect` | Connect to Server: the fields for each type, the bookmark, a server that refuses; with `VOYAGER_TEST_SFTP=HOST` also a real SFTP mount and the path bar naming it, with `VOYAGER_TEST_SMB=USER@HOST/SHARE` the password dialog, cancelled |
 
-`tools/screenshots/take.sh` takes the screenshots in `docs/screenshots/` again, for when Arkha's look changes: Arkha runs headless in a made-up home folder, as in the GUI tests, under Metacity for its title bars, in Adwaita with Papirus (light) and Adwaita-dark with Papirus-Dark (dark), and each window is cut out with its shadow on a transparent background. Besides what the GUI tests need, it needs `metacity`, the Papirus icon themes, the Cantarell font and the `en_US.UTF-8` locale.
+`tools/screenshots/take.sh` takes the screenshots in `docs/screenshots/` again, for when Voyager's look changes: Voyager runs headless in a made-up home folder, as in the GUI tests, under Metacity for its title bars, in Adwaita with Papirus (light) and Adwaita-dark with Papirus-Dark (dark), and each window is cut out with its shadow on a transparent background. Besides what the GUI tests need, it needs `metacity`, the Papirus icon themes, the Cantarell font and the `en_US.UTF-8` locale.
 
-`tools/bench/compare.sh` measures what the audits show: opening `/usr/lib` and 20,000 files (when the main thread stays idle, its CPU, all threads'), scrolling, memory and thumbnails, against Caja and Nemo where installed; `speed.sh` compares two builds of Arkha opening folders in the icon view, the list view and the list view with every column. `sample.sh` profiles without perf (gdb samples the main thread's stack), summarized by `sample-report.py`.
+`tools/bench/compare.sh` measures what the audits show: opening `/usr/lib` and 20,000 files (when the main thread stays idle, its CPU, all threads'), scrolling, memory and thumbnails, against Caja and Nemo where installed; `speed.sh` compares two builds of Voyager opening folders in the icon view, the list view and the list view with every column. `sample.sh` profiles without perf (gdb samples the main thread's stack), summarized by `sample-report.py`.
 
 ## Translating
 
-Arkha's texts are translated with gettext. Each language is a file in `po/` (`po/de.po` is German); the build turns them into catalogs (`build.rs`, into `target/release/locale/`), and Preferences offers each by the name in its `X-Language-Name` header.
+Voyager's texts are translated with gettext. Each language is a file in `po/` (`po/de.po` is German); the build turns them into catalogs (`build.rs`, into `target/release/locale/`), and Preferences offers each by the name in its `X-Language-Name` header.
 
-- **A new language:** `msginit -i po/arkha.pot -o po/<code>.po -l <code>` (e.g. `fr`), add `"X-Language-Name: <the language's name in itself>\n"` to its header, translate it (by hand or with Poedit, Lokalize, …), check it with `msgfmt --check --statistics -o /dev/null po/<code>.po`, and build.
-- **After changing texts in the code:** `tools/update-po.sh` collects them again into `po/arkha.pot` and updates every `.po` file (new texts untranslated, changed ones marked fuzzy).
+- **A new language:** `msginit -i po/voyager.pot -o po/<code>.po -l <code>` (e.g. `fr`), add `"X-Language-Name: <the language's name in itself>\n"` to its header, translate it (by hand or with Poedit, Lokalize, …), check it with `msgfmt --check --statistics -o /dev/null po/<code>.po`, and build.
+- **After changing texts in the code:** `tools/update-po.sh` collects them again into `po/voyager.pot` and updates every `.po` file (new texts untranslated, changed ones marked fuzzy).
 - **In the code:** a text people see is written `tr("…")`, one with a number in it `trn("{n} file", "{n} files", n)`, a text in a table `n_("…")` (translated where it's shown); values go in named places filled by `fill()` (`fill(&tr("Copying “{name}”"), &[("name", &name)])`), so a translation can order the words its own way. A comment starting `TRANSLATORS:` right above it is shown to translators.
 - Keep each `{name}` and the `_` of a menu shortcut (`_File`) in a translation; `msgfmt --check` checks the places. The GUI tests always run in English.
 
@@ -75,7 +75,7 @@ Arkha's texts are translated with gettext. Each language is a file in `po/` (`po
 |---|---|
 | `src/main.rs` | GtkApplication setup, command-line paths |
 | `src/i18n.rs` | Translations: `tr()`, `trn()`, `n_()`, `fill()`, the language chosen in Preferences |
-| `build.rs`, `po/` | The translations (`po/<language>.po`, template `po/arkha.pot`), built into catalogs; `tools/update-po.sh` refreshes them |
+| `build.rs`, `po/` | The translations (`po/<language>.po`, template `po/voyager.pot`), built into catalogs; `tools/update-po.sh` refreshes them |
 | `src/window.rs` | Main window, toolbar, path bar, tabs, all commands |
 | `src/window/menus.rs` | The menu bar and the context menus |
 | `src/window/prefs.rs` | Preferences, and the editors for menus, places, bookmarks, shortcuts, thumbnailers and custom actions |

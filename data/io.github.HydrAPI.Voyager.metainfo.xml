@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- What software centres (GNOME Software, KDE Discover) show about Arkha.
-     Installed as /usr/share/metainfo/io.github.dekart811.Arkha.metainfo.xml;
+<!-- What software centres (GNOME Software, KDE Discover) show about Voyager.
+     Installed as /usr/share/metainfo/io.github.HydrAPI.Voyager.metainfo.xml;
      each release gets a <release> line (see BUILDING.md). -->
 <component type="desktop-application">
-  <id>io.github.dekart811.Arkha</id>
+  <id>io.github.HydrAPI.Voyager</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
 
-  <name>Arkha</name>
+  <name>Voyager</name>
   <summary>Fast graphical file manager</summary>
-  <developer id="io.github.dekart811">
-    <name>dekart811</name>
+  <developer id="io.github.hydrapi">
+    <name>HydrAPI</name>
   </developer>
 
   <description>
     <p>
-      Arkha is a fast file manager for Linux, modelled on Caja (MATE). It uses
+      Voyager is a fast file manager for Linux, modelled on Caja (MATE). It uses
       your desktop’s GTK theme, icons and bookmarks, and feels at home on MATE,
       but works on any desktop.
     </p>
@@ -30,39 +30,39 @@
       <li>Your own context menu entries and thumbnailers, and every keyboard shortcut changeable</li>
     </ul>
     <p>
-      Arkha’s code was written by an AI, Anthropic’s Claude, directed and
+      Voyager’s code was written by an AI, Anthropic’s Claude, directed and
       tested by its maintainer.
     </p>
   </description>
 
-  <launchable type="desktop-id">arkha.desktop</launchable>
+  <launchable type="desktop-id">voyager.desktop</launchable>
   <provides>
-    <binary>arkha</binary>
+    <binary>voyager</binary>
   </provides>
-  <translation type="gettext">arkha</translation>
+  <translation type="gettext">voyager</translation>
 
-  <url type="homepage">https://github.com/dekart811/arkha</url>
-  <url type="bugtracker">https://github.com/dekart811/arkha/issues</url>
-  <url type="vcs-browser">https://github.com/dekart811/arkha</url>
-  <url type="contribute">https://github.com/dekart811/arkha/blob/master/CONTRIBUTING.md</url>
-  <url type="translate">https://github.com/dekart811/arkha/blob/master/CONTRIBUTING.md#translating</url>
+  <url type="homepage">https://github.com/HydrAPI/voyager</url>
+  <url type="bugtracker">https://github.com/HydrAPI/voyager/issues</url>
+  <url type="vcs-browser">https://github.com/HydrAPI/voyager</url>
+  <url type="contribute">https://github.com/HydrAPI/voyager/blob/master/CONTRIBUTING.md</url>
+  <url type="translate">https://github.com/HydrAPI/voyager/blob/master/CONTRIBUTING.md#translating</url>
 
   <screenshots>
     <screenshot type="default">
       <caption>The icon view, with the info panel showing the selected picture</caption>
-      <image>https://raw.githubusercontent.com/dekart811/arkha/master/docs/screenshots/icons-light.png</image>
+      <image>https://raw.githubusercontent.com/HydrAPI/voyager/master/docs/screenshots/icons-light.png</image>
     </screenshot>
     <screenshot>
       <caption>Split view: two panes, each with its own tabs and view</caption>
-      <image>https://raw.githubusercontent.com/dekart811/arkha/master/docs/screenshots/split-light.png</image>
+      <image>https://raw.githubusercontent.com/HydrAPI/voyager/master/docs/screenshots/split-light.png</image>
     </screenshot>
     <screenshot>
       <caption>Renaming many files at once</caption>
-      <image>https://raw.githubusercontent.com/dekart811/arkha/master/docs/screenshots/rename-light.png</image>
+      <image>https://raw.githubusercontent.com/HydrAPI/voyager/master/docs/screenshots/rename-light.png</image>
     </screenshot>
     <screenshot>
       <caption>A file’s checksums in its properties</caption>
-      <image>https://raw.githubusercontent.com/dekart811/arkha/master/docs/screenshots/checksums-light.png</image>
+      <image>https://raw.githubusercontent.com/HydrAPI/voyager/master/docs/screenshots/checksums-light.png</image>
     </screenshot>
   </screenshots>
 

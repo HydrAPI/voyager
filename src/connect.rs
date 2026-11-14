@@ -2,7 +2,7 @@
 //! Windows share, WebDAV), and optionally a share, port, folder, user name
 //! and domain, made into an address (sftp://user@server:2222/folder) that
 //! the window opens; the pane mounts it (see Pane::mount_and_load), and
-//! GTK's dialog asks for a password if the server wants one, so Arkha never
+//! GTK's dialog asks for a password if the server wants one, so Voyager never
 //! handles passwords itself. Optionally bookmarked under a name.
 
 use std::rc::Rc;
@@ -101,7 +101,7 @@ pub fn smb_missing() -> bool {
 
 /// What to tell then.
 pub fn smb_missing_hint() -> String {
-    tr("Windows shares need GVfs's SMB support, which isn't installed. Install the package gvfs-smb (and gvfs-wsdd or gvfs-dnssd to find computers in the network), then restart Arkha.")
+    tr("Windows shares need GVfs's SMB support, which isn't installed. Install the package gvfs-smb (and gvfs-wsdd or gvfs-dnssd to find computers in the network), then restart Voyager.")
 }
 
 /// Explorer's "Map network drive": a share as `\\\\server\\share`, optionally

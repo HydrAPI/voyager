@@ -1,11 +1,11 @@
-# <img src="data/arkha.svg" alt="" height="32" align="absmiddle"> Arkha
+# <img src="data/voyager.svg" alt="" height="32" align="absmiddle"> Voyager
 
 A fast graphical file manager for Linux, with the look of Windows Explorer and the features of Caja (MATE). It uses your desktop's GTK theme, icons and bookmarks, and feels at home on MATE, but works on any desktop.
 
 <!-- Light or dark, as the reader's GitHub is; made with Adwaita and Papirus. -->
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/icons-dark.png">
-  <img src="docs/screenshots/icons-light.png" alt="Arkha's icon view, with the info panel showing the selected picture">
+  <img src="docs/screenshots/icons-light.png" alt="Voyager's icon view, with the info panel showing the selected picture">
 </picture>
 
 <picture>
@@ -44,26 +44,30 @@ The [full list of features](docs/FEATURES.md) has every detail.
 
 Packages for each release are on the project's Releases page, and for Arch Linux also in the AUR:
 
-- **Debian 13 or newer, Ubuntu 26.04 or newer:** `sudo apt install ./arkha_*.deb`
-- **Fedora:** `sudo dnf install ./arkha-*.rpm`
-- **Arch Linux:** `sudo pacman -U ./arkha-*.pkg.tar.zst`, or from the AUR: `arkha` (built from the release's sources), `arkha-bin` (prebuilt) or `arkha-git` (the newest development version).
+- **Debian 13 or newer, Ubuntu 26.04 or newer:** `sudo apt install ./voyager_*.deb`
+- **Fedora:** `sudo dnf install ./voyager-*.rpm`
+- **Arch Linux:** `sudo pacman -U ./voyager-*.pkg.tar.zst`, or from the AUR: `voyager` (built from the release's sources), `voyager-bin` (prebuilt) or `voyager-git` (the newest development version).
 
-Arkha uses GVfs for the Trash, network places and drives; most desktops have it already. To build it yourself, see [BUILDING.md](BUILDING.md). If you package Arkha for a distribution, build it from a release's git tag, never from the prebuilt files: see [Packaging Arkha for a distribution](BUILDING.md#packaging-arkha-for-a-distribution).
+Voyager uses GVfs for the Trash, network places and drives; most desktops have it already. To build it yourself, see [BUILDING.md](BUILDING.md). If you package Voyager for a distribution, build it from a release's git tag, never from the prebuilt files: see [Packaging Voyager for a distribution](BUILDING.md#packaging-voyager-for-a-distribution).
 
-Your settings are kept in `~/.config/arkha/`.
+Your settings are kept in `~/.config/voyager/`.
 
 ## Translations
 
-Arkha speaks English and German so far. A new language is one file to translate; [CONTRIBUTING.md](CONTRIBUTING.md#translating) explains how.
+Voyager speaks English and German so far. A new language is one file to translate; [CONTRIBUTING.md](CONTRIBUTING.md#translating) explains how.
 
 ## Contributing
 
 Bug reports, translations and code are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Origin
+
+Voyager is a fork of [Arkha](https://github.com/dekart811/arkha) by dekart811, with the look and layout of Windows Explorer, This PC, Windows shares and more. The first version of Voyager is 1.1.0; it keeps Arkha's settings (they are copied from `~/.config/arkha` the first time it starts).
+
 ## Written by an AI
 
-Arkha's code, its German translation and its documentation were written by an AI, Anthropic's Claude (in Claude Code), not by a human programmer. Its maintainer decided what Arkha should do and how it should behave, and tried out and checked the results.
+Voyager's code, its German translation and its documentation were written by an AI, Anthropic's Claude (in Claude Code), not by a human programmer. Its maintainer decided what Voyager should do and how it should behave, and tried out and checked the results.
 
 ## License
 
-Arkha is free software under the [GNU General Public License, version 3 or later](LICENSE). Some of its texts and the search's groups of file types come from [Caja](https://github.com/mate-desktop/caja) (GPL-2.0-or-later), by the MATE developers.
+Voyager is free software under the [GNU General Public License, version 3 or later](LICENSE), as Arkha is. Copyright 2026 HydrAPI and dekart811 (Arkha). Some of its texts and the search's groups of file types come from [Caja](https://github.com/mate-desktop/caja) (GPL-2.0-or-later), by the MATE developers.

@@ -14,7 +14,7 @@ gt_session "$@"
 
 T=$HOME/tabs; mkdir -p "$T/folder"; echo a > "$T/a.txt"; echo b > "$T/b.txt"
 gt_display
-gt_arkha "$T"
+gt_voyager "$T"
 tabs() { gt_a11y dialog-tabs | tr '\n' ' '; }
 to_front() {  # to_front TAB FIRST: TAB dragged in front of FIRST (on X11)
   [ "$BACKEND" = wayland ] || drag_tab "$1" "$2"
@@ -33,7 +33,7 @@ props a.t
 [ "$BACKEND" = wayland ] || gt_check "Properties of a file: the usual order" "$(tabs)" "Basic Emblems Permissions Open With Checksums Notes "
 to_front Notes Basic; gt_shot props-moved
 gt_check "Notes moved to the front" "$(tabs)" "Notes Basic Emblems Permissions Open With Checksums "
-gt_check "and kept (Media Info, not shown, still after Notes)" "$(grep '^props_tab_order=' "$XDG_CONFIG_HOME/arkha/arkha.conf")" "props_tab_order=notes;media;basic;emblems;permissions;open-with;checksums;"
+gt_check "and kept (Media Info, not shown, still after Notes)" "$(grep '^props_tab_order=' "$XDG_CONFIG_HOME/voyager/voyager.conf")" "props_tab_order=notes;media;basic;emblems;permissions;open-with;checksums;"
 gt_key Escape; sleep 0.5
 props fol
 gt_check "a folder's Properties: the same order, without a file's tabs" "$(tabs)" "Notes Basic Emblems Permissions "

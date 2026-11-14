@@ -32,7 +32,7 @@ const fn d(id: &'static str, title: &'static str, menu: Option<&'static str>, xa
 
 /// Everything but the name, in the order the column chooser lists them. A
 /// detail's sort id (see sort_id) is its place here plus one, the name's
-/// is 0: the first three were Arkha's only ones, and stay as they were.
+/// is 0: the first three were Voyager's only ones, and stay as they were.
 // Titles and menu labels are translated where they're shown (tr()).
 pub const DETAILS: &[Detail] = &[
     d("size", n_("Size"), Some(n_("By _Size")), 1.0, 90, true),
@@ -52,7 +52,7 @@ pub const DETAILS: &[Detail] = &[
     Detail { id: "orig", title: n_("Original Location"), menu: None, xalign: 0.0, min_width: 160, desc_first: false, trash: true },
 ];
 
-/// The list view's columns until chosen otherwise (Arkha's from the start).
+/// The list view's columns until chosen otherwise (Voyager's from the start).
 pub const DEFAULT_COLUMNS: &[&str] = &["size", "type", "mtime"];
 /// The icon captions until chosen otherwise, as in Caja: more show as the
 /// icons get bigger (see shown_captions), "none" keeps a place empty.
@@ -80,7 +80,7 @@ pub fn sort_name(id: u32) -> &'static str {
     id.checked_sub(1).and_then(|i| DETAILS.get(i as usize)).map_or("name", |d| d.id)
 }
 
-/// A setting's list of details, those Arkha knows each once (`choosable`
+/// A setting's list of details, those Voyager knows each once (`choosable`
 /// ones only), in the order given.
 pub fn known(ids: &[String]) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = vec![];

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """sample-report.py OUT: what a sample.sh profile spent its time in, the
-samples where the main thread was waiting (polling) left out: Arkha's
-innermost function in each sample, Arkha's functions counting every sample
+samples where the main thread was waiting (polling) left out: Voyager's
+innermost function in each sample, Voyager's functions counting every sample
 they were on the stack for, and the innermost function of all."""
 import collections
 import sys
@@ -15,7 +15,7 @@ for st in busy:
     for n in set(st):
         inclusive[n] += 1
     innermost[st[0]] += 1
-    first[next((n for n in st if "arkha::" in n), "<no arkha frame>")] += 1
+    first[next((n for n in st if "voyager::" in n), "<no voyager frame>")] += 1
 
 
 def show(title, counts, k):
@@ -24,6 +24,6 @@ def show(title, counts, k):
         print(f"{v:5d} {100 * v / max(len(busy), 1):5.1f}%  {n[:150]}")
 
 
-show("innermost Arkha function", first, 30)
-show("Arkha functions, inclusive", collections.Counter({n: v for n, v in inclusive.items() if "arkha::" in n}), 40)
+show("innermost Voyager function", first, 30)
+show("Voyager functions, inclusive", collections.Counter({n: v for n, v in inclusive.items() if "voyager::" in n}), 40)
 show("innermost function", innermost, 25)

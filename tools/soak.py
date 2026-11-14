@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Soak test: runs Arkha for a while in a sealed-off session and does random
+"""Soak test: runs Voyager for a while in a sealed-off session and does random
 things with it, watching for crashes, GLib/GTK warnings, hangs, slow
 responses and growing memory.
 
@@ -16,7 +16,7 @@ network namespace and a headless display: Xvfb for X11, and for Wayland
 Weston running in an Xvfb (for a seat: keyboard and pointer). Nothing
 shows on the screen.
 
-Arkha is driven through its actions over D-Bus (org.gtk.Actions), as the
+Voyager is driven through its actions over D-Bus (org.gtk.Actions), as the
 menus and shortcuts call them, and by keyboard and mouse input (clicks,
 drags, the wheel, keys, typing; xdotool in the run's own X server, on
 Wayland into Weston's window). Its dialogs (questions, conflicts, errors,
@@ -26,7 +26,7 @@ of their buttons, on X11 and Wayland alike. Windows without buttons
 them. Meanwhile another thread keeps changing files in one folder.
 
 No other program can be started by opening a file: the folders listing
-applications are empty in the sandbox, so Arkha finds none to open files
+applications are empty in the sandbox, so Voyager finds none to open files
 with, and a question whether to run a program is never answered Run.
 
 The report goes to target/soak/<run>/report.txt (and is printed); the exit
@@ -48,8 +48,8 @@ import zlib
 import struct
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APP = "io.github.dekart811.Arkha"
-APP_PATH = "/io/github/dekart811/Arkha"
+APP = "io.github.HydrAPI.Voyager"
+APP_PATH = "/io/github/HydrAPI/Voyager"
 
 # Buttons that answer a dialog (rather than, in a file chooser, go
 # somewhere): one of these is pressed when there are any.
@@ -63,12 +63,12 @@ OPS_TITLE = "File Operations"
 
 def localize(language):
     """For a run in another language (--language): the answers, the run
-    buttons and the operations window in it too, from Arkha's and GTK's
+    buttons and the operations window in it too, from Voyager's and GTK's
     catalogs (button labels have mnemonics: compared without "_")."""
     global OPS_TITLE
     import gettext
     strip = lambda t: t.replace("_", "")
-    for domain, d in (("arkha", "/tmp/arkha/locale"), ("gtk30", "/usr/share/locale")):
+    for domain, d in (("voyager", "/tmp/voyager/locale"), ("gtk30", "/usr/share/locale")):
         try:
             cat = gettext.translation(domain, d, languages=[language])._catalog
         except OSError:
@@ -78,9 +78,9 @@ def localize(language):
                 continue
             if strip(msgid) in ANSWERS:
                 ANSWERS.add(strip(msgstr))
-            if domain == "arkha" and strip(msgid) in ("Run", "Run in Terminal"):
+            if domain == "voyager" and strip(msgid) in ("Run", "Run in Terminal"):
                 RUN_BUTTONS.add(strip(msgstr))
-            if domain == "arkha" and msgid == "File Operations":
+            if domain == "voyager" and msgid == "File Operations":
                 OPS_TITLE = msgstr
 
 
@@ -93,7 +93,7 @@ def is_run(name):
 # "input": keyboard and mouse input (see do_input), not an action.
 # Left out: what starts other programs whatever the sandbox hides
 # (terminal, compress, extract, custom-action); windows are closed now and then below
-# (not close-all-windows: Arkha quits, which would look like a crash).
+# (not close-all-windows: Voyager quits, which would look like a crash).
 ACTIONS = [
     ("back", None, 4, "plain"), ("forward", None, 3, "plain"), ("up", None, 4, "plain"),
     ("home", None, 2, "plain"), ("go-desktop", None, 1, "plain"),
@@ -266,11 +266,11 @@ def unlock(path):
 # ------------------------------------------------------------------ outer
 
 def build():
-    """Arkha with debug info and symbols, so backtraces and heaptrack name
+    """Voyager with debug info and symbols, so backtraces and heaptrack name
     its functions (in its own target folder: the release build stays)."""
     env = dict(os.environ, CARGO_PROFILE_RELEASE_DEBUG="1", CARGO_PROFILE_RELEASE_STRIP="false")
     subprocess.run(["cargo", "build", "--release", "--target-dir", os.path.join(ROOT, "target/soak-build")], cwd=ROOT, env=env, check=True)
-    return os.path.join(ROOT, "target/soak-build/release/arkha")
+    return os.path.join(ROOT, "target/soak-build/release/voyager")
 
 
 # Inside the sandbox (see outer).
@@ -293,7 +293,7 @@ def outer(args):
         unlock(run)
         shutil.rmtree(run)
     os.makedirs(run)
-    keep = {"PATH", "LANG", "LANGUAGE", "TERM", "TZ"} | {k for k in os.environ if k.startswith(("LC_", "ARKHA_"))} | {"LLVM_PROFILE_FILE"}
+    keep = {"PATH", "LANG", "LANGUAGE", "TERM", "TZ"} | {k for k in os.environ if k.startswith(("LC_", "VOYAGER_"))} | {"LLVM_PROFILE_FILE"}
     env = {k: v for k, v in os.environ.items() if k in keep}
     env.update({
         "HOME": HOME,
@@ -318,12 +318,12 @@ def outer(args):
                 "--size", str(64 << 20), "--tmpfs", "/dev/shm",
                 "--size", str(HOME_SIZE), "--tmpfs", HOME,
                 "--bind", run, RUN_DIR,
-                "--ro-bind", args.binary, "/tmp/arkha/arkha",
+                "--ro-bind", args.binary, "/tmp/voyager/voyager",
                 # The translations built beside it (see src/i18n.rs).
-                *(["--ro-bind", locale, "/tmp/arkha/locale"] if os.path.isdir(locale := os.path.join(os.path.dirname(os.path.abspath(args.binary)), "locale")) else []),
-                "--ro-bind", os.path.abspath(__file__), "/tmp/arkha/soak.py",
+                *(["--ro-bind", locale, "/tmp/voyager/locale"] if os.path.isdir(locale := os.path.join(os.path.dirname(os.path.abspath(args.binary)), "locale")) else []),
+                "--ro-bind", os.path.abspath(__file__), "/tmp/voyager/soak.py",
                 "--chdir", RUN_DIR]
-    inner = ["dbus-run-session", "--", sys.executable, "/tmp/arkha/soak.py", "--inner", "--binary", "/tmp/arkha/arkha"]
+    inner = ["dbus-run-session", "--", sys.executable, "/tmp/voyager/soak.py", "--inner", "--binary", "/tmp/voyager/voyager"]
     passed = [a for a in sys.argv[1:] if not a.startswith("--binary")]
     if "--binary" in sys.argv:
         i = sys.argv.index("--binary")
@@ -360,11 +360,11 @@ class Run:
         if args.language:
             localize(args.language)
         # The generated files, in the (tmpfs) home.
-        for d in [".config/arkha", ".local/share", ".cache"]:
+        for d in [".config/voyager", ".local/share", ".cache"]:
             os.makedirs(os.path.join(self.home, d), exist_ok=True)
         # Never asking before trashing: nothing could answer on Wayland.
         # Every list column and some icon captions, so all of them are drawn.
-        with open(os.path.join(self.home, ".config/arkha/arkha.conf"), "w") as f:
+        with open(os.path.join(self.home, ".config/voyager/voyager.conf"), "w") as f:
             f.write("[General]\nconfirm_trash=false\n"
                     f"language={args.language}\n"
                     "list_columns=size;type;mtime;atime;btime;owner;group;permissions;octal;mime;extension;location;disk;\n"
@@ -431,7 +431,7 @@ class Run:
             time.sleep(0.5)
         self.Atspi.init()
 
-    def start_arkha(self):
+    def start_voyager(self):
         binary = self.args.binary
         cmd = [binary, self.files]
         if self.args.heaptrack:
@@ -447,21 +447,21 @@ class Run:
                    "-ex", "set debuginfod enabled off",
                    "-ex", "handle SIGPIPE nostop noprint pass", "-ex", "run",
                    "-ex", "bt 120", "-ex", "thread apply all bt 120", "-ex", "kill", "--args"] + cmd
-        self.log = open(os.path.join(self.dir, "arkha.log"), "a")
+        self.log = open(os.path.join(self.dir, "voyager.log"), "a")
         env = dict(os.environ)
         if self.args.fatal_criticals:
             env["G_DEBUG"] = "fatal-criticals"
         if self.args.no_a11y:
-            # Arkha without its accessibility bridge (dialogs then can't be
+            # Voyager without its accessibility bridge (dialogs then can't be
             # answered: for rounds without any).
             env["NO_AT_BRIDGE"] = "1"
-        self.arkha = subprocess.Popen(cmd, stdout=self.log, stderr=subprocess.STDOUT, env=env)
+        self.voyager = subprocess.Popen(cmd, stdout=self.log, stderr=subprocess.STDOUT, env=env)
         for _ in range(200):
             if self.windows():
                 break
             time.sleep(0.05)
         self.pid = self.app_pid()
-        self.note(f"Arkha started (pid {self.pid}) on {self.args.backend}")
+        self.note(f"Voyager started (pid {self.pid}) on {self.args.backend}")
 
     def app_pid(self):
         try:
@@ -469,10 +469,10 @@ class Run:
                                    self.GLib.Variant("(s)", (APP,)), None, self.Gio.DBusCallFlags.NONE, 2000, None)
             return r.unpack()[0]
         except Exception:
-            return self.arkha.pid
+            return self.voyager.pid
 
     def alive(self):
-        return self.arkha.poll() is None
+        return self.voyager.poll() is None
 
     def windows(self):
         try:
@@ -507,16 +507,16 @@ class Run:
         return self.call(f"{APP_PATH}/window/{win}", "org.gtk.Actions", "Activate", self.GLib.Variant("(sava{sv})", (name, v, {})))
 
     def backtrace(self, why):
-        """Interrupts Arkha; gdb (its parent) then writes every thread's
+        """Interrupts Voyager; gdb (its parent) then writes every thread's
         backtrace to the log and ends it."""
         if self.args.heaptrack:
             return
-        self.note(f"interrupting Arkha for a backtrace ({why}), see arkha.log")
+        self.note(f"interrupting Voyager for a backtrace ({why}), see voyager.log")
         try:
             os.kill(self.pid, signal.SIGINT)
-            self.arkha.wait(timeout=60)
+            self.voyager.wait(timeout=60)
         except (OSError, subprocess.TimeoutExpired):
-            self.arkha.kill()
+            self.voyager.kill()
 
     # -- what's done
 
@@ -545,13 +545,13 @@ class Run:
         return None
 
     def dialogs(self):
-        """Arkha's open dialogs, as AT-SPI sees them."""
+        """Voyager's open dialogs, as AT-SPI sees them."""
         found = []
         try:
             desk = self.Atspi.get_desktop(0)
             for i in range(desk.get_child_count()):
                 app = desk.get_child_at_index(i)
-                if not app or app.get_name() != "arkha":
+                if not app or app.get_name() != "voyager":
                     continue
                 for j in range(app.get_child_count()):
                     w = app.get_child_at_index(j)
@@ -675,7 +675,7 @@ class Run:
 
     def cancel_operations(self):
         """Presses the Cancel buttons of the File Operations window: file
-        operations still running when Arkha is told to quit go on (with
+        operations still running when Voyager is told to quit go on (with
         that window) until they're done, as a person would cancel them.
         How many were pressed."""
         pressed = 0
@@ -683,7 +683,7 @@ class Run:
             desk = self.Atspi.get_desktop(0)
             for i in range(desk.get_child_count()):
                 app = desk.get_child_at_index(i)
-                if not app or app.get_name() != "arkha":
+                if not app or app.get_name() != "voyager":
                     continue
                 for j in range(app.get_child_count()):
                     w = app.get_child_at_index(j)
@@ -724,7 +724,7 @@ class Run:
 
     def input_window(self):
         """(X window, width, height, top) to send input to: on X11 one of
-        Arkha's main windows, raised and focused; on Wayland Weston's window
+        Voyager's main windows, raised and focused; on Wayland Weston's window
         (below its panel)."""
         env = os.environ
         try:
@@ -966,20 +966,20 @@ class Run:
         except OSError:
             pass
 
-    def arkha_frames(self):
-        """Arkha's own frames of the first thread gdb shows stopped by a
+    def voyager_frames(self):
+        """Voyager's own frames of the first thread gdb shows stopped by a
         signal (a crash, a critical made fatal, an interrupted hang)."""
-        text = open(os.path.join(self.dir, "arkha.log"), errors="replace").read()
+        text = open(os.path.join(self.dir, "voyager.log"), errors="replace").read()
         m = re.search(r"received signal (\w+).*?\n(#0.*?)(?:\n\n|\nThread )", text, re.S)
         if not m:
             return []
-        frames = [re.sub(r"^#\d+\s+(0x[0-9a-f]+ in )?", "", l) for l in m.group(2).splitlines() if "arkha::" in l or " at src/" in l]
+        frames = [re.sub(r"^#\d+\s+(0x[0-9a-f]+ in )?", "", l) for l in m.group(2).splitlines() if "voyager::" in l or " at src/" in l]
         return [f"(signal {m.group(1)})"] + frames[:15]
 
     def warnings(self):
         self.log.flush()
         found = {}
-        with open(os.path.join(self.dir, "arkha.log"), errors="replace") as f:
+        with open(os.path.join(self.dir, "voyager.log"), errors="replace") as f:
             for line in f:
                 if re.search(r"-CRITICAL \*\*|-WARNING \*\*|panicked at|Gtk-Message|Program received signal|exited with code", line):
                     key = re.sub(r"\d+", "N", line.strip())[:200]
@@ -991,9 +991,9 @@ class Run:
     def go(self):
         self.start_display()
         self.start_a11y()
-        self.start_arkha()
+        self.start_voyager()
         if not self.alive():
-            self.problem("Arkha didn't start")
+            self.problem("Voyager didn't start")
             return
         churn = threading.Thread(target=self.churn, daemon=True)
         churn.start()
@@ -1010,15 +1010,15 @@ class Run:
                 # Closing its last window ends it, as it should: started
                 # again, as the user would. Anything else is a problem.
                 self.log.flush()
-                tail = open(os.path.join(self.dir, "arkha.log"), errors="replace").read()[-2000:]
+                tail = open(os.path.join(self.dir, "voyager.log"), errors="replace").read()[-2000:]
                 if "exited normally" in tail and not self.args.heaptrack:
                     self.restarts = getattr(self, "restarts", 0) + 1
-                    self.note("Arkha ended with its last window; starting it again")
-                    with open(os.path.join(self.dir, "arkha.log"), "a") as f:
+                    self.note("Voyager ended with its last window; starting it again")
+                    with open(os.path.join(self.dir, "voyager.log"), "a") as f:
                         f.write("\n=== started again ===\n")
-                    self.start_arkha()
+                    self.start_voyager()
                     continue
-                self.problem(f"Arkha exited (status {self.arkha.returncode}) after {n} actions")
+                self.problem(f"Voyager exited (status {self.voyager.returncode}) after {n} actions")
                 break
             wins = self.windows()
             if not wins:
@@ -1107,21 +1107,21 @@ class Run:
                                            capture_output=True, text=True).stdout.split("\n")
                     self.note(f"after quit: windows over D-Bus {self.windows()}, visible {[n for n in names if n]}")
             try:
-                self.arkha.wait(timeout=1)
+                self.voyager.wait(timeout=1)
                 self.quit_time = time.monotonic() - t
-                # Under gdb, its message says how Arkha ended.
+                # Under gdb, its message says how Voyager ended.
                 self.log.flush()
-                tail = open(os.path.join(self.dir, "arkha.log"), errors="replace").read()[-3000:]
+                tail = open(os.path.join(self.dir, "voyager.log"), errors="replace").read()[-3000:]
                 if self.args.heaptrack:
-                    if self.arkha.returncode != 0:
-                        self.problem(f"Arkha quit with status {self.arkha.returncode}")
+                    if self.voyager.returncode != 0:
+                        self.problem(f"Voyager quit with status {self.voyager.returncode}")
                 elif "exited normally" not in tail:
                     m = re.search(r"exited with code (\d+)", tail)
-                    self.problem(f"Arkha quit with status {m.group(1) if m else 'unknown'}")
+                    self.problem(f"Voyager quit with status {m.group(1) if m else 'unknown'}")
             except subprocess.TimeoutExpired:
-                self.problem("Arkha didn't quit within 30 s of being told to")
+                self.problem("Voyager didn't quit within 30 s of being told to")
                 self.backtrace("quit")
-                self.arkha.kill()
+                self.voyager.kill()
 
     def finish(self):
         for p in self.procs:
@@ -1158,9 +1158,9 @@ class Run:
         lines += ["  " + p for p in self.problems]
         lines.append(f"Warnings in the log: {sum(warn.values())} ({len(warn)} kinds)")
         lines += [f"  {n}× {w}" for w, n in sorted(warn.items(), key=lambda x: -x[1])]
-        bt = self.arkha_frames()
+        bt = self.voyager_frames()
         if bt:
-            lines.append("Where Arkha was stopped (its own frames, innermost first):")
+            lines.append("Where Voyager was stopped (its own frames, innermost first):")
             lines += ["  " + f for f in bt]
         lines.append("Most used actions: " + ", ".join(f"{k} {v}" for k, v in sorted(self.counts.items(), key=lambda x: -x[1])[:15]))
         report = "\n".join(lines)
@@ -1188,16 +1188,16 @@ def main():
     ap.add_argument("--backend", choices=["x11", "wayland"], default="x11")
     ap.add_argument("--minutes", type=float, default=10)
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--language", default="", help="Arkha's language (a translation's code, e.g. de); the system's if not given")
+    ap.add_argument("--language", default="", help="Voyager's language (a translation's code, e.g. de); the system's if not given")
     ap.add_argument("--name", help="added to the run's folder name (target/soak/<backend>-seed<N>-<name>), to keep runs of the same seed apart")
     ap.add_argument("--pause", type=float, default=0.15, help="longest pause between actions, in seconds")
-    ap.add_argument("--binary", help="the arkha to run (default: one built with debug info in target/soak-build)")
+    ap.add_argument("--binary", help="the voyager to run (default: one built with debug info in target/soak-build)")
     ap.add_argument("--heaptrack", action="store_true", help="run under heaptrack, to find memory that's never freed")
     ap.add_argument("--log-actions", action="store_true", help="write every action and dialog answer to actions.txt")
-    ap.add_argument("--no-a11y", action="store_true", help="run Arkha without its accessibility bridge (no dialogs get answered)")
+    ap.add_argument("--no-a11y", action="store_true", help="run Voyager without its accessibility bridge (no dialogs get answered)")
     ap.add_argument("--round", help='with --cycle: the round\'s actions, e.g. "new-tab,go-uri:tree,close-tab"')
     ap.add_argument("--cycle", action="store_true", help="repeat one round of actions instead of random ones, to see whether memory keeps growing")
-    ap.add_argument("--fatal-criticals", action="store_true", help="stop Arkha at the first GLib/GTK critical warning, for its backtrace")
+    ap.add_argument("--fatal-criticals", action="store_true", help="stop Voyager at the first GLib/GTK critical warning, for its backtrace")
     ap.add_argument("--inner", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
     if not args.inner:

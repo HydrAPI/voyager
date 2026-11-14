@@ -1,5 +1,5 @@
 #!/bin/bash
-# compare.sh [PROGRAMS...]: the audit's numbers, Arkha against Caja and Nemo
+# compare.sh [PROGRAMS...]: the audit's numbers, Voyager against Caja and Nemo
 # (those installed), each in the same headless X server (no window manager)
 # and private session, with no applications to open files with:
 #   opening /usr/lib and 20,000 files, 3 times each (medians are what the
@@ -15,22 +15,22 @@ D=$(cd "$(dirname "$0")" && pwd)
 "$D/../gui-tests/fixtures.sh" bench >/dev/null || exit 2
 . "$D/../gui-tests/lib.sh"
 GT_NAME=compare
-[ -z "$GT_INNER" ] && export PROGS="${*:-arkha caja nemo}"
+[ -z "$GT_INNER" ] && export PROGS="${*:-voyager caja nemo}"
 gt_session x11
 progs=$PROGS
 
 gt_display 1280 800
 start() {  # start PROGRAM DIR: P is its pid
   case "$1" in
-    arkha) "$ARKHA" "$2" >> "$OUT/arkha.log" 2>&1 & ;;
+    voyager) "$VOYAGER" "$2" >> "$OUT/voyager.log" 2>&1 & ;;
     caja) caja --no-desktop "$2" >/dev/null 2>&1 & ;;
     *) "$1" "$2" >/dev/null 2>&1 & ;;
   esac
   P=$!
 }
 stop() { kill "$P" 2>/dev/null; wait "$P" 2>/dev/null; sleep 1; }
-installed() { [ "$1" = arkha ] || command -v "$1" >/dev/null; }
-reset() { rm -f "$XDG_CONFIG_HOME/arkha/folders.conf"; rm -rf "$HOME/.cache/thumbnails"; }
+installed() { [ "$1" = voyager ] || command -v "$1" >/dev/null; }
+reset() { rm -f "$XDG_CONFIG_HOME/voyager/folders.conf"; rm -rf "$HOME/.cache/thumbnails"; }
 
 for dir in /usr/lib "$GT_FIX/big20k"; do
   gt_note "##### $dir"

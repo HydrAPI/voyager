@@ -80,7 +80,7 @@ pub fn vertical_steps(ev: &gdk::EventScroll) -> f64 {
 
 /// Marks a scrolled window whose overlay scrolling was switched off for
 /// being unrealized, to switch it on again once it's realized.
-const WAS_OVERLAY: &str = "arkha-was-overlay";
+const WAS_OVERLAY: &str = "voyager-was-overlay";
 
 /// GTK 3 bug: a scrolled window unrealized while it has overlay scrollbars
 /// (a tab taken out of its window, a view whose window goes, a page of a
@@ -109,10 +109,10 @@ fn let_go_of_indicators(w: &gtk::Widget) {
 
 fn install(sw: &gtk::ScrolledWindow) {
     unsafe {
-        if sw.data::<bool>("arkha-scroll").is_some() {
+        if sw.data::<bool>("voyager-scroll").is_some() {
             return;
         }
-        sw.set_data("arkha-scroll", true);
+        sw.set_data("voyager-scroll", true);
     }
     // Overlay scrolling back on (see let_go_of_indicators).
     sw.connect_realize(|sw| {

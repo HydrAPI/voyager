@@ -4,7 +4,7 @@
 
 use gio::prelude::*;
 
-/// A checksum Arkha can work out.
+/// A checksum Voyager can work out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Algo {
     Md5,

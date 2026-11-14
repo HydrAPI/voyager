@@ -1,17 +1,17 @@
-//! Notes the build for the About window (ARKHA_BUILD: "r142, 6a7d287", the
+//! Notes the build for the About window (VOYAGER_BUILD: "r142, 6a7d287", the
 //! number of commits and the commit), and builds the translations: each
 //! po/<language>.po into
-//! target/<profile>/locale/<language>/LC_MESSAGES/arkha.mo (with gettext's
-//! msgfmt), where Arkha finds them when run from the build folder and the
+//! target/<profile>/locale/<language>/LC_MESSAGES/voyager.mo (with gettext's
+//! msgfmt), where Voyager finds them when run from the build folder and the
 //! PKGBUILD and install.sh take them from, and lists them for Preferences
 //! (src/i18n.rs) by the name in their X-Language-Name header. Without
-//! msgfmt, Arkha is built in English only.
+//! msgfmt, Voyager is built in English only.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
-    println!("cargo:rustc-env=ARKHA_BUILD={}", build_id().unwrap_or_default());
+    println!("cargo:rustc-env=VOYAGER_BUILD={}", build_id().unwrap_or_default());
     println!("cargo:rerun-if-changed=po");
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let profile = profile_dir();
@@ -28,7 +28,7 @@ fn main() {
         };
         let dir = profile.join("locale").join(&code).join("LC_MESSAGES");
         std::fs::create_dir_all(&dir).unwrap();
-        let mo = dir.join("arkha.mo");
+        let mo = dir.join("voyager.mo");
         match Command::new("msgfmt").arg("--check").arg("-o").arg(&mo).arg(p).status() {
             Ok(s) if s.success() => {
                 // The catalog is outside OUT_DIR, where Cargo doesn't keep
@@ -73,13 +73,13 @@ fn profile_dir() -> PathBuf {
     target.join(std::env::var("PROFILE").unwrap())
 }
 
-/// The build: from ARKHA_BUILD if a packager sets it, else from git in a
+/// The build: from VOYAGER_BUILD if a packager sets it, else from git in a
 /// checkout (the PKGBUILD builds in one), else from the VERSION file that
 /// packaging/remote-build.sh writes into the sources it copies
 /// ("1.0.0-dev+r142.g6a7d287"). None for sources with neither.
 fn build_id() -> Option<String> {
-    println!("cargo:rerun-if-env-changed=ARKHA_BUILD");
-    if let Ok(b) = std::env::var("ARKHA_BUILD") {
+    println!("cargo:rerun-if-env-changed=VOYAGER_BUILD");
+    if let Ok(b) = std::env::var("VOYAGER_BUILD") {
         return Some(b);
     }
     // Rebuilt after a commit (or a checkout of another one).

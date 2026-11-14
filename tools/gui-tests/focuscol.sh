@@ -12,7 +12,7 @@ gt_session "$@"
 
 mkdir -p "$HOME/files/sub"; for n in a b c d e; do echo "$n$n$n" > "$HOME/files/$n.txt"; done
 gt_display
-gt_arkha "$HOME/files"
+gt_voyager "$HOME/files"
 gt_a11y windows >/dev/null     # makes the accessible tree
 gt_a11y listen 40 & L=$!
 sleep 1

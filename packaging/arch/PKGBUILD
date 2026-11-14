@@ -1,14 +1,14 @@
-# Maintainer: dekart811 <mail@dekart811.net>
+# Maintainer: HydrAPI <245955427+HydrAPI@users.noreply.github.com>
 #
-# Builds Arkha from this repository's committed state (uncommitted changes
+# Builds Voyager from this repository's committed state (uncommitted changes
 # aren't included): cd packaging/arch && makepkg -si
 
-pkgname=arkha
+pkgname=voyager
 pkgver=0.1.0
 pkgrel=1
 pkgdesc='A fast graphical file manager'
 arch=('x86_64' 'aarch64')
-url='https://github.com/dekart811/arkha'
+url='https://github.com/HydrAPI/voyager'
 license=('GPL-3.0-or-later')
 depends=(
   'at-spi2-core'
@@ -80,12 +80,12 @@ check() {
 
 package() {
   cd "$pkgname"
-  install -Dm755 target/release/arkha "$pkgdir/usr/bin/arkha"
-  install -Dm644 arkha.desktop "$pkgdir/usr/share/applications/arkha.desktop"
-  install -Dm644 data/arkha.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/arkha.svg"
-  install -Dm644 data/io.github.dekart811.Arkha.metainfo.xml "$pkgdir/usr/share/metainfo/io.github.dekart811.Arkha.metainfo.xml"
+  install -Dm755 target/release/voyager "$pkgdir/usr/bin/voyager"
+  install -Dm644 voyager.desktop "$pkgdir/usr/share/applications/voyager.desktop"
+  install -Dm644 data/voyager.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/voyager.svg"
+  install -Dm644 data/io.github.HydrAPI.Voyager.metainfo.xml "$pkgdir/usr/share/metainfo/io.github.HydrAPI.Voyager.metainfo.xml"
   # The translations build.rs made from po/*.po.
-  for mo in target/release/locale/*/LC_MESSAGES/arkha.mo; do
+  for mo in target/release/locale/*/LC_MESSAGES/voyager.mo; do
     install -Dm644 "$mo" "$pkgdir/usr/share/locale/${mo#target/release/locale/}"
   done
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"

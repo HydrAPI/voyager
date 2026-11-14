@@ -1,6 +1,6 @@
 #!/bin/bash
 # take.sh [light|dark ...]: takes the README's screenshots again, in both
-# themes (or the ones named), and puts them in docs/screenshots/. Arkha
+# themes (or the ones named), and puts them in docs/screenshots/. Voyager
 # runs headless in a made-up home folder (make-home.sh, in
 # target/screenshots/home), as the GUI tests run it (tools/gui-tests),
 # under Metacity for its Adwaita title bars; each window is cut out with

@@ -9,7 +9,7 @@ TRASH=$HOME/.local/share/Trash/files
 gt_display
 for n in 50 1500; do
   T=$HOME/sel$n; mkdir -p "$T"; (cd "$T" && for i in $(seq 1 $n); do : > "file$i.txt"; done)
-  gt_arkha "$T"
+  gt_voyager "$T"
   gt_click 900 650
   gt_key ctrl+a; gt_key ctrl+c; gt_key ctrl+v
   for _ in $(seq 60); do [ "$(ls "$T" | wc -l)" -ge $((2*n)) ] && break; sleep 0.5; done; gt_quiet

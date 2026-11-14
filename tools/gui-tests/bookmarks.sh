@@ -11,14 +11,14 @@ mkdir -p "$HOME/Backups" "$HOME/My Files" "$XDG_CONFIG_HOME/gtk-3.0"
 B=$XDG_CONFIG_HOME/gtk-3.0/bookmarks
 printf 'file://%s/Backups\nfile://%s/My%%20Files Mine\nsmb://server/My%%20Share/\n' "$HOME" "$HOME" > "$B"
 gt_display
-gt_arkha "$HOME"
+gt_voyager "$HOME"
 gdbus call --session --dest $APP_ID --object-path $APP_PATH/window/1 \
   --method org.gtk.Actions.Activate edit-bookmarks [] {} >/dev/null & sleep 2
 gt_shot editor
 cells() { python3 - <<'PY'
 import gi; gi.require_version('Atspi', '2.0'); from gi.repository import Atspi
 Atspi.init(); d = Atspi.get_desktop(0)
-app = [d.get_child_at_index(i) for i in range(d.get_child_count()) if d.get_child_at_index(i).get_name() == 'arkha'][0]
+app = [d.get_child_at_index(i) for i in range(d.get_child_count()) if d.get_child_at_index(i).get_name() == 'voyager'][0]
 dlg = [app.get_child_at_index(i) for i in range(app.get_child_count()) if app.get_child_at_index(i).get_role_name() == 'dialog'][0]
 stack = [dlg]
 while stack:
