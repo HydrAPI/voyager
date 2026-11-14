@@ -78,6 +78,12 @@
 
   <!-- Each release gets a line, newest first (see BUILDING.md). -->
   <releases>
+    <release version="1.1.1" date="2026-11-14">
+      <description>
+        <p>The address bar takes commands as Windows Explorer's does: cmd opens a terminal in the folder, a program's name starts it there, a web address opens in the browser.</p>
+        <p>Own names for network places, the menu bar can be hidden, new screenshots in the light and dark look, and the icon caches are refreshed on installing.</p>
+      </description>
+    </release>
     <release version="1.1.0" date="2026-11-14">
       <description>
         <p>The look and layout of Windows Explorer: an address bar and a command bar, a navigation pane with Quick access, This PC and Network, and a This PC page with the drives and how full they are.</p>
