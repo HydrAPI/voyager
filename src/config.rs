@@ -67,6 +67,9 @@ pub struct Settings {
     pub rename_tab_order: Vec<String>,
     /// Order of the Properties window's tabs (see PROPS_TABS), the same way.
     pub props_tab_order: Vec<String>,
+    /// The Properties tabs never shown (Preferences → Properties); never
+    /// "basic", so the window always has a tab.
+    pub hidden_props_tabs: Vec<String>,
     /// The checksums the Checksums tab offers: all of them in their order
     /// (ids as checksums::Algo::id), and those not offered.
     pub checksum_order: Vec<String>,
@@ -273,6 +276,7 @@ impl Default for Settings {
             bar_order: BAR_ITEMS.iter().map(|g| g.to_string()).collect(),
             rename_tab_order: RENAME_TABS.iter().map(|t| t.to_string()).collect(),
             props_tab_order: PROPS_TABS.iter().map(|t| t.to_string()).collect(),
+            hidden_props_tabs: vec![],
             checksum_order: crate::checksums::ALL.iter().map(|a| a.id().to_string()).collect(),
             hidden_checksums: crate::checksums::HIDDEN_AT_FIRST.iter().map(|t| t.to_string()).collect(),
             sidebar_sections: SIDEBAR_SECTIONS.iter().map(|t| t.to_string()).collect(),
@@ -446,6 +450,15 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     }
     if let Ok(v) = kf.string_list(g, "props_tab_order") {
         s.props_tab_order = tab_order(v.iter().map(|x| x.to_string()).collect(), &PROPS_TABS);
+    }
+    if let Ok(v) = kf.string_list(g, "hidden_props_tabs") {
+        let mut hidden: Vec<String> = vec![];
+        for t in v.iter().map(|x| x.to_string()) {
+            if t != "basic" && PROPS_TABS.contains(&t.as_str()) && !hidden.contains(&t) {
+                hidden.push(t);
+            }
+        }
+        s.hidden_props_tabs = hidden;
     }
     let checksum_ids: Vec<&str> = crate::checksums::ALL.iter().map(|a| a.id()).collect();
     if let Ok(v) = kf.string_list(g, "checksum_order") {
@@ -651,6 +664,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     set_string_list(&kf, g, "bar_order", &s.bar_order);
     set_string_list(&kf, g, "rename_tab_order", &s.rename_tab_order);
     set_string_list(&kf, g, "props_tab_order", &s.props_tab_order);
+    set_string_list(&kf, g, "hidden_props_tabs", &s.hidden_props_tabs);
     set_string_list(&kf, g, "checksum_order", &s.checksum_order);
     set_string_list(&kf, g, "hidden_checksums", &s.hidden_checksums);
     set_string_list(&kf, g, "sidebar_sections", &s.sidebar_sections);
@@ -777,6 +791,7 @@ mod tests {
                 ("list_levels", _) => list(&def.list_levels[1..]),
                 ("compact_levels", _) => list(&def.compact_levels[1..]),
                 ("sidebar_collapsed", _) => "devices;".into(),
+                ("hidden_props_tabs", _) => "notes;".into(),
                 ("show_thumbnails" | "text_in_icons" | "count_items", _) => "never".into(),
                 ("own_colors", _) => "#123456;".into(),
                 _ if v.parse::<i32>().is_ok() => (v.parse::<i32>().unwrap() + 8).to_string(),
@@ -863,6 +878,8 @@ mod tests {
         // by default (split view, zoom). Unknown and repeated ids go.
         kf.set_value(g, "bar_order", "ops;zoom;bogus;split;zoom;");
         kf.set_value(g, "rename_tab_order", "regex;case;nope;case;");
+        // Basic can't be hidden; unknown and repeated tabs go.
+        kf.set_value(g, "hidden_props_tabs", "notes;basic;nope;notes;media;");
         kf.set_value(g, "sidebar_sections", "bookmarks;");
         kf.set_value(g, "sidebar_collapsed", "devices;network;");
         kf.set_integer(g, "sidebar_row_height", 999);
@@ -872,6 +889,7 @@ mod tests {
         let s = from_keyfile(&kf);
         assert_eq!(s.bar_order, ["path", "ops", "zoom", "info", "split", "view"]);
         assert_eq!(s.rename_tab_order, ["regex", "case", "insert", "remove", "replace", "enumerate"]);
+        assert_eq!(s.hidden_props_tabs, ["notes", "media"]);
         assert_eq!(s.sidebar_sections, ["bookmarks", "computer", "devices"]);
         assert_eq!(s.sidebar_collapsed, ["devices"]);
         assert_eq!(s.sidebar_row_height, 200);

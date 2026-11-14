@@ -120,22 +120,28 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     if let Some(pb) = icons::icon_pixbuf(icons::item_icon(&infos[0], &[]).as_ref(), 64) {
         img.set_from_pixbuf(Some(&pb));
     }
+    // The tabs hidden in Preferences → Properties aren't made at all
+    // (Media Info runs mediainfo, Open With looks for the applications).
+    let hidden = config::get().hidden_props_tabs;
+    let shown = |id: &str| !hidden.iter().any(|h| h == id);
     // Each item's metadata, once read.
     let metas: Rc<std::cell::RefCell<Option<Vec<Meta>>>> = Rc::default();
     add_page(&nb, &basic_page(&dialog, &files, &infos, &img, &metas), "basic", &tr("Basic"));
     // Filled once the metadata is read (below).
     let emblems_slot = reading_page();
-    add_page(&nb, &emblems_slot, "emblems", &tr("Emblems"));
+    if shown("emblems") {
+        add_page(&nb, &emblems_slot, "emblems", &tr("Emblems"));
+    }
     let notes_slot = reading_page();
-    if infos.iter().all(|i| i.has_attribute("unix::mode")) {
+    if shown("permissions") && infos.iter().all(|i| i.has_attribute("unix::mode")) {
         add_page(&nb, &permissions_page(&dialog, &files, &infos), "permissions", &tr("Permissions"));
     }
-    if files.len() == 1 && infos[0].file_type() != gio::FileType::Directory {
+    if shown("open-with") && files.len() == 1 && infos[0].file_type() != gio::FileType::Directory {
         if let Some(ctype) = util::info_content_type(&infos[0]) {
             add_page(&nb, &open_with_page(&dialog, &infos[0], &ctype), "open-with", &tr("Open With"));
         }
     }
-    if files.len() == 1 {
+    if shown("notes") && files.len() == 1 {
         add_page(&nb, &notes_slot, "notes", &tr("Notes"));
     }
     // The metadata read in the background; then the pages that show it.
@@ -153,7 +159,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     }
 
     // ----------------------------------------------------------- Media Info
-    if files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
+    if shown("media") && files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
         let ctype = util::info_content_type(&infos[0]).unwrap_or_default();
         if let (Some(path), true) = (files[0].path(), media_info_wanted(&ctype)) {
             add_page(&nb, &media_info_page(path), "media", &tr("Media Info"));
@@ -161,13 +167,14 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
     }
 
     // ------------------------------------------------------------ Checksums
-    if files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
+    if shown("checksums") && files.len() == 1 && infos[0].file_type() == gio::FileType::Regular {
         let page = checksums_page(&dialog, &files[0], infos[0].size().max(0) as u64);
         add_page(&nb, &page, "checksums", &tr("Checksums"));
     }
 
     // Draggable into another order, which is kept, as in Rename All.
     util::order_tabs(&nb, config::get().props_tab_order, |order| config::update(|s| s.props_tab_order = order));
+    hide_tabs_by_right_click(&nb);
     dialog.show_all();
 }
 
@@ -729,6 +736,68 @@ fn start_checksums(
 }
 
 /// A tab of Properties, called `id` in the order kept (see util::order_tabs).
+/// A right-click on a tab (but Basic's) offers Hide This Tab: it goes at
+/// once and stays hidden, as unticked in Preferences → Properties, where
+/// it's shown again.
+fn hide_tabs_by_right_click(nb: &gtk::Notebook) {
+    nb.connect_button_press_event(|nb, ev| {
+        if ev.button() != 3 || ev.event_type() != gdk::EventType::ButtonPress {
+            return glib::Propagation::Proceed;
+        }
+        // The tab under the pointer: its label's area, a little larger
+        // (the tab's padding), on the screen.
+        let (rx, ry) = ev.root();
+        let (rx, ry) = (rx as i32, ry as i32);
+        let hit = (0..nb.n_pages()).filter_map(|i| nb.nth_page(Some(i))).find(|page| {
+            let Some(label) = nb.tab_label(page) else { return false };
+            let Some(win) = label.window() else { return false };
+            let (_, ox, oy) = win.origin();
+            let a = label.allocation();
+            let (x, y) = (ox + a.x() - 8, oy + a.y() - 6);
+            rx >= x && rx < x + a.width() + 16 && ry >= y && ry < y + a.height() + 12
+        });
+        let Some(page) = hit else { return glib::Propagation::Proceed };
+        let id = page.widget_name().to_string();
+        if id == "basic" {
+            return glib::Propagation::Stop;
+        }
+        let menu = gtk::Menu::new();
+        let item = gtk::MenuItem::with_mnemonic(&tr("_Hide This Tab"));
+        {
+            let nb = nb.clone();
+            item.connect_activate(move |_| {
+                config::update(|s| {
+                    if !s.hidden_props_tabs.contains(&id) {
+                        s.hidden_props_tabs.push(id.clone());
+                    }
+                });
+                if let Some(n) = nb.page_num(&page) {
+                    nb.remove_page(Some(n));
+                }
+            });
+        }
+        menu.append(&item);
+        menu.show_all();
+        menu.set_attach_widget(Some(nb));
+        menu.popup_at_pointer(Some(ev));
+        glib::Propagation::Stop
+    });
+}
+
+/// A tab's title by its id (config::PROPS_TABS), for Preferences' list.
+pub fn tab_title(id: &str) -> String {
+    match id {
+        "basic" => tr("Basic"),
+        "emblems" => tr("Emblems"),
+        "permissions" => tr("Permissions"),
+        "open-with" => tr("Open With"),
+        "checksums" => tr("Checksums"),
+        "notes" => tr("Notes"),
+        "media" => tr("Media Info"),
+        other => other.to_string(),
+    }
+}
+
 fn add_page(nb: &gtk::Notebook, page: &impl IsA<gtk::Widget>, id: &str, title: &str) {
     page.set_widget_name(id);
     nb.append_page(page, Some(&gtk::Label::new(Some(title))));

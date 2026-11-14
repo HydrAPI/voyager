@@ -53,7 +53,7 @@ impl AppWindow {
         let (cm, items_refresh, bg_refresh) = self.context_menu_page(&f);
         add_page("contextmenu", &tr("Context Menu"), "open-menu-symbolic", &cm);
         add_page("customactions", &tr("Custom Actions"), "system-run-symbolic", &self.custom_actions_page(&f));
-        add_page("checksums", &tr("Checksums"), "security-high-symbolic", &self.checksums_page(&f));
+        add_page("properties", &tr("Properties"), "document-properties-symbolic", &self.properties_page(&f));
         if let Some(app) = self.window.application() {
             add_page("keyboard", &tr("Keyboard"), "input-keyboard-symbolic", &self.keyboard_page(&f, &app));
         }
@@ -790,10 +790,17 @@ impl AppWindow {
         ca
     }
 
-    /// The checksums Properties' Checksums tab offers, and their order.
-    fn checksums_page(self: &Rc<Self>, f: &Form) -> gtk::Box {
+    /// The Properties window: which tabs it shows and in what order, and
+    /// the checksums its Checksums tab offers.
+    fn properties_page(self: &Rc<Self>, f: &Form) -> gtk::Box {
         let page = Form::page();
-        f.head(&page, &tr("Checksums in Properties"));
+        f.head(&page, &tr("Tabs"));
+        let hint = hint_label(&tr("Unchecked tabs aren't shown in the Properties window. Drag a tab by its handle, or select it and use the arrows, to move it; dragging the tabs in the Properties window moves them here too."));
+        f.indent(&page, hint.upcast_ref());
+        let tabs = props_tabs_editor();
+        tabs.set_margin_start(40);
+        page.pack_start(&tabs, false, false, 0);
+        f.head(&page, &tr("Checksums"));
         let hint = hint_label(&tr("Unchecked ones aren't offered. Drag one by its handle, or select it and use the arrows, to move it."));
         f.indent(&page, hint.upcast_ref());
         let editor = checksums_editor();
@@ -876,6 +883,7 @@ impl Form {
 const MENU_ROW_TARGET: &str = "ARKHA_MENU_ROW";
 const PLACE_ROW_TARGET: &str = "ARKHA_PLACE_ROW";
 const CHECKSUM_ROW_TARGET: &str = "ARKHA_CHECKSUM_ROW";
+const PROPS_TAB_ROW_TARGET: &str = "ARKHA_PROPS_TAB_ROW";
 
 /// A check box for a setting: `set` stores it when it's toggled, then
 /// `then` applies it.
@@ -1332,6 +1340,50 @@ fn checksums_editor() -> gtk::Box {
         reset.connect_clicked(move |_| {
             let order: Vec<String> = crate::checksums::ALL.iter().map(|a| a.id().to_string()).collect();
             config::update(|s| s.checksum_order = order.clone());
+            *ol.order.borrow_mut() = order;
+            (ol.rebuild)(None);
+        });
+    }
+    outer.add(&button_row(&[&up, &down], &[&reset]));
+    outer
+}
+
+/// The Properties window's tabs in their order (the same order dragging its
+/// tabs gives), each with a checkbox to show or hide it; Basic always shows.
+fn props_tabs_editor() -> gtk::Box {
+    let outer = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let row = |id: &str| -> gtk::Widget {
+        let label = gtk::Label::new(Some(&crate::props::tab_title(id)));
+        // In a box: the rest of the row selects it, not the checkbox.
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        let check = shown_check(label.upcast_ref(), id, |s| &mut s.hidden_props_tabs, || {});
+        if id == "basic" {
+            check.set_active(true);
+            check.set_sensitive(false);
+            check.set_tooltip_text(Some(&tr("Always shown, so the window has a tab")));
+        }
+        row.add(&check);
+        row.upcast()
+    };
+    let ol = order_list(PROPS_TAB_ROW_TARGET, row, |o| {
+        let o = o.to_vec();
+        config::update(|s| s.props_tab_order = o);
+    });
+    *ol.order.borrow_mut() = config::get().props_tab_order;
+    (ol.rebuild)(None);
+    // All seven at once, never scrolled (however little room there is):
+    // the checksums list below scrolls instead.
+    ol.widget.set_vexpand(false);
+    ol.widget.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Never);
+    outer.add(&ol.widget);
+    let (up, down) = ol.arrows();
+    let reset = gtk::Button::with_mnemonic(&tr("Reset O_rder"));
+    reset.set_tooltip_text(Some(&tr("Put every tab back in its usual place (which are shown stays as it is)")));
+    {
+        let ol = ol.clone();
+        reset.connect_clicked(move |_| {
+            let order: Vec<String> = config::PROPS_TABS.iter().map(|t| t.to_string()).collect();
+            config::update(|s| s.props_tab_order = order.clone());
             *ol.order.borrow_mut() = order;
             (ol.rebuild)(None);
         });

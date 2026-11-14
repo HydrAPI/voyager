@@ -51,6 +51,7 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `checksums` | The Checksums tab: only the chosen ones, in order; SHA-256 matches sha256sum, the other buttons wait meanwhile; Cancel; Calculate All; Copy |
 | `language` | German chosen in the settings: the status bar (with its plural) and side pane in German; the system's language: English again |
 | `tab-order` | Properties' and Rename All's tabs dragged into another order, which is kept |
+| `props-tabs` | Properties tabs hidden and shown again in Preferences → Properties, and hidden with a right-click on the tab (X11); Basic can't be hidden |
 | `previews` | Thumbnails always (with a size limit) or never; folders' item counts always or never |
 | `connect` | Connect to Server: the fields for each type, the bookmark, a server that refuses; with `ARKHA_TEST_SFTP=HOST` also a real SFTP mount and the path bar naming it, with `ARKHA_TEST_SMB=USER@HOST/SHARE` the password dialog, cancelled |
 
