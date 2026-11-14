@@ -20,6 +20,11 @@ done
 # Only where the theme has a cache, which then has to know the new icon.
 [ -f "$PREFIX/share/icons/hicolor/icon-theme.cache" ] && gtk-update-icon-cache -q "$PREFIX/share/icons/hicolor" 2>/dev/null || true
 update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
+# Plasma and others remember icons they didn't find: tell them there's a new one.
+touch "$PREFIX/share/icons/hicolor" "$PREFIX/share/icons/hicolor/scalable" "$PREFIX/share/icons/hicolor/scalable/apps"
+for rebuild in kbuildsycoca6 kbuildsycoca5; do
+    command -v "$rebuild" >/dev/null 2>&1 && { "$rebuild" >/dev/null 2>&1 || true; break; }
+done
 if [ "$1" = "--default" ]; then
     # Remember the current folder handler, so uninstall.sh can restore it.
     PREVIOUS="$(xdg-mime query default inode/directory 2>/dev/null || true)"
