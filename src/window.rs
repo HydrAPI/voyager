@@ -2784,14 +2784,15 @@ impl AppWindow {
                 return;
             }
         }
-        let (dirs, files): (Vec<_>, Vec<_>) = sel.into_iter().partition(|r| r.is_dir);
-        // Computers found in the network (and other shortcuts) open the
-        // place they stand for, mounted first if need be.
-        let mut places: Vec<gio::File> = dirs.iter().map(|d| gio::File::for_uri(&d.uri)).collect();
+        // Computers found in the network, a server's shares and other
+        // shortcuts open the place they stand for (mounted first if need
+        // be), not their own address (smb://server/._share).
+        let mut places: Vec<gio::File> = vec![];
         let mut rest = vec![];
-        for r in files {
+        for r in sel {
             match shortcut_target(&r.uri) {
                 Some(t) => places.push(t),
+                None if r.is_dir => places.push(gio::File::for_uri(&r.uri)),
                 None => rest.push(r),
             }
         }
@@ -3559,7 +3560,12 @@ enum OpenMode {
 /// The place a shortcut or mountable stands for (a computer in the network
 /// is one: smb://name/), if `uri` is one.
 fn shortcut_target(uri: &str) -> Option<gio::File> {
-    let info = gio::File::for_uri(uri)
+    let f = gio::File::for_uri(uri);
+    // Local folders and files are what they are.
+    if f.is_native() {
+        return None;
+    }
+    let info = f
         .query_info("standard::type,standard::target-uri", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
         .ok()?;
     let is_shortcut = matches!(info.file_type(), gio::FileType::Shortcut | gio::FileType::Mountable) || uri.starts_with("network:///");
