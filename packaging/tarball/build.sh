@@ -24,6 +24,15 @@ install -m644 data/io.github.dekart811.Arkha.metainfo.xml "$out/$name/"
 for mo in target/release/locale/*/LC_MESSAGES/arkha.mo; do
     [ -e "$mo" ] && install -Dm644 "$mo" "$out/$name/${mo#target/release/}"
 done
+# Never a tarball without them (as the first 1.0.0 one was): what's
+# there instead, to see why.
+if [ ! -d "$out/$name/locale" ]; then
+    echo "build.sh: no translations in target/release/locale" >&2
+    echo "msgfmt: $(command -v msgfmt || echo none) $(msgfmt --version 2>/dev/null | head -n1)" >&2
+    ls -laR target/release/locale >&2 || true
+    for f in target/release/build/arkha-*/out/languages.rs; do echo "$f:" >&2; cat "$f" >&2; done
+    exit 1
+fi
 # The same archive for the same files: sorted, with plain owners and times.
 tar -C "$out" --sort=name --owner=0 --group=0 --numeric-owner \
     --mtime="@$(git log -1 --format=%ct 2>/dev/null || date +%s)" \

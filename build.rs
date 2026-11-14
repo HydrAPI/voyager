@@ -29,8 +29,20 @@ fn main() {
         };
         let dir = profile.join("locale").join(&code).join("LC_MESSAGES");
         std::fs::create_dir_all(&dir).unwrap();
-        match Command::new("msgfmt").arg("--check").arg("-o").arg(dir.join("arkha.mo")).arg(p).status() {
-            Ok(s) if s.success() => languages.push((code, name)),
+        let mo = dir.join("arkha.mo");
+        match Command::new("msgfmt").arg("--check").arg("-o").arg(&mo).arg(p).status() {
+            Ok(s) if s.success() => {
+                // The catalog is outside OUT_DIR, where Cargo doesn't keep
+                // track of it: built again whenever it's missing (a build
+                // folder reused without its locale/ gave a release tarball
+                // without translations). It gets its .po file's time, older
+                // than this run, or Cargo would run this again every build.
+                if let Ok(t) = std::fs::metadata(p).and_then(|m| m.modified()) {
+                    let _ = std::fs::File::options().write(true).open(&mo).and_then(|f| f.set_modified(t));
+                }
+                println!("cargo:rerun-if-changed={}", mo.display());
+                languages.push((code, name));
+            }
             Ok(_) => panic!("msgfmt found mistakes in {}", p.display()),
             Err(e) => {
                 println!("cargo:warning=msgfmt (gettext) not found ({e}): built without translations");
