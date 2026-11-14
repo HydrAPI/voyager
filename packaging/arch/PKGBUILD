@@ -35,6 +35,9 @@ optdepends=(
   'xarchiver: creating and extracting archives'
   'xterm: Open in Terminal, if no other terminal is installed'
 )
+# Cargo strips the program: there's nothing for a -debug package (which
+# makepkg makes where its settings have "debug", as Arch's do by default).
+options=('!debug')
 source=("$pkgname::git+file://$(realpath ../..)")
 sha256sums=('SKIP')
 
