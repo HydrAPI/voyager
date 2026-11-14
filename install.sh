@@ -8,6 +8,9 @@ cargo build --release
 PREFIX="${PREFIX:-$HOME/.local}"
 install -Dm755 target/release/arkha "$PREFIX/bin/arkha"
 install -Dm644 arkha.desktop "$PREFIX/share/applications/arkha.desktop"
+# The desktop's launchers (Win+E, file dialogs) may not have ~/.local/bin in
+# their PATH: the full path of the program goes in the launcher.
+sed -i "s|^Exec=arkha|Exec=$PREFIX/bin/arkha|" "$PREFIX/share/applications/arkha.desktop"
 install -Dm644 data/arkha.svg "$PREFIX/share/icons/hicolor/scalable/apps/arkha.svg"
 install -Dm644 data/io.github.dekart811.Arkha.metainfo.xml "$PREFIX/share/metainfo/io.github.dekart811.Arkha.metainfo.xml"
 # The translations the build made from po/*.po (none without gettext).
