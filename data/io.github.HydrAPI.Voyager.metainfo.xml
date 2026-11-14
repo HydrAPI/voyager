@@ -78,6 +78,12 @@
 
   <!-- Each release gets a line, newest first (see BUILDING.md). -->
   <releases>
+    <release version="1.1.2" date="2026-11-14">
+      <description>
+        <p>This PC: unmounting and ejecting always ask first, drives can be formatted (never the disk the system runs from), and a right click has more entries.</p>
+        <p>Network: computers and shares found in the network open, and only the network places you added yourself are kept among the drives.</p>
+      </description>
+    </release>
     <release version="1.1.1" date="2026-11-14">
       <description>
         <p>The address bar takes commands as Windows Explorer's does: cmd opens a terminal in the folder, a program's name starts it there, a web address opens in the browser.</p>
