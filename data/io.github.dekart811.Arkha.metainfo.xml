@@ -74,6 +74,13 @@
 
   <!-- Each release gets a line, newest first (see BUILDING.md). -->
   <releases>
+    <release version="1.1.0" date="2026-11-14">
+      <description>
+        <p>The look and layout of Windows Explorer: an address bar and a command bar, a navigation pane with Quick access, This PC and Network, and a This PC page with the drives and how full they are.</p>
+        <p>Windows shares: \\server\share addresses, Map Network Drive, network places reconnected at start and names of your own for them.</p>
+        <p>Also a font setting, a search box in the preferences, and an option to open new windows at This PC.</p>
+      </description>
+    </release>
     <release version="1.0.1" date="2026-11-14">
       <description>
         <p>The prebuilt program for other distributions now includes the German translation, which the one of 1.0.0 was missing.</p>
