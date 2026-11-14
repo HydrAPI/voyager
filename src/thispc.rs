@@ -349,8 +349,9 @@ impl ThisPc {
                     let item = gtk::MenuItem::with_mnemonic(&tr("Re_name…"));
                     let w = Rc::downgrade(&s);
                     let current = config::mount_name(&m.root().uri()).unwrap_or_else(|| m.name().to_string());
-                    item.connect_activate(move |it| {
-                        let parent = it.toplevel().and_downcast::<gtk::Window>();
+                    let tw = s.widget.clone();
+                    item.connect_activate(move |_| {
+                        let parent = tw.toplevel().and_downcast::<gtk::Window>();
                         if let Some(name) = crate::sidebar::ask_name(parent.as_ref(), &tr("Rename"), &current) {
                             config::set_mount_name(&m.root().uri(), &name);
                             crate::sidebar::refresh_all();
@@ -365,8 +366,9 @@ impl ThisPc {
                 let removal = |label: &str, kind: &'static str, what: Removal, name: String| {
                     let item = gtk::MenuItem::with_mnemonic(&tr(label));
                     let w = Rc::downgrade(&s);
-                    item.connect_activate(move |it| {
-                        let parent = it.toplevel().and_downcast::<gtk::Window>();
+                    let tw = s.widget.clone();
+                    item.connect_activate(move |_| {
+                        let parent = tw.toplevel().and_downcast::<gtk::Window>();
                         if !crate::sidebar::removal_warning(parent.as_ref(), &name, kind) {
                             return;
                         }
@@ -418,8 +420,9 @@ impl ThisPc {
                     let item = gtk::MenuItem::with_mnemonic(&tr("_Format…"));
                     let w = Rc::downgrade(&s);
                     let name = shown_name.clone();
-                    item.connect_activate(move |it| {
-                        let parent = it.toplevel().and_downcast::<gtk::Window>();
+                    let tw = s.widget.clone();
+                    item.connect_activate(move |_| {
+                        let parent = tw.toplevel().and_downcast::<gtk::Window>();
                         let w = w.clone();
                         let done: Rc<dyn Fn()> = Rc::new(move || {
                             if let Some(s) = w.upgrade() {
@@ -433,8 +436,9 @@ impl ThisPc {
                 if let Some(m) = mount.clone() {
                     menu.append(&gtk::SeparatorMenuItem::new());
                     let item = gtk::MenuItem::with_mnemonic(&tr("_Properties"));
-                    item.connect_activate(move |it| {
-                        if let Some(p) = it.toplevel().and_downcast::<gtk::Window>() {
+                    let tw = s.widget.clone();
+                    item.connect_activate(move |_| {
+                        if let Some(p) = tw.toplevel().and_downcast::<gtk::Window>() {
                             crate::props::show(&p, vec![m.root()]);
                         }
                     });
