@@ -522,7 +522,7 @@ impl AppWindow {
         path_scroll.style_context().add_class("voyager-address");
         let location_entry = gtk::Entry::new();
         location_entry.set_hexpand(true);
-        location_entry.set_placeholder_text(Some(&tr("Type a path, e.g. ~/Documents or /etc")));
+        location_entry.set_placeholder_text(Some(&tr("Type a path or a command, e.g. ~/Documents, /etc or cmd")));
         // Ctrl+F: a search field in place of the path, as in Caja. Typing
         // shows only the matching items of the open folder.
         let search_field = gtk::Entry::new();
@@ -1561,6 +1561,12 @@ impl AppWindow {
                 let text = e.text().to_string();
                 let text = text.trim();
                 if text.is_empty() {
+                    return;
+                }
+                // Like Explorer's address bar: "cmd" opens a terminal here, a
+                // program's name starts it in this folder, an address opens.
+                if s.run_address_command(text) {
+                    s.loc_toggle.set_active(false);
                     return;
                 }
                 let f = parse_location(text, s.current_pane().map(|p| p.current()));
@@ -3283,6 +3289,48 @@ impl AppWindow {
         self.run_transfer(kind, uris, dest);
     }
 
+    /// What was typed in the address bar if it's a command rather than a
+    /// place, as in Explorer: `cmd` (or powershell, terminal, a shell's
+    /// name…) opens a terminal in this folder, the name of a program in the
+    /// PATH starts it here (`code .`, `gimp photo.png`), a web address opens in
+    /// the browser. True if it was one.
+    fn run_address_command(self: &Rc<Self>, text: &str) -> bool {
+        if text.starts_with(['/', '~']) || text.starts_with('\\') {
+            return false;
+        }
+        let here = self.current_pane().map(|p| p.current());
+        if text.starts_with("http://") || text.starts_with("https://") {
+            if let Err(e) = gio::AppInfo::launch_default_for_uri(text, gio::AppLaunchContext::NONE) {
+                util::error_dialog(Some(self.window.upcast_ref()), &tr("Could not open the address"), e.message());
+            }
+            return true;
+        }
+        if text.contains("://") {
+            return false;
+        }
+        // A folder or file of this name wins, as in Explorer.
+        if parse_location(text, here.clone()).query_exists(gio::Cancellable::NONE) {
+            return false;
+        }
+        let Ok(argv) = glib::shell_parse_argv(text) else { return false };
+        let argv: Vec<String> = argv.iter().map(|a| a.to_string_lossy().to_string()).collect();
+        let Some(first) = argv.first() else { return false };
+        let dir = here.as_ref().and_then(|f| f.path()).unwrap_or_else(glib::home_dir);
+        let name = first.to_lowercase();
+        let name = name.trim_end_matches(".exe");
+        if matches!(name, "cmd" | "powershell" | "pwsh" | "wt" | "terminal" | "console" | "bash" | "sh" | "zsh" | "fish") && argv.len() == 1 {
+            self.terminal_at(&dir);
+            return true;
+        }
+        if glib::find_program_in_path(first).is_none() {
+            return false;
+        }
+        if let Err(e) = util::spawn_in_dir(&argv, Some(&dir)) {
+            util::error_dialog(Some(self.window.upcast_ref()), &fill(&tr("Could not start “{text}”"), &[("text", first)]), &e);
+        }
+        true
+    }
+
     fn open_terminal(self: &Rc<Self>) {
         let Some(p) = self.current_pane() else { return };
         let dir = p
@@ -3292,6 +3340,10 @@ impl AppWindow {
             .map(|r| gio::File::for_uri(&r.uri))
             .unwrap_or_else(|| p.current());
         let Some(path) = dir.path() else { return };
+        self.terminal_at(&path);
+    }
+
+    fn terminal_at(self: &Rc<Self>, path: &std::path::Path) {
         let Some(term) = util::terminal_command() else {
             util::error_dialog(Some(self.window.upcast_ref()), &tr("No terminal found"), &tr("Install mate-terminal or set $TERMINAL."));
             return;
@@ -3300,7 +3352,7 @@ impl AppWindow {
         if term.ends_with("mate-terminal") || term.ends_with("gnome-terminal") || term.ends_with("xfce4-terminal") {
             argv.push(format!("--working-directory={}", path.to_string_lossy()));
         }
-        if let Err(e) = util::spawn_in_dir(&argv, Some(&path)) {
+        if let Err(e) = util::spawn_in_dir(&argv, Some(path)) {
             util::error_dialog(Some(self.window.upcast_ref()), &tr("Could not open a terminal"), &e);
         }
     }
