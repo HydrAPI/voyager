@@ -14,8 +14,7 @@ fn main() {
     println!("cargo:rustc-env=ARKHA_BUILD={}", build_id().unwrap_or_default());
     println!("cargo:rerun-if-changed=po");
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    // OUT_DIR is target/<profile>/build/arkha-<hash>/out.
-    let profile = out.ancestors().nth(3).unwrap().to_path_buf();
+    let profile = profile_dir();
     let mut po: Vec<PathBuf> = std::fs::read_dir("po")
         .map(|d| d.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "po")).collect())
         .unwrap_or_default();
@@ -56,6 +55,22 @@ fn main() {
         format!("/// The translations there are: (code, name in its own language).\npub const LANGUAGES: &[(&str, &str)] = &[{list}];\n"),
     )
     .unwrap();
+}
+
+/// Where Cargo puts the program: target/<profile>, CARGO_TARGET_DIR's if set
+/// (the PKGBUILD sets it). Not worked out from OUT_DIR: since Rust 1.100
+/// Cargo keeps a build script's OUT_DIR in a build folder of its own, apart
+/// from the program, and the translations went there (the first 1.0.0
+/// prebuilt tarball had none).
+fn profile_dir() -> PathBuf {
+    println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
+    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let target = match std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from) {
+        Some(t) if t.is_absolute() => t,
+        Some(t) => manifest.join(t),
+        None => manifest.join("target"),
+    };
+    target.join(std::env::var("PROFILE").unwrap())
 }
 
 /// The build: from ARKHA_BUILD if a packager sets it, else from git in a
