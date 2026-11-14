@@ -27,6 +27,8 @@ mod props;
 mod scroll;
 mod search;
 mod sidebar;
+mod theme;
+mod thispc;
 #[cfg(test)]
 mod testutil;
 mod util;
@@ -65,11 +67,14 @@ fn main() -> glib::ExitCode {
         });
         app.add_action(&quit);
         gtk::Window::set_default_icon_name(util::app_icon());
+        theme::apply();
+        theme::apply_font();
         scroll::init();
         a11y::fix_defunct_states();
         util::set_iec_units(config::with(|s| s.iec_units));
         util::set_date_format(&config::with(|s| s.date_format.clone()));
         sidebar::init_automount();
+        sidebar::reconnect_bookmarks();
         // "Show in folder" for other programs.
         fm1::init();
         // Started by D-Bus for that (--gapplication-service): staying a

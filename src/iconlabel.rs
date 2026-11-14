@@ -126,8 +126,10 @@ impl IconLabel {
         ctx.save();
         if selected {
             cr.save().ok();
+            // Explorer's selection is the cell's (see theme.rs): a light
+            // tint behind the name when it is shown whole.
             rounded_rect(cr, bx, by, bw, bh, BOX_RADIUS);
-            cr.set_source_rgba(bg.red(), bg.green(), bg.blue(), bg.alpha());
+            cr.set_source_rgba(bg.red(), bg.green(), bg.blue(), 0.24);
             let _ = cr.fill();
             cr.restore().ok();
             ctx.set_state(ctx.state() | gtk::StateFlags::SELECTED);

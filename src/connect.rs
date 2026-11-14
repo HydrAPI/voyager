@@ -81,6 +81,137 @@ impl Server {
 
 /// Shows the dialog; `open` gets the address to open once Connect is pressed
 /// (after it's bookmarked, if asked for).
+/// A Windows (UNC) address, `\\\\server\\share\\folder`, as the smb:// one
+/// GVfs opens. None if `text` isn't one.
+pub fn unc_to_uri(text: &str) -> Option<String> {
+    let rest = text.trim().strip_prefix("\\\\")?;
+    let esc = |s: &str| glib::Uri::escape_string(s, None, false).to_string();
+    let parts: Vec<String> = rest.split(['\\', '/']).filter(|p| !p.is_empty()).map(esc).collect();
+    if parts.is_empty() {
+        return None;
+    }
+    Some(format!("smb://{}/", parts.join("/")))
+}
+
+/// Whether GVfs can't open Windows shares here (its SMB backend, the
+/// package gvfs-smb on most systems, isn't installed).
+pub fn smb_missing() -> bool {
+    !gio::Vfs::default().supported_uri_schemes().iter().any(|s| s == "smb")
+}
+
+/// What to tell then.
+pub fn smb_missing_hint() -> String {
+    tr("Windows shares need GVfs's SMB support, which isn't installed. Install the package gvfs-smb (and gvfs-wsdd or gvfs-dnssd to find computers in the network), then restart Arkha.")
+}
+
+/// Explorer's "Map network drive": a share as `\\\\server\\share`, optionally
+/// with other credentials, optionally kept as a bookmark in the side pane.
+pub fn show_map_drive(parent: &gtk::Window, open: impl Fn(String) + 'static) {
+    let d = gtk::Dialog::with_buttons(
+        Some(&tr("Map Network Drive")),
+        Some(parent),
+        gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
+        &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Finish").as_str(), gtk::ResponseType::Ok)],
+    );
+    d.set_default_response(gtk::ResponseType::Ok);
+    d.set_resizable(false);
+    let grid = gtk::Grid::new();
+    grid.set_row_spacing(8);
+    grid.set_column_spacing(12);
+    grid.set_border_width(12);
+    let intro = gtk::Label::new(Some(&tr("Which network folder would you like to connect to?")));
+    intro.set_xalign(0.0);
+    grid.attach(&intro, 0, 0, 2, 1);
+    let folder = gtk::Entry::new();
+    folder.set_activates_default(true);
+    folder.set_hexpand(true);
+    folder.set_width_chars(36);
+    folder.set_placeholder_text(Some("\\\\server\\share"));
+    let l = gtk::Label::with_mnemonic(&tr("F_older:"));
+    l.set_mnemonic_widget(Some(&folder));
+    l.set_xalign(1.0);
+    grid.attach(&l, 0, 1, 1, 1);
+    grid.attach(&folder, 1, 1, 1, 1);
+    let other = gtk::CheckButton::with_mnemonic(&tr("Connect using different _credentials"));
+    grid.attach(&other, 1, 2, 1, 1);
+    let user = gtk::Entry::new();
+    user.set_placeholder_text(Some(&tr("DOMAIN\\user or user")));
+    user.set_sensitive(false);
+    let ul = gtk::Label::with_mnemonic(&tr("_User name:"));
+    ul.set_mnemonic_widget(Some(&user));
+    ul.set_xalign(1.0);
+    grid.attach(&ul, 0, 3, 1, 1);
+    grid.attach(&user, 1, 3, 1, 1);
+    let keep = gtk::CheckButton::with_mnemonic(&tr("Reconnect: keep in the side pane"));
+    keep.set_active(true);
+    grid.attach(&keep, 1, 4, 1, 1);
+    let note = gtk::Label::new(Some(&if smb_missing() { smb_missing_hint() } else { String::new() }));
+    note.set_line_wrap(true);
+    note.set_max_width_chars(48);
+    note.set_xalign(0.0);
+    grid.attach(&note, 0, 5, 2, 1);
+    d.content_area().add(&grid);
+    {
+        let user = user.clone();
+        other.connect_toggled(move |b| user.set_sensitive(b.is_active()));
+    }
+    // The address as typed: UNC, smb://, or a bare server/share.
+    let read = {
+        let (folder, user, other) = (folder.clone(), user.clone(), other.clone());
+        move || -> Option<String> {
+            let t = folder.text().trim().to_string();
+            let mut uri = if let Some(u) = unc_to_uri(&t) {
+                u
+            } else if t.contains("://") {
+                t
+            } else {
+                unc_to_uri(&format!("\\\\{}", t.trim_start_matches('/')))?
+            };
+            let u = user.text().trim().to_string();
+            if other.is_active() && !u.is_empty() {
+                if let Some(rest) = uri.strip_prefix("smb://") {
+                    let (dom, name) = match u.split_once(['\\', ';']) {
+                        Some((d, n)) => (Some(d), n),
+                        None => (None, u.as_str()),
+                    };
+                    let esc = |s: &str| glib::Uri::escape_string(s, None, false).to_string();
+                    let ui = match dom {
+                        Some(d) => format!("{};{}", esc(d), esc(name)),
+                        None => esc(name),
+                    };
+                    uri = format!("smb://{ui}@{rest}");
+                }
+            }
+            Some(uri)
+        }
+    };
+    let read = Rc::new(read);
+    {
+        let (d, read) = (d.clone(), read.clone());
+        let update = move |e: &gtk::Entry| d.set_response_sensitive(gtk::ResponseType::Ok, !e.text().trim().is_empty() && read().is_some());
+        update(&folder);
+        folder.connect_changed(move |e| update(e));
+    }
+    grid.show_all();
+    folder.grab_focus();
+    let open = Rc::new(open);
+    d.connect_response(move |d, r| {
+        if r == gtk::ResponseType::Ok {
+            let Some(uri) = read() else { return };
+            if keep.is_active() {
+                let name = glib::Uri::parse(&uri, glib::UriFlags::NONE).ok().map(|u| format!("{} ({})", u.path().trim_matches('/').replace('/', " – "), u.host().unwrap_or_default())).unwrap_or_default();
+                if let Err(e) = util::bookmark_named(&uri, &name) {
+                    util::error_dialog(Some(d.upcast_ref()), &tr("Could not add bookmark"), &e.to_string());
+                    return;
+                }
+            }
+            open(uri);
+        }
+        d.close();
+    });
+    d.show();
+}
+
 pub fn show(parent: &gtk::Window, open: impl Fn(String) + 'static) {
     let d = gtk::Dialog::with_buttons(
         Some(&tr("Connect to Server")),
@@ -252,6 +383,14 @@ mod tests {
         assert_eq!(Server { user: "anna".into(), ..server(2, "ftp.example.org") }.uri().as_deref(), Some("ftp://anna@ftp.example.org/"));
         assert_eq!(server(4, "dav.example.org").uri().as_deref(), Some("dav://dav.example.org/"));
         assert_eq!(server(5, "dav.example.org").uri().as_deref(), Some("davs://dav.example.org/"));
+    }
+
+    #[test]
+    fn unc_addresses() {
+        assert_eq!(unc_to_uri("\\\\nas\\Public\\Photos 1").as_deref(), Some("smb://nas/Public/Photos%201/"));
+        assert_eq!(unc_to_uri("\\\\nas").as_deref(), Some("smb://nas/"));
+        assert_eq!(unc_to_uri("nas"), None);
+        assert_eq!(unc_to_uri("\\\\"), None);
     }
 
     #[test]

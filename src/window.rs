@@ -392,23 +392,30 @@ impl AppWindow {
         let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
         window.add(&vbox);
 
-        // ---------------- toolbar
+        // ---------------- command bar (Explorer's: New, clipboard, Sort, View)
         let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-        toolbar.set_border_width(3);
+        toolbar.set_border_width(4);
         toolbar.style_context().add_class("primary-toolbar");
+        toolbar.style_context().add_class("arkha-commandbar");
         // Button texts, kept to show or hide them (Preferences → Display).
         let toolbar_labels: RefCell<Vec<gtk::Label>> = RefCell::new(vec![]);
-        let tbtn = |icon: &str, tip: &str, action: &str, label: Option<&str>| {
+        // `always`: the text is part of the button (like Explorer's "New"),
+        // not one of those the preferences turn off.
+        let tbtn = |icon: &str, tip: &str, action: &str, label: Option<&str>, always: bool| {
             let b = gtk::Button::new();
-            let bx = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-            bx.pack_start(&gtk::Image::from_icon_name(Some(icon), gtk::IconSize::LargeToolbar), false, false, 0);
+            let bx = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            bx.pack_start(&gtk::Image::from_icon_name(Some(icon), gtk::IconSize::Button), false, false, 0);
             if let Some(l) = label {
                 let l = gtk::Label::new(Some(l));
-                // Not shown by show_all(); its visibility follows the setting.
-                l.set_no_show_all(true);
-                l.set_visible(s.toolbar_text);
-                bx.pack_start(&l, false, false, 0);
-                toolbar_labels.borrow_mut().push(l);
+                if always {
+                    bx.pack_start(&l, false, false, 0);
+                } else {
+                    // Not shown by show_all(); its visibility follows the setting.
+                    l.set_no_show_all(true);
+                    l.set_visible(s.toolbar_text);
+                    bx.pack_start(&l, false, false, 0);
+                    toolbar_labels.borrow_mut().push(l);
+                }
             }
             b.add(&bx);
             b.set_relief(gtk::ReliefStyle::None);
@@ -417,33 +424,85 @@ impl AppWindow {
             b.set_focus_on_click(false);
             b
         };
-        let back_btn = tbtn("go-previous", &tr("Go to the previous visited location (right-click for history)"), "win.back", Some(&tr("Back")));
-        let fwd_btn = tbtn("go-next", &tr("Go to the next visited location"), "win.forward", Some(&tr("Forward")));
-        let up_btn = tbtn("go-up", &tr("Open the parent folder"), "win.up", None);
-        let reload_btn = tbtn("view-refresh", &tr("Reload the current location"), "win.reload", None);
-        let home_btn = tbtn("go-home", &tr("Open your personal folder"), "win.home", None);
-        let root_btn = tbtn("drive-harddisk", &tr("Browse the file system"), "win.go-root", None);
-        // Caja's Search for Files button: shows and hides the search bar.
+        let back_btn = tbtn("go-previous-symbolic", &tr("Go to the previous visited location (right-click for history)"), "win.back", None, false);
+        let fwd_btn = tbtn("go-next-symbolic", &tr("Go to the next visited location"), "win.forward", None, false);
+        let up_btn = tbtn("go-up-symbolic", &tr("Open the parent folder"), "win.up", None, false);
+        let reload_btn = tbtn("view-refresh-symbolic", &tr("Reload the current location"), "win.reload", None, false);
+        // The navigation buttons sit in front of the address (see locbar).
+        let nav_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        for b in [&back_btn, &fwd_btn, &up_btn, &reload_btn] {
+            nav_box.pack_start(b, false, false, 0);
+        }
+        // Explorer's search box: shows and hides the search bar.
         let search_btn = gtk::ToggleButton::new();
-        search_btn.add(&gtk::Image::from_icon_name(Some("edit-find"), gtk::IconSize::LargeToolbar));
+        {
+            let bx = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            bx.pack_start(&gtk::Image::from_icon_name(Some("edit-find-symbolic"), gtk::IconSize::Button), false, false, 0);
+            bx.pack_start(&gtk::Label::new(Some(&tr("Search"))), false, false, 0);
+            search_btn.add(&bx);
+        }
         search_btn.set_relief(gtk::ReliefStyle::None);
         search_btn.set_tooltip_text(Some(&tr("Search documents and folders by name")));
         search_btn.set_focus_on_click(false);
-        for b in [&back_btn, &fwd_btn, &up_btn] {
-            toolbar.pack_start(b, false, false, 0);
+        let new_btn = tbtn("folder-new-symbolic", &tr("Create a new folder"), "win.new-folder", Some(&tr("New")), true);
+        toolbar.pack_start(&new_btn, false, false, 0);
+        toolbar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical), false, false, 6);
+        for (icon, tip, action) in [
+            ("edit-cut-symbolic", tr("Cut"), "win.cut"),
+            ("edit-copy-symbolic", tr("Copy"), "win.copy"),
+            ("edit-paste-symbolic", tr("Paste"), "win.paste"),
+            ("document-edit-symbolic", tr("Rename"), "win.rename"),
+            ("user-trash-symbolic", tr("Delete"), "win.trash"),
+        ] {
+            toolbar.pack_start(&tbtn(icon, &tip, action, None, false), false, false, 0);
         }
-        toolbar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical), false, false, 4);
-        for b in [&reload_btn, &home_btn, &root_btn] {
-            toolbar.pack_start(b, false, false, 0);
+        toolbar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical), false, false, 6);
+        let menu_button = |icon: &str, label: &str, menu: &gio::Menu| {
+            let mb = gtk::MenuButton::new();
+            let bx = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            bx.pack_start(&gtk::Image::from_icon_name(Some(icon), gtk::IconSize::Button), false, false, 0);
+            bx.pack_start(&gtk::Label::new(Some(label)), false, false, 0);
+            bx.pack_start(&gtk::Image::from_icon_name(Some("pan-down-symbolic"), gtk::IconSize::Menu), false, false, 0);
+            mb.add(&bx);
+            mb.set_relief(gtk::ReliefStyle::None);
+            mb.set_focus_on_click(false);
+            mb.set_menu_model(Some(menu));
+            mb
+        };
+        let sort_menu = gio::Menu::new();
+        sort_menu.append_section(None, &menus::sort_section(false));
+        sort_menu.append_section(None, &menus::sort_section(true));
+        let sort_order = gio::Menu::new();
+        sort_order.append(Some(&tr("_Reversed Order")), Some("win.sort-desc"));
+        sort_order.append(Some(&tr("_Folders Before Files")), Some("win.folders-first"));
+        sort_menu.append_section(None, &sort_order);
+        toolbar.pack_start(&menu_button("view-sort-descending-symbolic", &tr("Sort"), &sort_menu), false, false, 0);
+        let view_menu = gio::Menu::new();
+        let modes = gio::Menu::new();
+        for (label, action) in [(n_("_Icons"), "win.view-mode::icon"), (n_("_List"), "win.view-mode::list"), (n_("_Compact"), "win.view-mode::compact"), (n_("C_olumns"), "win.view-mode::columns")] {
+            modes.append(Some(&tr(label)), Some(action));
         }
-        toolbar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical), false, false, 4);
-        toolbar.pack_start(&search_btn, false, false, 0);
+        view_menu.append_section(None, &modes);
+        let zoom = gio::Menu::new();
+        for (label, action) in [(n_("Zoom _In"), "win.zoom-in"), (n_("Zoom _Out"), "win.zoom-out"), (n_("Normal Si_ze"), "win.zoom-normal")] {
+            zoom.append(Some(&tr(label)), Some(action));
+        }
+        view_menu.append_section(None, &zoom);
+        let show = gio::Menu::new();
+        for (label, action) in [(n_("Show _Hidden Files"), "win.show-hidden"), (n_("_Side Pane"), "win.show-sidebar"), (n_("_Info Panel"), "win.info-panel"), (n_("St_atusbar"), "win.show-statusbar")] {
+            show.append(Some(&tr(label)), Some(action));
+        }
+        view_menu.append_section(None, &show);
+        toolbar.pack_start(&menu_button("view-grid-symbolic", &tr("View"), &view_menu), false, false, 0);
+        toolbar.pack_end(&search_btn, false, false, 0);
         let spinner = gtk::Spinner::new();
         toolbar.pack_end(&spinner, false, false, 6);
 
         // ---------------- location bar
         let locbar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        locbar.set_border_width(3);
+        locbar.set_border_width(4);
+        locbar.style_context().add_class("arkha-locbar");
+        locbar.pack_start(&nav_box, false, false, 0);
         let loc_toggle = gtk::ToggleButton::new();
         loc_toggle.add(&gtk::Image::from_icon_name(Some("document-edit-symbolic"), gtk::IconSize::Button));
         loc_toggle.set_tooltip_text(Some(&tr("Toggle between button and text-based location bar (Ctrl+L)")));
@@ -455,11 +514,12 @@ impl AppWindow {
         path_area.pack_start(&loc_toggle, false, false, 0);
         locbar.pack_start(&path_area, true, true, 0);
         // Separate buttons 3 px apart, as Caja's path bar.
-        let path_box = gtk::Box::new(gtk::Orientation::Horizontal, 3);
+        let path_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         let path_scroll = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
         path_scroll.set_policy(gtk::PolicyType::External, gtk::PolicyType::Never);
         path_scroll.add(&path_box);
         path_scroll.set_hexpand(true);
+        path_scroll.style_context().add_class("arkha-address");
         let location_entry = gtk::Entry::new();
         location_entry.set_hexpand(true);
         location_entry.set_placeholder_text(Some(&tr("Type a path, e.g. ~/Documents or /etc")));
@@ -546,7 +606,7 @@ impl AppWindow {
         split_box.style_context().add_class("linked");
         split_box.pack_start(&split_btn, false, false, 0);
         split_box.pack_start(&swap_btn, false, false, 0);
-        locbar.pack_start(&split_box, false, false, 3);
+        toolbar.pack_end(&split_box, false, false, 3);
         let info_btn = gtk::ToggleButton::new();
         // A window with a panel on its right; fallbacks for themes without it.
         let info_icon = gio::ThemedIcon::from_names(&["sidebar-show-right-symbolic", "view-right-pane-symbolic", "dialog-information-symbolic"]);
@@ -554,7 +614,7 @@ impl AppWindow {
         info_btn.set_action_name(Some("win.info-panel"));
         info_btn.set_tooltip_text(Some(&tr("Info panel: the selected item's picture and details, in this folder (F11)")));
         info_btn.set_focus_on_click(false);
-        locbar.pack_start(&info_btn, false, false, 3);
+        toolbar.pack_end(&info_btn, false, false, 3);
         // File operations, like a browser's downloads button: shown while
         // there are any, with their overall progress; click for the list.
         let ops_btn = gtk::ToggleButton::new();
@@ -568,7 +628,7 @@ impl AppWindow {
         ops_bar.style_context().add_provider(&bar_css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
         ops_inner.add(&ops_bar);
         ops_btn.add(&ops_inner);
-        locbar.pack_start(&ops_btn, false, false, 3);
+        toolbar.pack_end(&ops_btn, false, false, 3);
         let ops_pop = gtk::Popover::new(Some(&ops_btn));
         // This window's own list of the operations (it keeps itself current).
         let ops_slot = ops::new_view();
@@ -665,6 +725,7 @@ impl AppWindow {
 
         // ---------------- status bar
         let statusbar = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        statusbar.style_context().add_class("arkha-statusbar");
         statusbar.set_border_width(3);
         let status = gtk::Label::new(None);
         status.set_xalign(0.0);
@@ -726,9 +787,36 @@ impl AppWindow {
 
         this.build_menubar(&menubar_model);
         let menubar = gtk::MenuBar::from_model(&menubar_model);
+        // Hidden (View → Menu Bar), it shows while Alt is pressed, as Explorer's.
+        menubar.set_no_show_all(true);
+        menubar.set_visible(s.show_menubar);
+        {
+            let mb = menubar.clone();
+            menubar.connect_deactivate(move |_| mb.set_visible(config::with(|s| s.show_menubar)));
+            let mb = menubar.clone();
+            let alone = Rc::new(Cell::new(false));
+            let a = alone.clone();
+            window.connect_key_press_event(move |_, e| {
+                a.set(matches!(e.keyval(), gdk::keys::constants::Alt_L | gdk::keys::constants::Alt_R));
+                glib::Propagation::Proceed
+            });
+            window.connect_key_release_event(move |_, e| {
+                if alone.replace(false) && matches!(e.keyval(), gdk::keys::constants::Alt_L | gdk::keys::constants::Alt_R) {
+                    if config::with(|s| s.show_menubar) {
+                        // Always shown: Alt just opens the first menu.
+                    } else if mb.is_visible() {
+                        mb.set_visible(false);
+                    } else {
+                        mb.set_visible(true);
+                        mb.select_first(false);
+                    }
+                }
+                glib::Propagation::Proceed
+            });
+        }
         vbox.pack_start(&menubar, false, false, 0);
-        vbox.pack_start(&toolbar, false, false, 0);
         vbox.pack_start(&locbar, false, false, 0);
+        vbox.pack_start(&toolbar, false, false, 0);
         vbox.pack_start(&gtk::Separator::new(gtk::Orientation::Horizontal), false, false, 0);
         vbox.pack_start(&paned, true, true, 0);
         vbox.pack_start(&statusbar, false, false, 0);
@@ -751,7 +839,7 @@ impl AppWindow {
         this.refresh_bookmarks();
         this.refresh_templates();
 
-        let locs: Vec<gio::File> = if locations.is_empty() && home_if_empty { vec![util::home_file()] } else { locations.to_vec() };
+        let locs: Vec<gio::File> = if locations.is_empty() && home_if_empty { vec![if s.start_in_this_pc { gio::File::for_uri("computer:///") } else { util::home_file() }] } else { locations.to_vec() };
         // Opened in the given order: when tabs go after the current one,
         // switch to each as it's added (the first is shown below).
         let after_current = s.new_tabs == "after";
@@ -1053,6 +1141,14 @@ impl AppWindow {
             }
         });
         self.add("edit-bookmarks", |w| w.edit_bookmarks());
+        self.add("map-drive", |w| {
+            let weak = Rc::downgrade(w);
+            connect::show_map_drive(w.window.upcast_ref(), move |uri| {
+                if let Some(w) = weak.upgrade() {
+                    w.go(&gio::File::for_uri(&uri));
+                }
+            });
+        });
         self.add("connect-server", |w| {
             let weak = Rc::downgrade(w);
             connect::show(w.window.upcast_ref(), move |uri| {
@@ -1177,6 +1273,13 @@ impl AppWindow {
         self.add_toggle("show-toolbar", s.show_toolbar, |w, v| {
             config::update(|s| s.show_toolbar = v);
             w.toolbar.set_visible(v);
+        });
+        self.add_toggle("show-menubar", s.show_menubar, |w, v| {
+            config::update(|s| s.show_menubar = v);
+            let bar = w.window.child().and_then(|c| c.downcast::<gtk::Box>().ok()).and_then(|b| b.children().into_iter().next());
+            if let Some(bar) = bar {
+                bar.set_visible(v);
+            }
         });
         self.add_toggle("show-locbar", s.show_locbar, |w, v| {
             config::update(|s| s.show_locbar = v);
@@ -2003,9 +2106,10 @@ impl AppWindow {
             ("ops", self.ops_btn.clone().upcast()),
         ];
         let Some(bar) = self.path_area.parent().and_then(|p| p.downcast::<gtk::Box>().ok()) else { return };
+        // The navigation buttons stay in front of the address.
         for (i, id) in config::get().bar_order.iter().enumerate() {
             if let Some((_, w)) = items.iter().find(|(wid, _)| wid == id) {
-                bar.reorder_child(w, i as i32);
+                bar.reorder_child(w, i as i32 + 1);
             }
         }
     }
@@ -2246,7 +2350,7 @@ impl AppWindow {
         let writable = !in_trash;
         self.set_enabled("back", p.can_back());
         self.set_enabled("forward", p.can_forward());
-        self.set_enabled("up", p.current().parent().is_some());
+        self.set_enabled("up", p.current().parent().is_some() || p.current().is_native());
         for a in ["cut", "copy", "trash", "delete", "copy-to", "move-to"] {
             self.set_enabled(a, has);
         }
@@ -2314,6 +2418,10 @@ impl AppWindow {
                 }
                 cur = c.parent();
             }
+            // Explorer's address starts at This PC.
+            if f.is_native() {
+                chain.push(gio::File::for_uri("computer:///"));
+            }
             chain.reverse();
             *self.crumbs.borrow_mut() = chain;
         }
@@ -2328,7 +2436,11 @@ impl AppWindow {
             // Caja's classes: the theme pads them as buttons with text.
             b.style_context().add_class("text-button");
             let bx = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-            let (icon, label) = if c.equal(&home) {
+            let (icon, label) = if c.uri() == "computer:///" {
+                (Some("computer-symbolic"), tr("This PC"))
+            } else if c.uri() == "network:///" {
+                (Some("network-workgroup-symbolic"), tr("Network"))
+            } else if c.equal(&home) {
                 (Some("user-home"), tr("Home"))
             } else if c.uri() == "trash:///" {
                 (Some("user-trash"), tr("Trash"))
@@ -2339,7 +2451,7 @@ impl AppWindow {
                     (Some("drive-harddisk"), tr("File System"))
                 } else {
                     // The mount's name, as the side pane shows it ("debian").
-                    let name = c.find_enclosing_mount(gio::Cancellable::NONE).map(|m| m.name().to_string());
+                    let name = c.find_enclosing_mount(gio::Cancellable::NONE).map(|m| config::mount_name(&m.root().uri()).unwrap_or_else(|| m.name().to_string()));
                     (Some("folder-remote"), name.unwrap_or_else(|_| util::display_name(c)))
                 }
             } else {
@@ -2357,20 +2469,8 @@ impl AppWindow {
             b.set_focus_on_click(false);
             let is_active = c.equal(f);
             b.set_active(is_active);
-            let bold = pango::AttrList::new();
-            bold.insert(pango::AttrInt::new_weight(pango::Weight::Bold));
             if is_active {
                 active_btn = Some(b.clone());
-                l.set_attributes(Some(&bold));
-            } else {
-                // Room for the name in bold, as in Caja: a button keeps its
-                // width when its folder becomes the open one.
-                let layout = l.create_pango_layout(Some(&label));
-                let normal = layout.pixel_size().0;
-                layout.set_attributes(Some(&bold));
-                let wide = layout.pixel_size().0;
-                l.set_margin_start((wide - normal) / 2);
-                l.set_margin_end((wide - normal + 1) / 2);
             }
             let w = Rc::downgrade(self);
             let target = c.clone();
@@ -2467,6 +2567,13 @@ impl AppWindow {
                         }
                     }
                 });
+            }
+            // A chevron between the folders, as Explorer's address bar.
+            if !self.path_box.children().is_empty() {
+                let chevron = gtk::Image::from_icon_name(Some("go-next-symbolic"), gtk::IconSize::Menu);
+                chevron.style_context().add_class("arkha-chevron");
+                chevron.set_opacity(0.6);
+                self.path_box.pack_start(&chevron, false, false, 0);
             }
             self.path_box.pack_start(&b, false, false, 0);
         }
@@ -3409,6 +3516,10 @@ fn parse_location(text: &str, base: Option<gio::File>) -> gio::File {
     // "~" and "~/…" are in the home folder; "~notes" is a name like any other.
     if text == "~" || text.starts_with("~/") {
         return gio::File::for_path(format!("{}{}", glib::home_dir().to_string_lossy(), &text[1..]));
+    }
+    // Windows' \\server\share.
+    if let Some(uri) = connect::unc_to_uri(text) {
+        return gio::File::for_uri(&uri);
     }
     if text.starts_with('/') {
         return gio::File::for_path(text);

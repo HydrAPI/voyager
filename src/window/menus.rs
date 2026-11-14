@@ -4,7 +4,7 @@ use super::*;
 
 /// Arrange Items' sort orders: the name and the first three details (the
 /// usual ones), or (`more`) the others there are menu items for.
-fn sort_section(more: bool) -> gio::Menu {
+pub(super) fn sort_section(more: bool) -> gio::Menu {
     let menu = gio::Menu::new();
     if !more {
         menu.append(Some(&tr("By _Name")), Some("win.sort-by::name"));
@@ -32,7 +32,7 @@ impl AppWindow {
         create.append(Some(&tr("Create _Folder")), Some("win.new-folder"));
         create.append_submenu(Some(&tr("Create _Document")), &self.templates_menu);
         file.append_section(None, &create);
-        file.append_section(None, &section(&[(n_("Connect to _Server…"), "win.connect-server")]));
+        file.append_section(None, &section(&[(n_("Map Network _Drive…"), "win.map-drive"), (n_("Connect to _Server…"), "win.connect-server")]));
         file.append_section(None, &section(&[(n_("Open in _Terminal"), "win.terminal"), (n_("_Properties"), "win.properties")]));
         file.append_section(None, &section(&[(n_("_Empty Trash"), "win.empty-trash")]));
         file.append_section(None, &section(&[(n_("Move Tab _Left"), "win.tab-left"), (n_("Move Tab Ri_ght"), "win.tab-right")]));
@@ -56,7 +56,7 @@ impl AppWindow {
         view.append_section(None, &section(&[(n_("_Icons"), "win.view-mode::icon"), (n_("_List"), "win.view-mode::list"), (n_("_Compact"), "win.view-mode::compact"), (n_("C_olumns"), "win.view-mode::columns")]));
         view.append_section(None, &section(&[(n_("Show _Hidden Files"), "win.show-hidden"), (n_("_Side Pane"), "win.show-sidebar"), (n_("E_xtra Pane"), "win.split-view"), (n_("St_atusbar"), "win.show-statusbar"), (n_("_Info Panel"), "win.info-panel")]));
         view.append_section(None, &section(&[(n_("Swap Pa_nes"), "win.swap-panes"), (n_("S_witch to Other Pane"), "win.switch-pane"), (n_("Same Location as O_ther Pane"), "win.same-location")]));
-        view.append_section(None, &section(&[(n_("_Main Toolbar"), "win.show-toolbar"), (n_("Location _Bar"), "win.show-locbar")]));
+        view.append_section(None, &section(&[(n_("_Menu Bar"), "win.show-menubar"), (n_("_Main Toolbar"), "win.show-toolbar"), (n_("Location _Bar"), "win.show-locbar")]));
         let sort = gio::Menu::new();
         sort.append_section(None, &sort_section(false));
         sort.append_section(None, &sort_section(true));

@@ -446,6 +446,8 @@ pub struct Pane {
     store: gtk::ListStore,
     filter: gtk::TreeModelFilter,
     stack: gtk::Stack,
+    /// Explorer's "This PC" page, shown in place of the views for computer:///.
+    this_pc: Rc<crate::thispc::ThisPc>,
     icon_view: gtk::IconView,
     icon_pix: gtk::CellRendererPixbuf,
     icon_text: gtk::CellRendererText,
@@ -646,7 +648,7 @@ impl Pane {
         // the icon tinted and the name boxed instead.
         {
             let css = gtk::CssProvider::new();
-            let _ = css.load_from_data(b"iconview.caja-like:selected, iconview.caja-like:selected:focus { background-color: transparent; background-image: none; } iconview.caja-like { outline-width: 0; }");
+            let _ = css.load_from_data(b"iconview.caja-like { outline-width: 0; }");
             icon_view.style_context().add_provider(&css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
         }
         let image = crate::iconlabel::IconImage::new();
@@ -797,6 +799,8 @@ impl Pane {
         let stack = gtk::Stack::new();
         stack.add_named(&sw_icons, "icons");
         stack.add_named(&strip_sw, "list");
+        let this_pc = crate::thispc::ThisPc::new();
+        stack.add_named(&this_pc.widget, "thispc");
         stack.set_vexpand(true);
 
         let info_bar = gtk::InfoBar::new();
@@ -880,6 +884,7 @@ impl Pane {
             meta: RefCell::new(HashMap::new()),
             meta_pending: RefCell::new(vec![]),
             bg_css,
+            this_pc,
             sort_cols,
             fit_cols,
             info_bar,
@@ -1000,7 +1005,43 @@ impl Pane {
             });
             pane.thumb_listener.set(Some(id));
         }
+        {
+            let w = Rc::downgrade(&pane);
+            pane.this_pc.set_opener(move |f| {
+                if let Some(p) = w.upgrade() {
+                    p.navigate(&f);
+                }
+            });
+        }
         pane
+    }
+
+    /// Whether Explorer's "This PC" page is what's shown.
+    fn on_this_pc(&self) -> bool {
+        self.search.borrow().is_none() && self.current().uri() == "computer:///"
+    }
+
+    /// The icon, list or columns view, per the mode (not the This PC page).
+    fn show_view_stack(&self) {
+        match self.mode.get() {
+            ViewMode::List | ViewMode::Columns => self.stack.set_visible_child_name("list"),
+            _ => self.stack.set_visible_child_name("icons"),
+        }
+    }
+
+    fn load_this_pc(self: &Rc<Self>) {
+        self.query_editor.widget.hide();
+        self.clear_rows();
+        self.loading.set(false);
+        let file = self.current();
+        self.tab_label.set_text(&self.title());
+        self.tab_label.set_tooltip_text(Some(&tr("This PC")));
+        self.stack.set_visible_child_name("thispc");
+        self.this_pc.refresh();
+        let _ = file;
+        self.emit(Event::Location);
+        self.emit(Event::Loading(false));
+        self.emit(Event::Selection);
     }
 
     pub fn set_handler(&self, f: impl Fn(Event) + 'static) {
@@ -1194,6 +1235,12 @@ impl Pane {
         if f.uri() == "trash:///" {
             return tr("Trash");
         }
+        if f.uri() == "computer:///" {
+            return tr("This PC");
+        }
+        if f.uri() == "network:///" {
+            return tr("Network");
+        }
         if f.path().map(|p| p == std::path::Path::new("/")).unwrap_or(false) {
             return tr("File System");
         }
@@ -1268,8 +1315,12 @@ impl Pane {
     }
 
     pub fn go_up(self: &Rc<Self>) {
-        if let Some(parent) = self.current().parent() {
+        let cur = self.current();
+        if let Some(parent) = cur.parent() {
             self.navigate(&parent);
+        } else if cur.is_native() {
+            // The file system's top: This PC, as in Explorer.
+            self.navigate(&gio::File::for_uri("computer:///"));
         }
     }
 
@@ -1307,8 +1358,15 @@ impl Pane {
         self.end_typeahead();
         self.close_rename_editor(false);
         let query = self.search.borrow().clone();
+        if query.is_some() || self.current().uri() != "computer:///" {
+            self.show_view_stack();
+        }
         if let Some(q) = query {
             self.run_search(gen, &q);
+            return;
+        }
+        if self.on_this_pc() {
+            self.load_this_pc();
             return;
         }
         self.query_editor.widget.hide();
@@ -1420,7 +1478,9 @@ impl Pane {
     /// The folder couldn't be read (or its location mounted): says why,
     /// unless the user cancelled the password dialog.
     fn load_failed(self: &Rc<Self>, file: &gio::File, e: &glib::Error, gen: u64) {
-        if worth_telling(e) {
+        if matches!(file.uri_scheme().as_deref(), Some("smb")) && crate::connect::smb_missing() {
+            self.show_error(&crate::connect::smb_missing_hint());
+        } else if worth_telling(e) {
             self.show_error(&fill(&tr("Could not open “{location}”: {error}"), &[("location", &util::pretty_location(file)), ("error", &e.message())]));
         }
         self.finish_load(gen);
@@ -1464,6 +1524,11 @@ impl Pane {
         let taken = self.pending_rename.borrow_mut().take();
         if let Some(uri) = taken {
             self.start_rename(&uri);
+        }
+        // Network without anything in it, because Windows shares aren't
+        // supported here: say what to install.
+        if file.uri() == "network:///" && self.store.iter_n_children(None) == 0 && crate::connect::smb_missing() {
+            self.show_error(&crate::connect::smb_missing_hint());
         }
         self.count_dir_items(gen);
         self.read_metadata(gen);
@@ -3021,11 +3086,8 @@ impl Pane {
         self.close_rename_editor(false);
         let sel = self.selected_uris();
         self.mode.set(mode);
-        match mode {
-            ViewMode::List | ViewMode::Columns => self.stack.set_visible_child_name("list"),
-            _ => {
-                self.stack.set_visible_child_name("icons");
-            }
+        if !self.on_this_pc() {
+            self.show_view_stack();
         }
         self.attach_model();
         self.apply_columns_layout();
@@ -3131,7 +3193,7 @@ impl Pane {
                 self.icon_text.set_padding(self.icon_text.padding().0, 1);
                 *self.captions.borrow_mut() = config::with(|s| crate::details::shown_captions(&s.icon_captions, size));
                 self.thumb_size.set(px(64.0));
-                self.image.set_tint(true);
+                self.image.set_tint(false);
                 iv.style_context().add_class("caja-like");
                 // Caja's icons start 8 px (scaled) in, a fraction cut off;
                 // at 24 px (its 50 %) 6, as measured.
@@ -3972,6 +4034,10 @@ impl Pane {
     // --------------------------------------------------------------- status
 
     pub fn status_text(&self) -> String {
+        if self.on_this_pc() {
+            let n = self.this_pc.count();
+            return fill(&trn("{n} item", "{n} items", n as u64), &[("n", &n)]);
+        }
         let sel = self.selected();
         let total = self.store.iter_n_children(None) as usize;
         let visible = self.filter.iter_n_children(None) as usize;

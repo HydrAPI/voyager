@@ -34,6 +34,7 @@ pub struct Settings {
     /// The location bar (the path, the bar beside it). Hidden, it still
     /// shows while the location field or the search is open.
     pub show_locbar: bool,
+    pub show_menubar: bool,
     /// The bar beside the path can't be rearranged: no accidental drags
     /// (on a touchpad, say).
     pub lock_bar: bool,
@@ -61,6 +62,8 @@ pub struct Settings {
     /// The Swap Panes button beside it (shown in split view).
     pub show_swap_button: bool,
     pub show_info_button: bool,
+    /// A new window opens at This PC, not the home folder.
+    pub start_in_this_pc: bool,
     /// Order of the location bar items (see BAR_ITEMS); rearranged by dragging.
     pub bar_order: Vec<String>,
     /// Order of the bulk rename window's tabs (see RENAME_TABS); rearranged by dragging.
@@ -121,6 +124,8 @@ pub struct Settings {
     pub thumbnail_limit: u64,
     /// Side pane entries the user hid, by URI (or "label:Name" for unmounted drives).
     pub hidden_places: Vec<String>,
+    /// Own names for mounted network places and drives: "root uri => name".
+    pub mount_names: Vec<String>,
     /// The Computer entries' order in the side pane, by the same keys
     /// (empty: the usual order; see sidebar::ordered_places).
     pub places_order: Vec<String>,
@@ -146,6 +151,8 @@ pub struct Settings {
     /// The language of Arkha's texts (a translation's code, "en"), or ""
     /// for the system's; applies when Arkha starts (see i18n).
     pub language: String,
+    /// Arkha's own font (a Pango description, "Sans 11"), or "" for the system's.
+    pub font: String,
     /// Folder covers (see info.rs): the file names looked for, ';'-separated
     /// and in order of preference, matched ignoring case.
     pub cover_names: String,
@@ -260,6 +267,7 @@ impl Default for Settings {
             mouse_forward_button: 9,
             list_icons: true,
             show_locbar: true,
+            show_menubar: true,
             lock_bar: true,
             status_hidden: false,
             always_show_tabs: false,
@@ -268,11 +276,12 @@ impl Default for Settings {
             focus_follows_mouse: false,
             focus_follows_mouse_delay: 300,
             new_tabs: "in-order".into(),
-            show_zoom_buttons: true,
-            show_view_buttons: true,
+            show_zoom_buttons: false,
+            show_view_buttons: false,
             show_split_button: true,
             show_swap_button: true,
             show_info_button: true,
+            start_in_this_pc: false,
             bar_order: BAR_ITEMS.iter().map(|g| g.to_string()).collect(),
             rename_tab_order: RENAME_TABS.iter().map(|t| t.to_string()).collect(),
             props_tab_order: PROPS_TABS.iter().map(|t| t.to_string()).collect(),
@@ -302,6 +311,7 @@ impl Default for Settings {
             count_items: "local".into(),
             thumbnail_limit: 100 << 20,
             hidden_places: vec![],
+            mount_names: vec![],
             places_order: vec![],
             hidden_menu_items: vec![],
             menu_order: vec![],
@@ -313,6 +323,7 @@ impl Default for Settings {
             iec_units: false,
             date_format: "informal".into(),
             language: String::new(),
+            font: String::new(),
             cover_names: "folder.jpg; folder.png; cover.jpg; cover.png; front.jpg".into(),
             info_several: "summary".into(),
             info_no_cover: "icon".into(),
@@ -421,6 +432,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     i!(mouse_forward_button);
     b!(list_icons);
     b!(show_locbar);
+    b!(show_menubar);
     b!(lock_bar);
     b!(status_hidden);
     b!(always_show_tabs);
@@ -434,6 +446,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     b!(show_split_button);
     b!(show_swap_button);
     b!(show_info_button);
+    b!(start_in_this_pc);
     b!(path_as_text);
     // Known tabs once each; any missing (e.g. added later) go at the end.
     let tab_order = |v: Vec<String>, known: &[&str]| -> Vec<String> {
@@ -531,6 +544,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
     b!(iec_units);
     st!(date_format);
     st!(language);
+    st!(font);
     st!(cover_names);
     st!(info_several);
     st!(info_no_cover);
@@ -561,6 +575,9 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
         if let Ok(v) = kf.string_list(g, key) {
             *list = v.iter().map(|x| x.to_string()).collect();
         }
+    }
+    if let Ok(v) = kf.string_list(g, "mount_names") {
+        s.mount_names = v.iter().map(|x| x.to_string()).collect();
     }
     if let Ok(v) = kf.string_list(g, "hidden_places") {
         s.hidden_places = v.iter().map(|x| x.to_string()).collect();
@@ -648,6 +665,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_integer(g, "mouse_forward_button", s.mouse_forward_button);
     kf.set_boolean(g, "list_icons", s.list_icons);
     kf.set_boolean(g, "show_locbar", s.show_locbar);
+    kf.set_boolean(g, "show_menubar", s.show_menubar);
     kf.set_boolean(g, "lock_bar", s.lock_bar);
     kf.set_boolean(g, "status_hidden", s.status_hidden);
     kf.set_boolean(g, "always_show_tabs", s.always_show_tabs);
@@ -661,6 +679,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_boolean(g, "show_split_button", s.show_split_button);
     kf.set_boolean(g, "show_swap_button", s.show_swap_button);
     kf.set_boolean(g, "show_info_button", s.show_info_button);
+    kf.set_boolean(g, "start_in_this_pc", s.start_in_this_pc);
     set_string_list(&kf, g, "bar_order", &s.bar_order);
     set_string_list(&kf, g, "rename_tab_order", &s.rename_tab_order);
     set_string_list(&kf, g, "props_tab_order", &s.props_tab_order);
@@ -689,6 +708,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_boolean(g, "iec_units", s.iec_units);
     kf.set_string(g, "date_format", &s.date_format);
     kf.set_string(g, "language", &s.language);
+    kf.set_string(g, "font", &s.font);
     kf.set_string(g, "cover_names", &s.cover_names);
     kf.set_string(g, "info_several", &s.info_several);
     kf.set_string(g, "info_no_cover", &s.info_no_cover);
@@ -705,6 +725,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
         set_string_list(&kf, "Keybindings", action, accels);
     }
     set_string_list(&kf, g, "hidden_places", &s.hidden_places);
+    set_string_list(&kf, g, "mount_names", &s.mount_names);
     set_string_list(&kf, g, "places_order", &s.places_order);
     set_string_list(&kf, g, "automounters_noticed", &s.automounters_noticed);
     kf.set_boolean(g, "autorun_never", s.autorun_never);
@@ -717,6 +738,25 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     set_string_list(&kf, g, "menu_order", &s.menu_order);
     set_string_list(&kf, g, "menu_order_bg", &s.menu_order_bg);
     kf
+}
+
+/// The name the user gave a mounted place (its root's address), if any.
+pub fn mount_name(root_uri: &str) -> Option<String> {
+    let key = root_uri.trim_end_matches('/');
+    with(|s| {
+        s.mount_names.iter().find_map(|e| e.split_once(" => ").filter(|(u, _)| *u == key).map(|(_, n)| n.to_string()))
+    })
+}
+
+/// Gives a mounted place a name of the user's own; an empty one takes it back.
+pub fn set_mount_name(root_uri: &str, name: &str) {
+    let key = root_uri.trim_end_matches('/').to_string();
+    update(|s| {
+        s.mount_names.retain(|e| e.split_once(" => ").is_none_or(|(u, _)| u != key));
+        if !name.trim().is_empty() {
+            s.mount_names.push(format!("{key} => {}", name.trim()));
+        }
+    });
 }
 
 #[cfg(test)]

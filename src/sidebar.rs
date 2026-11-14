@@ -71,8 +71,60 @@ fn notify_unmount_progress(op: &gtk::MountOperation) {
     op.connect_aborted(move |_| close(&progress));
 }
 
+/// Connects the network places kept in the side pane (Windows shares and
+/// the like) once the program has started, as Explorer reconnects its
+/// network drives at sign-in. Silently: a password the keyring has is
+/// used, one it hasn't isn't asked for (the place asks when opened).
+pub fn reconnect_bookmarks() {
+    glib::timeout_add_local_once(std::time::Duration::from_secs(2), || {
+        for (uri, _) in util::read_bookmarks() {
+            let f = gio::File::for_uri(&uri);
+            let scheme = f.uri_scheme().map(|s| s.to_string()).unwrap_or_default();
+            if f.is_native() || !["smb", "sftp", "ssh", "ftp", "ftps", "dav", "davs", "nfs", "afp"].contains(&scheme.as_str()) {
+                continue;
+            }
+            // Already there: nothing to do.
+            if f.find_enclosing_mount(gio::Cancellable::NONE).is_ok() {
+                continue;
+            }
+            let op = gio::MountOperation::new();
+            f.mount_enclosing_volume(gio::MountMountFlags::NONE, Some(&op), gio::Cancellable::NONE, |_| {});
+        }
+    });
+}
+
 /// Section ids (what `sidebar_sections` stores) and headings.
-pub const SECTIONS: &[(&str, &str)] = &[("computer", n_("Computer")), ("devices", n_("Devices")), ("bookmarks", n_("Bookmarks"))];
+pub const SECTIONS: &[(&str, &str)] = &[("computer", n_("This PC")), ("devices", n_("Drives and Network")), ("bookmarks", n_("Quick access"))];
+
+/// Asks for a name: the dialog's text, or None if cancelled. An empty one
+/// takes a name of one's own back.
+pub fn ask_name(parent: Option<&gtk::Window>, title: &str, current: &str) -> Option<String> {
+    let d = gtk::Dialog::with_buttons(
+        Some(title),
+        parent,
+        gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
+        &[(tr("_Cancel").as_str(), gtk::ResponseType::Cancel), (tr("_Rename").as_str(), gtk::ResponseType::Accept)],
+    );
+    d.set_default_response(gtk::ResponseType::Accept);
+    let e = gtk::Entry::new();
+    e.set_text(current);
+    e.set_activates_default(true);
+    e.set_width_chars(30);
+    let area = d.content_area();
+    area.set_border_width(12);
+    area.add(&e);
+    let hint = gtk::Label::new(Some(&tr("Only changes the name shown here; leave it empty to use the original one.")));
+    hint.set_xalign(0.0);
+    hint.style_context().add_class("dim-label");
+    area.add(&hint);
+    d.show_all();
+    let name = (d.run() == gtk::ResponseType::Accept).then(|| e.text().trim().to_string());
+    d.close();
+    name
+}
+
+/// Whether device rows have a button to unmount / eject them.
+const SHOW_EJECT_BUTTONS: bool = false;
 
 const SECTION_TARGET: &str = "ARKHA_SIDEBAR_SECTION";
 const BOOKMARK_TARGET: &str = "ARKHA_SIDEBAR_BOOKMARK";
@@ -438,13 +490,19 @@ impl Sidebar {
                 out.push(volume_item(&v, None));
             }
         }
-        // Mounts without a volume: network shares and the like.
+        // Mounts without a volume: network drives and the like.
         for mount in m.mounts() {
             if mount.is_shadowed() || mount.volume().is_some() {
                 continue;
             }
             out.push(mount_item(&mount, None, None));
         }
+        // Explorer's Network.
+        let mut net = place(gio::File::for_uri("network:///"), &tr("Network"), "network-workgroup-symbolic");
+        net.key = None;
+        net.section = "devices";
+        net.tooltip = Some(tr("Network"));
+        out.push(net);
         out
     }
 
@@ -455,19 +513,25 @@ impl Sidebar {
         row.set_can_focus(false);
         let title = SECTIONS.iter().find(|(s, _)| *s == id).map_or(id, |(_, t)| t);
         let label = gtk::Label::new(None);
-        label.set_markup(&format!("<b>{}</b>", glib::markup_escape_text(&tr(title))));
+        label.set_text(&tr(title));
         label.set_xalign(0.0);
         label.set_hexpand(true);
-        label.style_context().add_class("dim-label");
+        label.style_context().add_class("sidebar-heading");
+        let heading_icon = match id {
+            "computer" => "computer-symbolic",
+            "devices" => "drive-harddisk-symbolic",
+            _ => "starred-symbolic",
+        };
         // An arrow in front of the title shows whether the section is open.
         let collapsed = config::get().sidebar_collapsed.iter().any(|c| c == id);
         let arrow = gtk::Image::from_icon_name(Some(if collapsed { "pan-end-symbolic" } else { "pan-down-symbolic" }), gtk::IconSize::Menu);
         arrow.style_context().add_class("dim-label");
         arrow.set_margin_start(4);
-        let hb = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-        hb.set_margin_top(8);
+        let hb = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        hb.set_margin_top(6);
         hb.set_margin_bottom(2);
         hb.add(&arrow);
+        hb.add(&gtk::Image::from_gicon(&colored(&gio::ThemedIcon::new(heading_icon).upcast()), gtk::IconSize::Menu));
         hb.add(&label);
         let ev = gtk::EventBox::new();
         ev.set_visible_window(false);
@@ -490,6 +554,11 @@ impl Sidebar {
         ev.connect_button_release_event(move |_, e| {
             if let (Some(s), 1) = (w.upgrade(), e.button()) {
                 if s.pressed_header.take() == Some(id) {
+                    // Like Explorer's tree: This PC opens, its arrow folds.
+                    if id == "computer" && e.position().0 > 24.0 {
+                        s.request(Request::Open(gio::File::for_uri("computer:///"), OpenIn::Current));
+                        return glib::Propagation::Proceed;
+                    }
                     config::update(|c| {
                         if c.sidebar_collapsed.iter().any(|x| x == id) {
                             c.sidebar_collapsed.retain(|x| x != id);
@@ -523,10 +592,10 @@ impl Sidebar {
         let row = gtk::ListBoxRow::new();
         row.style_context().add_class("sidebar-row");
         let hb = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        hb.set_margin_start(14);
+        hb.set_margin_start(26);
         hb.set_margin_end(4);
         if let Some(icon) = &item.icon {
-            let img = gtk::Image::from_gicon(icon, gtk::IconSize::Menu);
+            let img = gtk::Image::from_gicon(&colored(icon), gtk::IconSize::Menu);
             img.style_context().add_class("sidebar-icon");
             hb.add(&img);
         }
@@ -536,7 +605,9 @@ impl Sidebar {
         label.set_hexpand(true);
         label.style_context().add_class("sidebar-label");
         hb.add(&label);
-        if let Some(kind) = eject_kind(item) {
+        // Explorer's navigation pane has no eject buttons: drives are taken
+        // out with the context menu (or in This PC).
+        if let Some(kind) = eject_kind(item).filter(|_| SHOW_EJECT_BUTTONS) {
             let b = gtk::Button::from_icon_name(Some("media-eject-symbolic"), gtk::IconSize::Menu);
             b.set_relief(gtk::ReliefStyle::None);
             b.set_can_focus(false);
@@ -788,6 +859,18 @@ impl Sidebar {
             for (l, f) in device {
                 add(l, f);
             }
+        }
+        if let (Some(m), None) = (&item.mount, &item.bookmark) {
+            sep();
+            let (w1, root, label) = (w.clone(), m.root().uri().to_string(), item.label.clone());
+            add(n_("Re_name…"), Box::new(move || {
+                if let Some(s) = w1.upgrade() {
+                    if let Some(name) = ask_name(s.parent_window().as_ref(), &tr("Rename"), &label) {
+                        config::set_mount_name(&root, &name);
+                        refresh_all();
+                    }
+                }
+            }));
         }
         if let Some(uri) = &item.bookmark {
             sep();
@@ -1107,6 +1190,21 @@ impl Item {
     }
 }
 
+/// The icon in color, as Explorer's navigation pane has them: a themed
+/// icon's names without "-symbolic" first, the symbolic ones as fallback.
+fn colored(icon: &gio::Icon) -> gio::Icon {
+    match icon.downcast_ref::<gio::ThemedIcon>() {
+        Some(t) => {
+            let names: Vec<String> = t.names().iter().map(|n| n.to_string()).collect();
+            let mut all: Vec<String> = names.iter().map(|n| n.trim_end_matches("-symbolic").to_string()).collect();
+            all.extend(names);
+            let refs: Vec<&str> = all.iter().map(String::as_str).collect();
+            gio::ThemedIcon::from_names(&refs).upcast()
+        }
+        None => icon.clone(),
+    }
+}
+
 fn place(f: gio::File, label: &str, icon: &str) -> Item {
     let tooltip = f.path().map(|p| p.to_string_lossy().to_string()).or_else(|| Some(f.uri().to_string()));
     Item {
@@ -1247,8 +1345,8 @@ fn volume_item(v: &gio::Volume, d: Option<&gio::Drive>) -> Item {
 }
 
 fn mount_item(m: &gio::Mount, v: Option<&gio::Volume>, d: Option<&gio::Drive>) -> Item {
-    let name = m.name().to_string();
     let root = m.root();
+    let name = config::mount_name(&root.uri()).unwrap_or_else(|| m.name().to_string());
     let tooltip = root.path().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| root.uri().to_string());
     Item {
         icon: Some(m.symbolic_icon()),

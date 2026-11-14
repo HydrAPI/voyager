@@ -28,6 +28,8 @@ impl AppWindow {
         let pages = gtk::ListBox::new();
         pages.style_context().add_class("sidebar");
         pages.set_size_request(170, -1);
+        // Each page's row and content, for the search box.
+        let index: RefCell<Vec<(gtk::ListBoxRow, gtk::Widget, String)>> = RefCell::default();
         let add_page = |name: &str, title: &str, icon: &str, content: &gtk::Box| {
             let sw = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
             sw.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
@@ -41,6 +43,7 @@ impl AppWindow {
             row.add(&hb);
             row.set_widget_name(name);
             pages.add(&row);
+            index.borrow_mut().push((row, content.clone().upcast(), title.to_string()));
         };
         let f = Form { dialog: d.clone(), labels: gtk::SizeGroup::new(gtk::SizeGroupMode::Horizontal) };
         add_page("views", &tr("Views"), "view-grid-symbolic", &self.views_page(&f, &s));
@@ -72,8 +75,44 @@ impl AppWindow {
             });
         }
         pages.select_row(pages.row_at_index(0).as_ref());
+        // A search box above the pages: pages with no match are hidden and
+        // what matches is marked.
+        let search = gtk::SearchEntry::new();
+        search.set_placeholder_text(Some(&tr("Search preferences")));
+        search.set_margin_start(8);
+        search.set_margin_end(8);
+        search.set_margin_top(8);
+        search.set_margin_bottom(4);
+        {
+            let index = index.into_inner();
+            let pages = pages.clone();
+            search.connect_search_changed(move |e| {
+                let q = e.text().to_lowercase();
+                let q = q.trim();
+                let mut first: Option<gtk::ListBoxRow> = None;
+                let mut current_ok = false;
+                for (row, content, title) in &index {
+                    let hits = if q.is_empty() { vec![] } else { search_hits(content, q) };
+                    mark_hits(content, q);
+                    let shown = q.is_empty() || !hits.is_empty() || title.to_lowercase().contains(q);
+                    row.set_visible(shown);
+                    if shown && first.is_none() {
+                        first = Some(row.clone());
+                    }
+                    if shown && pages.selected_row().as_ref() == Some(row) {
+                        current_ok = true;
+                    }
+                }
+                if !current_ok {
+                    pages.select_row(first.as_ref());
+                }
+            });
+        }
+        let left = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        left.add(&search);
+        left.add(&pages);
         let hb = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        hb.add(&pages);
+        hb.add(&left);
         hb.add(&gtk::Separator::new(gtk::Orientation::Vertical));
         hb.add(&stack);
         let area = d.content_area();
@@ -299,6 +338,8 @@ impl AppWindow {
         f.head(&b, &tr("Opening"));
         let single = setting_check(&tr("_Single click to open items"), None, s.single_click, |s, v| s.single_click = v, |_| for_all_panes(|p| p.apply_click_policy()));
         f.indent(&b, single.upcast_ref());
+        let this_pc = setting_check(&tr("Open new windows at _This PC, not the home folder"), None, s.start_in_this_pc, |s, v| s.start_in_this_pc = v, |_| {});
+        f.indent(&b, this_pc.upcast_ref());
         f.head(&b, &tr("Tabs"));
         let tabs = gtk::ComboBoxText::new();
         for (id, name) in [("in-order", tr("After the current tab, in order")), ("after", tr("Right after the current tab")), ("end", tr("At the end"))] {
@@ -364,6 +405,32 @@ impl AppWindow {
     fn display_page(self: &Rc<Self>, f: &Form, s: &config::Settings) -> gtk::Box {
         // Display
         let dp = Form::page();
+        f.head(&dp, &tr("Font"));
+        let font = gtk::FontButton::new();
+        font.set_use_font(true);
+        if !s.font.is_empty() {
+            font.set_font(&s.font);
+        } else if let Some(n) = gtk::Settings::default().and_then(|st| st.gtk_font_name()) {
+            font.set_font(&n);
+        }
+        font.connect_font_set(|b| {
+            if let Some(n) = b.font() {
+                config::update(|s| s.font = n.to_string());
+                crate::theme::apply_font();
+            }
+        });
+        let system_font = gtk::Button::with_label(&tr("Use the system font"));
+        {
+            let font = font.clone();
+            system_font.connect_clicked(move |_| {
+                config::update(|s| s.font = String::new());
+                crate::theme::apply_font();
+                if let Some(n) = gtk::Settings::default().and_then(|st| st.gtk_font_name()) {
+                    font.set_font(&n);
+                }
+            });
+        }
+        f.inline(&dp, &tr("Font:"), &[font.upcast_ref(), system_font.upcast_ref()]);
         f.head(&dp, &tr("Language"));
         // The system's, English, or a translation; each by its own name.
         let lang = gtk::ComboBoxText::new();
@@ -877,6 +944,51 @@ impl Form {
         }
         self.indent(b, hb.upcast_ref());
         hb
+    }
+}
+
+/// The texts a page shows: labels, buttons and tooltips.
+fn widget_texts(w: &gtk::Widget, out: &mut Vec<(gtk::Widget, String)>) {
+    let mut text = String::new();
+    if let Some(l) = w.downcast_ref::<gtk::Label>() {
+        text.push_str(&l.text());
+    } else if let Some(b) = w.downcast_ref::<gtk::Button>() {
+        if let Some(l) = b.label() {
+            text.push_str(&l);
+        }
+    }
+    if let Some(t) = w.tooltip_text() {
+        text.push(' ');
+        text.push_str(&t);
+    }
+    if !text.trim().is_empty() {
+        out.push((w.clone(), text.replace('_', "").to_lowercase()));
+    }
+    if let Some(c) = w.downcast_ref::<gtk::Container>() {
+        for child in c.children() {
+            widget_texts(&child, out);
+        }
+    }
+}
+
+/// The widgets on a page whose text has `q`.
+fn search_hits(content: &gtk::Widget, q: &str) -> Vec<gtk::Widget> {
+    let mut all = vec![];
+    widget_texts(content, &mut all);
+    all.into_iter().filter(|(_, t)| t.contains(q)).map(|(w, _)| w).collect()
+}
+
+/// Marks the widgets with `q` in their text (none for an empty `q`).
+fn mark_hits(content: &gtk::Widget, q: &str) {
+    let mut all = vec![];
+    widget_texts(content, &mut all);
+    for (w, t) in all {
+        let ctx = w.style_context();
+        if !q.is_empty() && t.contains(q) && (w.is::<gtk::Label>() || w.is::<gtk::Button>()) {
+            ctx.add_class("arkha-search-hit");
+        } else {
+            ctx.remove_class("arkha-search-hit");
+        }
     }
 }
 
