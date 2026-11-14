@@ -61,9 +61,6 @@ body:
       options:
         - .deb from the release page
         - .rpm from the release page
-        - AUR (voyager)
-        - AUR (voyager-bin)
-        - AUR (voyager-git)
         - Prebuilt tarball from the release page
         - A package from my distribution
         - Built from source

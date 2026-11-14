@@ -42,13 +42,13 @@ The [full list of features](docs/FEATURES.md) has every detail.
 
 ## Installing
 
-Packages for each release are on the project's Releases page, and for Arch Linux also in the AUR:
+Packages for each release are on the project's Releases page:
 
 - **Debian 13 or newer, Ubuntu 26.04 or newer:** `sudo apt install ./voyager_*.deb`
 - **Fedora:** `sudo dnf install ./voyager-*.rpm`
-- **Arch Linux:** `sudo pacman -U ./voyager-*.pkg.tar.zst`, or from the AUR: `voyager` (built from the release's sources), `voyager-bin` (prebuilt) or `voyager-git` (the newest development version).
+- **Arch Linux:** `sudo pacman -U ./voyager-*.pkg.tar.zst`
 
-Voyager uses GVfs for the Trash, network places and drives; most desktops have it already. To build it yourself, see [BUILDING.md](BUILDING.md). If you package Voyager for a distribution, build it from a release's git tag, never from the prebuilt files: see [Packaging Voyager for a distribution](BUILDING.md#packaging-voyager-for-a-distribution).
+Voyager uses GVfs for the Trash, network places and drives; most desktops have it already. Windows shares (SMB) and finding computers in the network need its SMB, WSDD and DNS-SD backends (`gvfs-smb`, `gvfs-wsdd`, `gvfs-dnssd` on Arch; `gvfs-backends` on Debian and Ubuntu). To build it yourself, see [BUILDING.md](BUILDING.md). If you package Voyager for a distribution, build it from a release's git tag, never from the prebuilt files: see [Packaging Voyager for a distribution](BUILDING.md#packaging-voyager-for-a-distribution).
 
 Your settings are kept in `~/.config/voyager/`.
 

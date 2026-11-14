@@ -2,7 +2,7 @@
 
 - **Debian 13 or newer, Ubuntu 26.04 or newer:** the `.deb`, installed with `sudo apt install ./voyager_*.deb`
 - **Fedora:** the `.rpm`, installed with `sudo dnf install ./voyager-*.rpm`
-- **Arch Linux:** the `.pkg.tar.zst`, installed with `sudo pacman -U ./voyager-*.pkg.tar.zst`, or `voyager`, `voyager-bin` or `voyager-git` from the AUR
+- **Arch Linux:** the `.pkg.tar.zst`, installed with `sudo pacman -U ./voyager-*.pkg.tar.zst`
 - **Other distributions:** `voyager-<version>-x86_64.tar.gz`, the program to run from its folder (it needs GTK 3 and GVfs)
 
 `SHA256SUMS` has the files' checksums.
