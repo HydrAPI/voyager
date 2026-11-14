@@ -74,6 +74,11 @@
 
   <!-- Each release gets a line, newest first (see BUILDING.md). -->
   <releases>
+    <release version="1.0.1" date="2026-11-14">
+      <description>
+        <p>The prebuilt program for other distributions now includes the German translation, which the one of 1.0.0 was missing.</p>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-11-14"/>
   </releases>
 </component>
