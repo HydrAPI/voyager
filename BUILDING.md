@@ -38,7 +38,7 @@ cd packaging/arch
 makepkg -si
 ```
 
-The AUR packages are in `packaging/aur/` (they are Arkha's, the project Voyager started from; Voyager has none in the AUR yet), each folder with its `PKGBUILD` and `.SRCINFO` as uploaded to the AUR:
+The AUR packages are in `packaging/aur/` (`voyager` and `voyager-git`; `voyager-bin` follows once a release is published, and none of them is uploaded to the AUR yet), each folder with its `PKGBUILD` and `.SRCINFO` as uploaded to the AUR:
 
 - `voyager` builds the latest release from its sources (GitHub's tarball of the tag `v<version>`);
 - `voyager-git` builds the newest commit on `master`;

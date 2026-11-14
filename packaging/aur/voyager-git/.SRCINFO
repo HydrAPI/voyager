@@ -1,8 +1,8 @@
-pkgbase = arkha-git
+pkgbase = voyager-git
 	pkgdesc = A fast graphical file manager (development version from master)
-	pkgver = 1.0.0dev.r146.ged117ec
+	pkgver = 1.1.0.r1.g9abc5dd
 	pkgrel = 1
-	url = https://github.com/dekart811/arkha
+	url = https://github.com/HydrAPI/voyager
 	arch = x86_64
 	arch = aarch64
 	license = GPL-3.0-or-later
@@ -25,14 +25,16 @@ pkgbase = arkha-git
 	optdepends = gvfs-mtp: phones and media players over MTP
 	optdepends = gvfs-gphoto2: cameras
 	optdepends = gvfs-smb: Windows and Samba network shares
+	optdepends = gvfs-wsdd: finding Windows computers in the network
+	optdepends = gvfs-dnssd: finding computers in the network (Avahi)
 	optdepends = engrampa: creating and extracting archives
 	optdepends = file-roller: creating and extracting archives
 	optdepends = xarchiver: creating and extracting archives
 	optdepends = xterm: Open in Terminal, if no other terminal is installed
-	provides = arkha
-	conflicts = arkha
+	provides = voyager
+	conflicts = voyager
 	options = !debug
-	source = arkha::git+https://github.com/dekart811/arkha.git#branch=master
+	source = voyager::git+https://github.com/HydrAPI/voyager.git#branch=master
 	sha256sums = SKIP
 
-pkgname = arkha-git
+pkgname = voyager-git

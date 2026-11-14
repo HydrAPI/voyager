@@ -1,11 +1,12 @@
-# Maintainer: dekart811 <mail@dekart811.net>
+# Maintainer: HydrAPI <245955427+HydrAPI@users.noreply.github.com>
+# Voyager is a fork of Arkha by dekart811 (github.com/dekart811/arkha).
 
-pkgname=arkha
-pkgver=1.0.1
+pkgname=voyager
+pkgver=1.1.0
 pkgrel=1
 pkgdesc='A fast graphical file manager'
 arch=('x86_64' 'aarch64')
-url='https://github.com/dekart811/arkha'
+url='https://github.com/HydrAPI/voyager'
 license=('GPL-3.0-or-later')
 depends=(
   'at-spi2-core'
@@ -27,6 +28,8 @@ optdepends=(
   'gvfs-mtp: phones and media players over MTP'
   'gvfs-gphoto2: cameras'
   'gvfs-smb: Windows and Samba network shares'
+  'gvfs-wsdd: finding Windows computers in the network'
+  'gvfs-dnssd: finding computers in the network (Avahi)'
   'engrampa: creating and extracting archives'
   'file-roller: creating and extracting archives'
   'xarchiver: creating and extracting archives'
@@ -37,7 +40,7 @@ options=('!debug')
 # The release's sources, as GitHub packs the tag v$pkgver. The checksum is
 # set for each release (updpkgsums, then makepkg --printsrcinfo > .SRCINFO).
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('19ae1baebe8df4d1c727b7d2725755ded8e934e791e9c7f638bc658c5a3e1958')
+sha256sums=('254c24a4c482a8802d20d4536a799e6f8b0d0a534e6ae9c08042ebc61946f5b6')
 
 prepare() {
   cd "$pkgname-$pkgver"
@@ -61,12 +64,12 @@ check() {
 
 package() {
   cd "$pkgname-$pkgver"
-  install -Dm755 target/release/arkha "$pkgdir/usr/bin/arkha"
-  install -Dm644 arkha.desktop "$pkgdir/usr/share/applications/arkha.desktop"
-  install -Dm644 data/arkha.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/arkha.svg"
-  install -Dm644 data/io.github.dekart811.Arkha.metainfo.xml "$pkgdir/usr/share/metainfo/io.github.dekart811.Arkha.metainfo.xml"
+  install -Dm755 target/release/voyager "$pkgdir/usr/bin/voyager"
+  install -Dm644 voyager.desktop "$pkgdir/usr/share/applications/voyager.desktop"
+  install -Dm644 data/voyager.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/voyager.svg"
+  install -Dm644 data/io.github.HydrAPI.Voyager.metainfo.xml "$pkgdir/usr/share/metainfo/io.github.HydrAPI.Voyager.metainfo.xml"
   # The translations build.rs made from po/*.po.
-  for mo in target/release/locale/*/LC_MESSAGES/arkha.mo; do
+  for mo in target/release/locale/*/LC_MESSAGES/voyager.mo; do
     install -Dm644 "$mo" "$pkgdir/usr/share/locale/${mo#target/release/locale/}"
   done
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
