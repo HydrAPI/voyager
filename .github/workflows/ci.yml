@@ -1,8 +1,10 @@
 # Checks every push to master and every pull request: the build, the tests,
-# clippy, the translations and their {placeholders}, that Arkha still
-# builds with its oldest supported Rust (Debian 13's), and that it builds
-# and installs as a Fedora and an Arch Linux package (as the release
-# workflow makes them).
+# clippy, the translations and their {placeholders}, and a package for
+# every distribution Arkha supports, built and installed in a container of
+# that distribution as the release workflow makes it: Debian 13 (with its
+# Rust 1.85, the oldest Arkha supports), Ubuntu 26.04 (also the Debian
+# package, which the release offers for it), Fedora and Arch Linux, and the
+# prebuilt program for the others.
 name: CI
 
 on:
@@ -45,18 +47,70 @@ jobs:
       - name: Placeholders
         run: python3 tools/check-placeholders.py
 
-  oldest-rust:
-    name: Build with Debian 13's Rust (1.85)
+  debian:
+    name: Debian package (Rust 1.85)
     runs-on: ubuntu-24.04
     container: debian:13
     steps:
-      - name: Install Rust, GTK 3 and gettext
+      - name: Install the build dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates cargo rustc libgtk-3-dev gettext pkg-config build-essential
+          apt-get install -y --no-install-recommends ca-certificates git cargo rustc libgtk-3-dev gettext pkg-config build-essential dpkg-dev
       - uses: actions/checkout@v7
-      - name: Build
-        run: cargo build --locked
+      # Debian's own Rust: 1.85, the oldest Arkha supports.
+      - name: Build the package
+        run: sh packaging/deb/build.sh
+      - name: Its files
+        run: dpkg-deb -c target/deb/*.deb
+      # Its dependencies resolve, from Debian's own repositories.
+      - name: Install it
+        run: apt-get install -y ./target/deb/*.deb
+      # For the Ubuntu job: the release's .deb is this one.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deb-debian
+          path: target/deb/*.deb
+          if-no-files-found: error
+
+  ubuntu:
+    name: Ubuntu package
+    needs: debian
+    runs-on: ubuntu-24.04
+    container: ubuntu:26.04
+    steps:
+      - name: Install the build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git cargo rustc libgtk-3-dev gettext pkg-config build-essential dpkg-dev
+      - uses: actions/checkout@v7
+      - name: Build the package
+        run: sh packaging/deb/build.sh
+      - name: Install it
+        run: apt-get install -y ./target/deb/*.deb
+      # The release offers the package built on Debian for Ubuntu too.
+      - uses: actions/download-artifact@v8
+        with:
+          name: deb-debian
+          path: debian-deb
+      - name: Install the Debian package instead
+        run: |
+          apt-get remove -y arkha
+          apt-get install -y ./debian-deb/*.deb
+
+  prebuilt:
+    name: Prebuilt program (other distributions)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install GTK 3 and gettext
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-3-dev gettext
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build it
+        run: sh packaging/tarball/build.sh
+      - name: Its files
+        run: tar -tzvf target/tarball/*.tar.gz
 
   fedora:
     name: Fedora package
