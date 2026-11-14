@@ -1,6 +1,6 @@
 # <img src="data/arkha.svg" alt="" height="32" align="absmiddle"> Arkha
 
-A fast graphical file manager for Linux, modelled on Caja (MATE). It uses your desktop's GTK theme, icons and bookmarks, and feels at home on MATE, but works on any desktop.
+A fast graphical file manager for Linux, with the look of Windows Explorer and the features of Caja (MATE). It uses your desktop's GTK theme, icons and bookmarks, and feels at home on MATE, but works on any desktop.
 
 <!-- Light or dark, as the reader's GitHub is; made with Adwaita and Papirus. -->
 <picture>
@@ -26,7 +26,7 @@ A fast graphical file manager for Linux, modelled on Caja (MATE). It uses your d
 
 ## Highlights
 
-- **Familiar:** menus, toolbar, path bar, side pane and tabs as in Caja, and notes, emblems, custom icons and bookmarks shared with it.
+- **Familiar:** the look and layout of Windows Explorer (address bar, command bar, navigation pane, This PC with drive bars, network and Windows shares), and notes, emblems, custom icons and bookmarks shared with Caja.
 - **Four views:** icons, list, compact and columns, with the list's columns and sort order your choice.
 - **Split view:** two panes side by side, each with its own tabs, swapped with Ctrl+U.
 - **Tabs like a browser:** reopen closed tabs, drag them between windows or out into a new one.
