@@ -815,7 +815,8 @@ mod tests {
     #[test]
     fn random_names_keep_their_characters() {
         crate::testutil::cases(3000, |r| {
-            let name = r.text(20);
+            // A file name: never a NUL in it.
+            let name = r.text(20).replace('\0', "");
             assert_eq!(breakable(&name).replace('\u{200b}', ""), name.replace('\u{200b}', ""));
             let _ = crate::pane::collate_key(&name);
         });

@@ -922,7 +922,8 @@ mod tests {
             let kf = to_keyfile(&def);
             for _ in 0..r.below(6) {
                 let value = if r.chance(2) { r.int(-1000, 1000).to_string() } else { r.text(12) };
-                kf.set_value("General", r.pick(&keys), &value.replace('\n', " "));
+                // A line in a text file: no line break, no NUL.
+                kf.set_value("General", r.pick(&keys), &value.replace('\n', " ").replace('\0', ""));
             }
             let s = from_keyfile(&kf);
             assert!(s.icon_levels.contains(&s.icon_size) && s.list_levels.contains(&s.list_size) && s.compact_levels.contains(&s.compact_size));

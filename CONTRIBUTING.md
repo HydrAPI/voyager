@@ -12,6 +12,7 @@ Every push to `master` and every pull request is checked on GitHub (`.github/wor
 
 ```sh
 cargo test --release                                  # unit tests (no display needed)
+cargo test                                            # the same as a debug build, as CI runs them (also checks what's handed to GLib)
 ARKHA_RANDOM_CASES=50 cargo test --release random     # the randomized tests, 50 times as many inputs
 cargo test --release -- --ignored stress              # file operation stress tests (ARKHA_STRESS_FILES=n)
 tools/soak.py --backend x11 --minutes 30              # the whole program, driven at random
