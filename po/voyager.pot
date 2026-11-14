@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Voyager 1.1.0\n"
+"Project-Id-Version: Voyager 1.1.1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-14 22:02+0100\n"
+"POT-Creation-Date: 2026-11-14 22:46+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -304,20 +304,21 @@ msgstr ""
 msgid "_Always perform this action"
 msgstr ""
 
-#: src/autorun.rs:341 src/sidebar.rs:850
+#: src/autorun.rs:341 src/sidebar.rs:118 src/sidebar.rs:888 src/thispc.rs:411
 msgid "_Eject"
 msgstr ""
 
-#: src/autorun.rs:341 src/sidebar.rs:842 src/thispc.rs:365
+#: src/autorun.rs:341 src/sidebar.rs:119 src/sidebar.rs:880 src/thispc.rs:400
 msgid "_Unmount"
 msgstr ""
 
 #: src/autorun.rs:348 src/backgrounds.rs:379 src/backgrounds.rs:429
-#: src/connect.rs:114 src/connect.rs:220 src/ops.rs:2103 src/ops.rs:2167
-#: src/props.rs:469 src/props.rs:567 src/props.rs:1094 src/sidebar.rs:106
-#: src/sidebar.rs:925 src/window.rs:2884 src/window.rs:3102 src/window.rs:3230
-#: src/window.rs:3391 src/window/prefs.rs:1033 src/window/prefs.rs:1586
-#: src/window/prefs.rs:1703 src/window/prefs.rs:1779
+#: src/connect.rs:114 src/connect.rs:220 src/format.rs:103 src/ops.rs:2103
+#: src/ops.rs:2167 src/props.rs:469 src/props.rs:567 src/props.rs:1094
+#: src/sidebar.rs:104 src/sidebar.rs:136 src/sidebar.rs:975 src/window.rs:2884
+#: src/window.rs:3102 src/window.rs:3230 src/window.rs:3391
+#: src/window/prefs.rs:1033 src/window/prefs.rs:1586 src/window/prefs.rs:1703
+#: src/window/prefs.rs:1779
 msgid "_Cancel"
 msgstr ""
 
@@ -406,8 +407,8 @@ msgstr ""
 msgid "{name}: drag it onto an item"
 msgstr ""
 
-#: src/backgrounds.rs:195 src/sidebar.rs:884 src/window/prefs.rs:1564
-#: src/window/prefs.rs:1918
+#: src/backgrounds.rs:195 src/sidebar.rs:117 src/sidebar.rs:934
+#: src/window/prefs.rs:1564 src/window/prefs.rs:1918
 msgid "_Remove"
 msgstr ""
 
@@ -940,6 +941,56 @@ msgstr ""
 msgid "Original Location"
 msgstr ""
 
+#: src/format.rs:100
+#, rust-format
+msgid "Format “{name}”"
+msgstr ""
+
+#: src/format.rs:103
+msgid "_Format"
+msgstr ""
+
+#: src/format.rs:114
+#, rust-format
+msgid ""
+"All files on “{name}” (/dev/{dev}) will be erased. This cannot be undone."
+msgstr ""
+
+#: src/format.rs:128
+msgid "_File system:"
+msgstr ""
+
+#: src/format.rs:131 src/window/prefs.rs:2011 src/window/prefs.rs:2149
+msgid "_Name:"
+msgstr ""
+
+#: src/format.rs:138
+msgid "_Overwrite the old data (slow, but it can't be recovered)"
+msgstr ""
+
+#: src/format.rs:140
+msgid "I _understand that everything on it will be lost"
+msgstr ""
+
+#: src/format.rs:162
+#, rust-format
+msgid "Formatting “{name}”…"
+msgstr ""
+
+#: src/format.rs:163
+msgid "Please wait, and don't take the drive out."
+msgstr ""
+
+#: src/format.rs:167
+#, rust-format
+msgid "Could not format “{name}”"
+msgstr ""
+
+#: src/format.rs:197
+#, rust-format
+msgid "“{name}” was formatted"
+msgstr ""
+
 #: src/i18n.rs:105 src/i18n.rs:106 src/i18n.rs:107 src/info.rs:255
 #: src/ops.rs:1389 src/pane.rs:1659 src/pane.rs:4039 src/pane.rs:4057
 #: src/props.rs:301 src/props.rs:482
@@ -1106,12 +1157,12 @@ msgstr ""
 msgid "File system"
 msgstr ""
 
-#: src/keys.rs:50 src/sidebar.rs:1252
+#: src/keys.rs:50 src/sidebar.rs:1302
 msgid "Desktop"
 msgstr ""
 
-#: src/keys.rs:51 src/pane.rs:1236 src/pane/build.rs:208 src/sidebar.rs:1267
-#: src/sidebar.rs:1268 src/window.rs:2459 src/window/prefs.rs:375
+#: src/keys.rs:51 src/pane.rs:1236 src/pane/build.rs:208 src/sidebar.rs:1317
+#: src/sidebar.rs:1318 src/window.rs:2459 src/window/prefs.rs:375
 msgid "Trash"
 msgstr ""
 
@@ -1193,7 +1244,7 @@ msgstr ""
 msgid "Redo the last undone file operation"
 msgstr ""
 
-#: src/keys.rs:73 src/sidebar.rs:868 src/thispc.rs:354 src/window.rs:454
+#: src/keys.rs:73 src/sidebar.rs:918 src/thispc.rs:351 src/window.rs:454
 msgid "Rename"
 msgstr ""
 
@@ -1823,7 +1874,7 @@ msgstr ""
 msgid "_Replace"
 msgstr ""
 
-#: src/ops.rs:2120 src/sidebar.rs:106 src/sidebar.rs:925
+#: src/ops.rs:2120 src/sidebar.rs:136 src/sidebar.rs:975
 msgid "_Rename"
 msgstr ""
 
@@ -1852,15 +1903,15 @@ msgstr ""
 msgid "This PC"
 msgstr ""
 
-#: src/pane.rs:1242 src/sidebar.rs:501 src/sidebar.rs:504 src/window.rs:2455
+#: src/pane.rs:1242 src/sidebar.rs:531 src/sidebar.rs:534 src/window.rs:2455
 msgid "Network"
 msgstr ""
 
-#: src/pane.rs:1245 src/sidebar.rs:1261 src/thispc.rs:172 src/window.rs:2464
+#: src/pane.rs:1245 src/sidebar.rs:1311 src/thispc.rs:172 src/window.rs:2464
 msgid "File System"
 msgstr ""
 
-#: src/pane.rs:1248 src/sidebar.rs:1232 src/window.rs:2457
+#: src/pane.rs:1248 src/sidebar.rs:1282 src/window.rs:2457
 msgid "Home"
 msgstr ""
 
@@ -2337,7 +2388,7 @@ msgstr ""
 msgid "_Revert"
 msgstr ""
 
-#: src/props.rs:1095 src/sidebar.rs:817 src/thispc.rs:342
+#: src/props.rs:1095 src/sidebar.rs:855 src/thispc.rs:339
 #: src/window/menus.rs:179 src/window/menus.rs:186
 msgid "_Open"
 msgstr ""
@@ -2507,119 +2558,144 @@ msgstr ""
 msgid "Quick access"
 msgstr ""
 
-#: src/sidebar.rs:116
+#: src/sidebar.rs:117
+#, rust-format
+msgid "Safely remove “{name}”?"
+msgstr ""
+
+#: src/sidebar.rs:118
+#, rust-format
+msgid "Eject “{name}”?"
+msgstr ""
+
+#: src/sidebar.rs:119
+#, rust-format
+msgid "Unmount “{name}”?"
+msgstr ""
+
+#: src/sidebar.rs:124
+msgid ""
+"Make sure no files on it are in use and nothing is being copied to or from "
+"it: data not written yet can be lost."
+msgstr ""
+
+#: src/sidebar.rs:146
 msgid ""
 "Only changes the name shown here; leave it empty to use the original one."
 msgstr ""
 
-#: src/sidebar.rs:540
+#: src/sidebar.rs:570
 msgid "Click to show this section, drag onto another heading to move it there"
 msgstr ""
 
-#: src/sidebar.rs:542
+#: src/sidebar.rs:572
 msgid ""
 "Click to hide this section’s entries, drag onto another heading to move it "
 "there"
 msgstr ""
 
-#: src/sidebar.rs:619
+#: src/sidebar.rs:649
 msgid "Unmount"
 msgstr ""
 
-#: src/sidebar.rs:620
+#: src/sidebar.rs:650
 msgid "Safely remove"
 msgstr ""
 
-#: src/sidebar.rs:621
+#: src/sidebar.rs:651
 msgid "Eject"
 msgstr ""
 
-#: src/sidebar.rs:733
+#: src/sidebar.rs:763
 #, rust-format
 msgid "Unable to mount “{name}”"
 msgstr ""
 
-#: src/sidebar.rs:771
+#: src/sidebar.rs:809
 #, rust-format
 msgid "Unable to unmount “{name}”"
 msgstr ""
 
-#: src/sidebar.rs:776
+#: src/sidebar.rs:814
 #, rust-format
 msgid "“{name}” can be removed safely"
 msgstr ""
 
-#: src/sidebar.rs:778
+#: src/sidebar.rs:816
 #, rust-format
 msgid "Unable to safely remove “{name}”"
 msgstr ""
 
-#: src/sidebar.rs:782
+#: src/sidebar.rs:820
 #, rust-format
 msgid "“{name}” was ejected"
 msgstr ""
 
-#: src/sidebar.rs:785 src/sidebar.rs:788 src/sidebar.rs:791
+#: src/sidebar.rs:823 src/sidebar.rs:826 src/sidebar.rs:829
 #, rust-format
 msgid "Unable to eject “{name}”"
 msgstr ""
 
-#: src/sidebar.rs:818 src/window/menus.rs:180
+#: src/sidebar.rs:856 src/window/menus.rs:180
 msgid "Open in New _Tab"
 msgstr ""
 
-#: src/sidebar.rs:819 src/window/menus.rs:181
+#: src/sidebar.rs:857 src/window/menus.rs:181
 msgid "Open in New _Window"
 msgstr ""
 
-#: src/sidebar.rs:826
+#: src/sidebar.rs:864
 msgid "_Mount"
 msgstr ""
 
-#: src/sidebar.rs:848
+#: src/sidebar.rs:886 src/thispc.rs:406
 msgid "_Safely Remove Drive"
 msgstr ""
 
-#: src/sidebar.rs:853
+#: src/sidebar.rs:891
 msgid "_Check for Media"
 msgstr ""
 
-#: src/sidebar.rs:866 src/sidebar.rs:878 src/thispc.rs:349
+#: src/sidebar.rs:897 src/thispc.rs:415
+msgid "_Format…"
+msgstr ""
+
+#: src/sidebar.rs:916 src/sidebar.rs:928 src/thispc.rs:346
 msgid "Re_name…"
 msgstr ""
 
-#: src/sidebar.rs:891 src/window.rs:3210 src/window/menus.rs:37
+#: src/sidebar.rs:941 src/window.rs:3210 src/window/menus.rs:37
 #: src/window/menus.rs:224
 msgid "_Empty Trash"
 msgstr ""
 
-#: src/sidebar.rs:905 src/window/menus.rs:36 src/window/menus.rs:221
-#: src/window/menus.rs:258
+#: src/sidebar.rs:955 src/thispc.rs:432 src/window/menus.rs:36
+#: src/window/menus.rs:221 src/window/menus.rs:258
 msgid "_Properties"
 msgstr ""
 
-#: src/sidebar.rs:922
+#: src/sidebar.rs:972
 msgid "Rename Bookmark"
 msgstr ""
 
-#: src/sidebar.rs:1338
+#: src/sidebar.rs:1388
 #, rust-format
 msgid "{name} (not mounted)"
 msgstr ""
 
 #. TRANSLATORS: joins the names of two programs: "udiskie and Thunar".
-#: src/sidebar.rs:1737
+#: src/sidebar.rs:1787
 msgid " and "
 msgstr ""
 
-#: src/sidebar.rs:1744
+#: src/sidebar.rs:1794
 #, rust-format
 msgid "{names} is mounting drives too"
 msgid_plural "{names} are mounting drives too"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/sidebar.rs:1748
+#: src/sidebar.rs:1798
 #, rust-format
 msgid ""
 "It runs separately from Voyager and mounts inserted drives and media by "
@@ -2655,21 +2731,18 @@ msgstr ""
 msgid "Devices and drives"
 msgstr ""
 
-#: src/thispc.rs:194
-msgid "Add a network location"
-msgstr ""
-
-#: src/thispc.rs:196
-msgid "Map a network drive"
-msgstr ""
-
-#: src/thispc.rs:201
+#: src/thispc.rs:191
 msgid "Network locations"
 msgstr ""
 
-#: src/thispc.rs:299
+#: src/thispc.rs:290
 #, rust-format
 msgid "{free} free of {total}"
+msgstr ""
+
+#: src/thispc.rs:377
+#, rust-format
+msgid "Unable to remove “{name}”"
 msgstr ""
 
 #. TRANSLATORS: a time today, in strftime's notation (%H hours, %M minutes).
@@ -4402,10 +4475,6 @@ msgstr ""
 
 #: src/window/prefs.rs:2011 src/window/prefs.rs:2150
 msgid "_Command:"
-msgstr ""
-
-#: src/window/prefs.rs:2011 src/window/prefs.rs:2149
-msgid "_Name:"
 msgstr ""
 
 #: src/window/prefs.rs:2050

@@ -96,6 +96,36 @@ pub fn reconnect_bookmarks() {
 /// Section ids (what `sidebar_sections` stores) and headings.
 pub const SECTIONS: &[(&str, &str)] = &[("computer", n_("This PC")), ("devices", n_("Drives and Network")), ("bookmarks", n_("Quick access"))];
 
+/// A warning to confirm before something that could lose data: true if
+/// the action button was pressed (Cancel is what Enter does).
+pub fn confirm_warning(parent: Option<&gtk::Window>, title: &str, body: &str, action: &str) -> bool {
+    let d = gtk::MessageDialog::new(parent, gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT, gtk::MessageType::Warning, gtk::ButtonsType::None, title);
+    d.set_secondary_text(Some(body));
+    d.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
+    d.add_button(action, gtk::ResponseType::Accept);
+    d.set_default_response(gtk::ResponseType::Cancel);
+    let yes = d.run() == gtk::ResponseType::Accept;
+    d.close();
+    yes
+}
+
+/// The warning before taking a drive or network place out: its title and
+/// the button.
+pub fn removal_warning(parent: Option<&gtk::Window>, name: &str, kind: &str) -> bool {
+    // check-placeholders: filled below
+    let (title, action) = match kind {
+        "stop" => (tr("Safely remove “{name}”?"), tr("_Remove")),
+        "eject" => (tr("Eject “{name}”?"), tr("_Eject")),
+        _ => (tr("Unmount “{name}”?"), tr("_Unmount")),
+    };
+    confirm_warning(
+        parent,
+        &fill(&title, &[("name", &name)]),
+        &tr("Make sure no files on it are in use and nothing is being copied to or from it: data not written yet can be lost."),
+        &action,
+    )
+}
+
 /// Asks for a name: the dialog's text, or None if cancelled. An empty one
 /// takes a name of one's own back.
 pub fn ask_name(parent: Option<&gtk::Window>, title: &str, current: &str) -> Option<String> {
@@ -745,6 +775,14 @@ impl Sidebar {
 
     fn eject(self: &Rc<Self>, index: usize, how: Option<Removal>) {
         let (Some(item), Some(how)) = (self.item_at(index as i32), how) else { return };
+        let kind = match how {
+            Removal::Unmount => "unmount",
+            Removal::Stop => "stop",
+            Removal::Eject => "eject",
+        };
+        if !removal_warning(self.parent_window().as_ref(), &item.label, kind) {
+            return;
+        }
         let op = gtk::MountOperation::new(self.parent_window().as_ref());
         let w = Rc::downgrade(self);
         let name = item.label.clone();
@@ -851,6 +889,18 @@ impl Sidebar {
         }
         if let Target::Drive(_) = &item.target {
             device.push((n_("_Check for Media"), act(OpenIn::Current)));
+        }
+        // Never a disk the system runs from (see format.rs).
+        if let Some(v) = item.volume.clone().filter(crate::format::can_format) {
+            let (w, name) = (w.clone(), item.label.clone());
+            device.push((
+                n_("_Format…"),
+                Box::new(move || {
+                    if let Some(s) = w.upgrade() {
+                        crate::format::show(s.parent_window().as_ref(), v.clone(), name.clone(), Rc::new(refresh_all));
+                    }
+                }),
+            ));
         }
         if !device.is_empty() {
             if openable {

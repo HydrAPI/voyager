@@ -15,6 +15,7 @@ mod iconview;
 mod info;
 mod fm1;
 mod folders;
+mod format;
 mod i18n;
 mod icons;
 mod imagesize;

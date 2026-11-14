@@ -10,17 +10,18 @@ use gio::prelude::*;
 use gtk::prelude::*;
 
 use crate::config;
-use crate::i18n::{fill, tr};
+use crate::i18n::{fill, n_, tr};
 use crate::util;
 
 type Opener = Rc<dyn Fn(gio::File)>;
+/// Takes a drive or place out (unmount, eject, …): started with the mount
+/// operation, reports its result to the callback.
+type Removal = Rc<dyn Fn(gtk::MountOperation, Box<dyn FnOnce(Result<(), glib::Error>)>)>;
 
 #[derive(Clone)]
 enum Action {
     Open(gio::File),
     Mount(gio::Volume),
-    /// Explorer's "Add a network location" tile.
-    MapDrive,
 }
 
 struct TileInfo {
@@ -32,6 +33,7 @@ struct TileInfo {
     note: Option<String>,
     action: Action,
     mount: Option<gio::Mount>,
+    volume: Option<gio::Volume>,
 }
 
 pub struct ThisPc {
@@ -138,6 +140,7 @@ impl ThisPc {
                 note: None,
                 action: Action::Open(f),
                 mount: None,
+                volume: None,
             });
         }
         out
@@ -152,7 +155,7 @@ impl ThisPc {
             }
             let root = m.root();
             let scheme = root.uri_scheme().map(|s| s.to_string()).unwrap_or_default();
-            let tile = TileInfo { icon: Some(m.icon()), name: config::mount_name(&root.uri()).unwrap_or_else(|| m.name().to_string()), space_of: Some(root.clone()), note: None, action: Action::Open(root.clone()), mount: Some(m.clone()) };
+            let tile = TileInfo { icon: Some(m.icon()), name: config::mount_name(&root.uri()).unwrap_or_else(|| m.name().to_string()), space_of: Some(root.clone()), note: None, action: Action::Open(root.clone()), mount: Some(m.clone()), volume: m.volume() };
             if NETWORK_SCHEMES.contains(&scheme.as_str()) {
                 network.push(tile);
             } else if root.is_native() || scheme == "file" {
@@ -162,14 +165,14 @@ impl ThisPc {
         }
         for v in self.monitor.volumes() {
             if v.get_mount().is_none() && v.can_mount() {
-                local.push(TileInfo { icon: Some(v.icon()), name: v.name().to_string(), space_of: None, note: Some(tr("Not mounted")), action: Action::Mount(v), mount: None });
+                local.push(TileInfo { icon: Some(v.icon()), name: v.name().to_string(), space_of: None, note: Some(tr("Not mounted")), action: Action::Mount(v.clone()), mount: None, volume: Some(v) });
             }
         }
         if !has_root {
             let root = gio::File::for_path("/");
             local.insert(
                 0,
-                TileInfo { icon: Some(gio::ThemedIcon::new("drive-harddisk").upcast()), name: format!("{} (/)", tr("File System")), space_of: Some(root.clone()), note: None, action: Action::Open(root), mount: None },
+                TileInfo { icon: Some(gio::ThemedIcon::new("drive-harddisk").upcast()), name: format!("{} (/)", tr("File System")), space_of: Some(root.clone()), note: None, action: Action::Open(root), mount: None, volume: None },
             );
         }
         (local, network)
@@ -188,16 +191,6 @@ impl ThisPc {
         self.count.set(folders.len() + local.len() + network.len());
         self.section(gen, &tr("Folders"), folders, false);
         self.section(gen, &tr("Devices and drives"), local, true);
-        let mut network = network;
-        network.push(TileInfo {
-            icon: Some(gio::ThemedIcon::from_names(&["network-server", "folder-remote"]).upcast()),
-            name: tr("Add a network location"),
-            space_of: None,
-            note: Some(tr("Map a network drive")),
-            action: Action::MapDrive,
-            mount: None,
-        });
-        self.count.set(self.count.get() + 1);
         self.section(gen, &tr("Network locations"), network, true);
         self.content.show_all();
     }
@@ -253,6 +246,7 @@ impl ThisPc {
         }
         let mut actions = vec![];
         let mut mounts = vec![];
+        let mut volumes = vec![];
         for t in tiles {
             let tile = gtk::Box::new(gtk::Orientation::Horizontal, 10);
             tile.set_size_request(if drive { 270 } else { 220 }, -1);
@@ -317,9 +311,11 @@ impl ThisPc {
             fb.add(&tile);
             actions.push(t.action);
             mounts.push(t.mount);
+            volumes.push(t.volume);
         }
         let actions = Rc::new(actions);
         let mounts = Rc::new(mounts);
+        let volumes = Rc::new(volumes);
         {
             let w = Rc::downgrade(self);
             let actions = actions.clone();
@@ -339,13 +335,17 @@ impl ThisPc {
                 fb.select_child(&child);
                 let (Some(s), Some(a)) = (w.upgrade(), actions.get(child.index() as usize).cloned()) else { return glib::Propagation::Proceed };
                 let menu = gtk::Menu::new();
+                let idx = child.index() as usize;
+                let mount = mounts.get(idx).cloned().flatten();
+                let volume = volumes.get(idx).cloned().flatten();
+                let drive = volume.as_ref().and_then(|v| v.drive()).or_else(|| mount.as_ref().and_then(|m| m.drive()));
                 let open = gtk::MenuItem::with_mnemonic(&tr("_Open"));
                 {
                     let (s, a) = (s.clone(), a.clone());
                     open.connect_activate(move |_| s.activate(a.clone()));
                 }
                 menu.append(&open);
-                if let Some(m) = mounts.get(child.index() as usize).cloned().flatten() {
+                if let Some(m) = mount.clone() {
                     let item = gtk::MenuItem::with_mnemonic(&tr("Re_name…"));
                     let w = Rc::downgrade(&s);
                     let current = config::mount_name(&m.root().uri()).unwrap_or_else(|| m.name().to_string());
@@ -361,17 +361,82 @@ impl ThisPc {
                     });
                     menu.append(&item);
                 }
-                if let Some(m) = mounts.get(child.index() as usize).cloned().flatten().filter(|m| m.can_unmount()) {
-                    let item = gtk::MenuItem::with_mnemonic(&tr("_Unmount"));
+                // Taking out: always after a warning, and a failure is said.
+                let removal = |label: &str, kind: &'static str, what: Removal, name: String| {
+                    let item = gtk::MenuItem::with_mnemonic(&tr(label));
                     let w = Rc::downgrade(&s);
                     item.connect_activate(move |it| {
-                        let op = gtk::MountOperation::new(it.toplevel().and_downcast::<gtk::Window>().as_ref());
+                        let parent = it.toplevel().and_downcast::<gtk::Window>();
+                        if !crate::sidebar::removal_warning(parent.as_ref(), &name, kind) {
+                            return;
+                        }
+                        let op = gtk::MountOperation::new(parent.as_ref());
+                        let (w, name, parent) = (w.clone(), name.clone(), parent.clone());
+                        what(
+                            op,
+                            Box::new(move |res| {
+                                if let Err(e) = res {
+                                    if !e.matches(gio::IOErrorEnum::FailedHandled) {
+                                        util::error_dialog(parent.as_ref(), &fill(&tr("Unable to remove “{name}”"), &[("name", &name)]), e.message());
+                                    }
+                                }
+                                if let Some(s) = w.upgrade() {
+                                    s.refresh();
+                                }
+                            }),
+                        );
+                    });
+                    item
+                };
+                let shown_name = mount.as_ref().map(|m| config::mount_name(&m.root().uri()).unwrap_or_else(|| m.name().to_string())).or_else(|| volume.as_ref().map(|v| v.name().to_string())).unwrap_or_default();
+                let mut sep_done = false;
+                let mut sep = |menu: &gtk::Menu| {
+                    if !sep_done {
+                        menu.append(&gtk::SeparatorMenuItem::new());
+                        sep_done = true;
+                    }
+                };
+                if let Some(m) = mount.clone().filter(|m| m.can_unmount()) {
+                    sep(&menu);
+                    let what: Removal =
+                        Rc::new(move |op, cb| m.unmount_with_operation(gio::MountUnmountFlags::NONE, Some(&op), gio::Cancellable::NONE, cb));
+                    menu.append(&removal(n_("_Unmount"), "unmount", what, shown_name.clone()));
+                }
+                if let Some(d) = drive.clone().filter(|d| d.is_removable() && d.can_stop()) {
+                    sep(&menu);
+                    let what: Removal =
+                        Rc::new(move |op, cb| d.stop(gio::MountUnmountFlags::NONE, Some(&op), gio::Cancellable::NONE, cb));
+                    menu.append(&removal(n_("_Safely Remove Drive"), "stop", what, shown_name.clone()));
+                } else if let Some(d) = drive.clone().filter(|d| d.can_eject()) {
+                    sep(&menu);
+                    let what: Removal =
+                        Rc::new(move |op, cb| d.eject_with_operation(gio::MountUnmountFlags::NONE, Some(&op), gio::Cancellable::NONE, cb));
+                    menu.append(&removal(n_("_Eject"), "eject", what, shown_name.clone()));
+                }
+                if let Some(v) = volume.clone().filter(crate::format::can_format) {
+                    sep(&menu);
+                    let item = gtk::MenuItem::with_mnemonic(&tr("_Format…"));
+                    let w = Rc::downgrade(&s);
+                    let name = shown_name.clone();
+                    item.connect_activate(move |it| {
+                        let parent = it.toplevel().and_downcast::<gtk::Window>();
                         let w = w.clone();
-                        m.unmount_with_operation(gio::MountUnmountFlags::NONE, Some(&op), gio::Cancellable::NONE, move |_| {
+                        let done: Rc<dyn Fn()> = Rc::new(move || {
                             if let Some(s) = w.upgrade() {
                                 s.refresh();
                             }
                         });
+                        crate::format::show(parent.as_ref(), v.clone(), name.clone(), done);
+                    });
+                    menu.append(&item);
+                }
+                if let Some(m) = mount.clone() {
+                    menu.append(&gtk::SeparatorMenuItem::new());
+                    let item = gtk::MenuItem::with_mnemonic(&tr("_Properties"));
+                    item.connect_activate(move |it| {
+                        if let Some(p) = it.toplevel().and_downcast::<gtk::Window>() {
+                            crate::props::show(&p, vec![m.root()]);
+                        }
                     });
                     menu.append(&item);
                 }
@@ -387,11 +452,6 @@ impl ThisPc {
     fn activate(self: &Rc<Self>, a: Action) {
         match a {
             Action::Open(f) => self.open(f),
-            Action::MapDrive => {
-                if let Some(w) = self.widget.toplevel().and_downcast::<gtk::ApplicationWindow>() {
-                    gio::prelude::ActionGroupExt::activate_action(&w, "map-drive", None);
-                }
-            }
             Action::Mount(v) => {
                 let op = gtk::MountOperation::new(self.widget.toplevel().and_downcast::<gtk::Window>().as_ref());
                 let w = Rc::downgrade(self);
