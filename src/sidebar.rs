@@ -520,13 +520,16 @@ impl Sidebar {
                 out.push(volume_item(&v, None));
             }
         }
-        // Mounts without a volume: network drives and the like.
+        // Mounts without a volume (phones and the like). Network places
+        // are here only if the user added them (see network_bookmark_items):
+        // opening a share from the network mounts it, which doesn't put it here.
         for mount in m.mounts() {
-            if mount.is_shadowed() || mount.volume().is_some() {
+            if mount.is_shadowed() || mount.volume().is_some() || is_network(&mount.root()) {
                 continue;
             }
             out.push(mount_item(&mount, None, None));
         }
+        out.extend(network_bookmark_items());
         // Explorer's Network.
         let mut net = place(gio::File::for_uri("network:///"), &tr("Network"), "network-workgroup-symbolic");
         net.key = None;
@@ -1359,11 +1362,64 @@ fn parse_user_dirs(text: &str, home: &std::path::Path) -> Vec<std::path::PathBuf
         .collect()
 }
 
+/// The schemes of network places (Windows shares, servers).
+pub const NETWORK_SCHEMES: &[&str] = &["smb", "sftp", "ssh", "ftp", "ftps", "dav", "davs", "nfs", "afp", "http", "https", "dav+sd", "davs+sd"];
+
+/// Whether `f` is on a server (not a local folder).
+pub fn is_network(f: &gio::File) -> bool {
+    !f.is_native() && f.uri_scheme().is_some_and(|s| NETWORK_SCHEMES.contains(&s.as_str()))
+}
+
+/// An address as it's compared: scheme, host (without a user name) and
+/// unescaped path, without a closing slash.
+fn network_key(uri: &str) -> String {
+    let (scheme, rest) = uri.split_once("://").unwrap_or(("", uri));
+    let (auth, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let host = auth.rsplit('@').next().unwrap_or(auth).to_lowercase();
+    let path = glib::Uri::unescape_string(path, None).map(|p| p.to_string()).unwrap_or_else(|| path.to_string());
+    format!("{}://{host}/{}", scheme.to_lowercase(), path.trim_end_matches('/'))
+}
+
+/// Whether the user added this mounted place himself (Map Network Drive,
+/// Connect to Server, a bookmark): one of the bookmarks is it, or inside it.
+/// A share that got mounted by browsing the network isn't.
+pub fn is_own_network(root: &gio::File) -> bool {
+    let key = network_key(&root.uri());
+    util::read_bookmarks().iter().any(|(uri, _)| {
+        let b = network_key(uri);
+        b == key || b.starts_with(&format!("{key}/"))
+    })
+}
+
+/// The network places the user added, for Drives and Network.
+fn network_bookmark_items() -> Vec<Item> {
+    util::read_bookmarks()
+        .into_iter()
+        .filter_map(|(uri, label)| {
+            let f = gio::File::for_uri(&uri);
+            if !is_network(&f) {
+                return None;
+            }
+            let mount = f.find_enclosing_mount(gio::Cancellable::NONE).ok();
+            let mut item = place(f, &label, "folder-remote-symbolic");
+            item.section = "devices";
+            item.key = None;
+            item.bookmark = Some(uri);
+            item.mount = mount;
+            Some(item)
+        })
+        .collect()
+}
+
 fn bookmark_items() -> Vec<Item> {
     util::read_bookmarks()
         .into_iter()
         .filter_map(|(uri, label)| {
             let f = gio::File::for_uri(&uri);
+            // The network places are with the drives.
+            if is_network(&f) {
+                return None;
+            }
             // Bookmarks of local folders that are gone are left out.
             if f.is_native() && !f.query_exists(gio::Cancellable::NONE) {
                 return None;

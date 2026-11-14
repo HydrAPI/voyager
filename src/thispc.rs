@@ -47,7 +47,6 @@ pub struct ThisPc {
     monitor: gio::VolumeMonitor,
 }
 
-const NETWORK_SCHEMES: &[&str] = &["smb", "sftp", "ssh", "ftp", "ftps", "dav", "davs", "nfs", "afp", "http", "https", "dav+sd", "davs+sd"];
 
 impl ThisPc {
     pub fn new() -> Rc<Self> {
@@ -156,8 +155,11 @@ impl ThisPc {
             let root = m.root();
             let scheme = root.uri_scheme().map(|s| s.to_string()).unwrap_or_default();
             let tile = TileInfo { icon: Some(m.icon()), name: config::mount_name(&root.uri()).unwrap_or_else(|| m.name().to_string()), space_of: Some(root.clone()), note: None, action: Action::Open(root.clone()), mount: Some(m.clone()), volume: m.volume() };
-            if NETWORK_SCHEMES.contains(&scheme.as_str()) {
-                network.push(tile);
+            if crate::sidebar::NETWORK_SCHEMES.contains(&scheme.as_str()) {
+                // Only the ones the user added, as Explorer's mapped drives.
+                if crate::sidebar::is_own_network(&root) {
+                    network.push(tile);
+                }
             } else if root.is_native() || scheme == "file" {
                 has_root |= root.path().is_some_and(|p| p == std::path::Path::new("/"));
                 local.push(tile);
