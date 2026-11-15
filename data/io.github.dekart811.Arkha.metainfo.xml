@@ -74,6 +74,11 @@
 
   <!-- Each release gets a line, newest first (see BUILDING.md). -->
   <releases>
+    <release version="1.0.3" date="2026-11-15">
+      <description>
+        <p>Folders with many files open a little faster: their dates no longer look up the time zone once for each file.</p>
+      </description>
+    </release>
     <release version="1.0.2" date="2026-11-15">
       <description>
         <p>The File Operations window, when open, stays open while a queued copy or move starts, until the last one is done.</p>
