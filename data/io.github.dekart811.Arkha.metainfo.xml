@@ -74,6 +74,11 @@
 
   <!-- Each release gets a line, newest first (see BUILDING.md). -->
   <releases>
+    <release version="1.0.2" date="2026-11-15">
+      <description>
+        <p>The File Operations window, when open, stays open while a queued copy or move starts, until the last one is done.</p>
+      </description>
+    </release>
     <release version="1.0.1" date="2026-11-14">
       <description>
         <p>The prebuilt program for other distributions now includes the German translation, which the one of 1.0.0 was missing.</p>
