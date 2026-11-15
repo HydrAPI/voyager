@@ -1,7 +1,8 @@
 # Checks every push to master and every pull request: the build, the tests,
 # clippy, the translations and their {placeholders}, and a package for
 # every distribution Arkha supports, built and installed in a container of
-# that distribution as the release workflow makes it: Debian 13 (with its
+# that distribution as the release workflow makes it, once the checks
+# have passed: Debian 13 (with its
 # Rust 1.85, the oldest Arkha supports), Ubuntu 26.04 (also the Debian
 # package, which the release offers for it), Fedora and Arch Linux, and the
 # prebuilt program for the others.
@@ -49,6 +50,7 @@ jobs:
 
   debian:
     name: Debian package (Rust 1.85)
+    needs: check
     runs-on: ubuntu-24.04
     container: debian:13
     steps:
@@ -99,6 +101,7 @@ jobs:
 
   prebuilt:
     name: Prebuilt program (other distributions)
+    needs: check
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -114,6 +117,7 @@ jobs:
 
   fedora:
     name: Fedora package
+    needs: check
     runs-on: ubuntu-24.04
     container: fedora:latest
     steps:
@@ -130,6 +134,7 @@ jobs:
 
   arch:
     name: Arch Linux package
+    needs: check
     runs-on: ubuntu-24.04
     container: archlinux:latest
     steps:
