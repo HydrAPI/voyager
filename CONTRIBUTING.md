@@ -8,7 +8,7 @@ Say what you did, what you expected and what happened instead, and include the v
 
 ## Testing
 
-Every push to `master` and every pull request is checked on GitHub (`.github/workflows/ci.yml`): the build, the unit tests, clippy (no warnings), the translations and their placeholders, and a package for every distribution Voyager supports, each built and installed in a container of that distribution as the release makes it: Debian 13 (with its Rust 1.85, the oldest Voyager supports), Ubuntu 26.04 (its own package and the Debian one, which the release offers for it), Fedora and Arch Linux, and the prebuilt program for the others.
+Every push to `master` and every pull request is checked on GitHub (`.github/workflows/ci.yml`): the build, the unit tests, clippy (no warnings), the translations and their placeholders, and, once those have passed, a package for every distribution Voyager supports, each built and installed in a container of that distribution as the release makes it: Debian 13 (with its Rust 1.85, the oldest Voyager supports), Ubuntu 26.04 (the Debian package installed there, as the release offers it for Ubuntu too), Fedora and Arch Linux, and the prebuilt program for the others. A commit that doesn't need it (a typo in a document, say) can skip the checks with `[skip ci]` in its message; never tag one for a release, as GitHub then skips the release workflow too.
 
 ```sh
 cargo test --release                                  # unit tests (no display needed)
@@ -47,6 +47,7 @@ The GUI tests in `tools/gui-tests/` check features with real keyboard and mouse 
 | `columns` | The list columns: default, one added from a header's menu (and kept), the Trash's own; sorting by permissions |
 | `undo-redo` | Undo and Redo of a move to the trash, a new folder named at once, renames |
 | `check-copies` | Checked copies started with Paste and Check, Copy To's box and an Alt drop |
+| `ops-queue` | File Operations stays open while a queued copy takes over from the one before, until the last job is done (the window check on X11) |
 | `bookmarks` | The bookmark editor shows paths, the bookmarks file keeps the URLs |
 | `properties` | An emblem ticked and a note typed in Properties, kept in GVfs metadata under Caja's keys |
 | `checksums` | The Checksums tab: only the chosen ones, in order; SHA-256 matches sha256sum, the other buttons wait meanwhile; Cancel; Calculate All; Copy |

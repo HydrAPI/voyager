@@ -41,9 +41,24 @@ A fast graphical file manager for Linux, with the look of Windows Explorer and t
 - **Checksums** (MD5, SHA-1, SHA-256, CRC32 and more) in a file's properties.
 - **Your own context menu entries and thumbnailers,** and every keyboard shortcut changeable.
 - **In English and German,** following your system's language or the one you choose.
-- **Light and quick:** it opens big folders with less CPU and memory than Caja and Nemo.
+- **Light and quick:** it opens big folders with less CPU and memory than Caja and Nemo ([measured](#speed)).
 
 The [full list of features](docs/FEATURES.md) has every detail.
+
+## Speed
+
+Voyager is built on Arkha's file view, which opens big folders sooner and with less memory than Caja and Nemo, and scrolls through them with less work. These are the numbers of Arkha 1.0.3, the version Voyager's view comes from:
+
+| | Arkha 1.0.3 | Caja 1.28 | Nemo 6.8 |
+|---|---|---|---|
+| Opening `/usr/lib` (4,270 items) | **1.42 s** | 1.82 s | 2.15 s |
+| Opening a folder of 20,000 files | **2.15 s** | 2.88 s | 3.32 s |
+| Memory with the 20,000 files open | **177 MB** | 227 MB | 226 MB |
+| CPU time for scrolling through them | **0.45 s** | 0.79 s | 2.98 s |
+
+It also makes thumbnails only for the files in sight, not for the whole folder at once.
+
+Each program opened each folder three times in the same private, headless X server, on the same machine (8 virtual CPUs); the table shows the medians. A folder counts as open once the program's main thread goes idle. Measured on 15 November 2026 with [`tools/bench/compare.sh`](tools/bench/compare.sh), which you can run yourself: results differ from machine to machine, but the order shouldn't.
 
 ## Installing
 

@@ -1,10 +1,11 @@
 # Checks every push to master and every pull request: the build, the tests,
-# clippy, the translations and their {placeholders}, and a package for
-# every distribution Voyager supports, built and installed in a container of
-# that distribution as the release workflow makes it: Debian 13 (with its
-# Rust 1.85, the oldest Voyager supports), Ubuntu 26.04 (also the Debian
-# package, which the release offers for it), Fedora and Arch Linux, and the
-# prebuilt program for the others.
+# clippy, the translations and their {placeholders}; once those have
+# passed, a package for each distribution Voyager supports, built and
+# installed in a container of that distribution as the release workflow
+# makes it: Debian 13 (with its Rust 1.85, the oldest Voyager supports),
+# Fedora and Arch Linux, and the prebuilt program for the others. Ubuntu
+# 26.04 gets the Debian package installed, as the release offers it for
+# Ubuntu too.
 name: CI
 
 on:
@@ -49,6 +50,7 @@ jobs:
 
   debian:
     name: Debian package (Rust 1.85)
+    needs: check
     runs-on: ubuntu-24.04
     container: debian:13
     steps:
@@ -72,33 +74,26 @@ jobs:
           path: target/deb/*.deb
           if-no-files-found: error
 
+  # The release offers the Debian package for Ubuntu too: installed there.
   ubuntu:
-    name: Ubuntu package
+    name: Ubuntu (Debian package)
     needs: debian
     runs-on: ubuntu-24.04
     container: ubuntu:26.04
     steps:
-      - name: Install the build dependencies
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git cargo rustc libgtk-3-dev gettext pkg-config build-essential dpkg-dev
-      - uses: actions/checkout@v7
-      - name: Build the package
-        run: sh packaging/deb/build.sh
-      - name: Install it
-        run: apt-get install -y ./target/deb/*.deb
-      # The release offers the package built on Debian for Ubuntu too.
       - uses: actions/download-artifact@v8
         with:
           name: deb-debian
           path: debian-deb
-      - name: Install the Debian package instead
+      # Its dependencies resolve, from Ubuntu's own repositories.
+      - name: Install it
         run: |
-          apt-get remove -y voyager
+          apt-get update
           apt-get install -y ./debian-deb/*.deb
 
   prebuilt:
     name: Prebuilt program (other distributions)
+    needs: check
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -114,6 +109,7 @@ jobs:
 
   fedora:
     name: Fedora package
+    needs: check
     runs-on: ubuntu-24.04
     container: fedora:latest
     steps:
@@ -130,6 +126,7 @@ jobs:
 
   arch:
     name: Arch Linux package
+    needs: check
     runs-on: ubuntu-24.04
     container: archlinux:latest
     steps:
