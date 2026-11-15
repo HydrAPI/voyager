@@ -36,9 +36,24 @@ A fast graphical file manager for Linux, modelled on Caja (MATE). It uses your d
 - **Checksums** (MD5, SHA-1, SHA-256, CRC32 and more) in a file's properties.
 - **Your own context menu entries and thumbnailers,** and every keyboard shortcut changeable.
 - **In English and German,** following your system's language or the one you choose.
-- **Light and quick:** it opens big folders with less CPU and memory than Caja and Nemo.
+- **Light and quick:** it opens big folders with less CPU and memory than Caja and Nemo ([measured](#speed)).
 
 The [full list of features](docs/FEATURES.md) has every detail.
+
+## Speed
+
+Arkha opens big folders sooner and with less memory than Caja and Nemo, and scrolls through them with less work:
+
+| | Arkha 1.0.2 | Caja 1.28 | Nemo 6.8 |
+|---|---|---|---|
+| Opening `/usr/lib` (4,270 items) | **1.39 s** | 1.93 s | 1.92 s |
+| Opening a folder of 20,000 files | **2.56 s** | 2.77 s | 3.22 s |
+| Memory with the 20,000 files open | **177 MB** | 227 MB | 226 MB |
+| CPU time for scrolling through them | **0.41 s** | 0.74 s | 2.49 s |
+
+It also makes thumbnails only for the files in sight, not for the whole folder at once.
+
+Each program opened each folder three times in the same private, headless X server, on the same machine (8 virtual CPUs); the table shows the medians. A folder counts as open once the program's main thread goes idle. Measured on 15 November 2026 with [`tools/bench/compare.sh`](tools/bench/compare.sh), which you can run yourself: results differ from machine to machine, but the order shouldn't.
 
 ## Installing
 
