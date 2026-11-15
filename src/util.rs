@@ -271,7 +271,7 @@ pub fn format_time(t: i64) -> String {
     if t <= 0 {
         return String::new();
     }
-    let Ok(dt) = glib::DateTime::from_unix_local(t) else {
+    let Some(dt) = local_time(t) else {
         return String::new();
     };
     match DATE_FORMAT.load(std::sync::atomic::Ordering::Relaxed) {
@@ -307,6 +307,33 @@ pub fn format_time(t: i64) -> String {
 /// (year, month, day)
 type Date = (i32, i32, i32);
 
+/// The local time zone, looked up again once a minute: GLib reads
+/// /etc/localtime's details from the disk for each lookup, and a folder's
+/// listing formats thousands of dates.
+fn local_zone() -> glib::TimeZone {
+    type Zone = Option<(u64, glib::TimeZone)>;
+    thread_local! {
+        static ZONE: std::cell::RefCell<Zone> = const { std::cell::RefCell::new(None) };
+    }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    ZONE.with(|z| {
+        let mut z = z.borrow_mut();
+        if let Some((at, zone)) = &*z {
+            if (*at..*at + 60).contains(&now) {
+                return zone.clone();
+            }
+        }
+        let zone = glib::TimeZone::local();
+        *z = Some((now, zone.clone()));
+        zone
+    })
+}
+
+/// `t` (seconds since 1970) in the local time zone.
+fn local_time(t: i64) -> Option<glib::DateTime> {
+    glib::DateTime::from_unix_utc(t).ok()?.to_timezone(&local_zone()).ok()
+}
+
 /// Today's and yesterday's dates, looked up once a minute: a folder's
 /// listing formats thousands of times.
 fn recent_days() -> Option<(Date, Date)> {
@@ -314,7 +341,7 @@ fn recent_days() -> Option<(Date, Date)> {
     thread_local! {
         static DAYS: std::cell::Cell<Days> = const { std::cell::Cell::new(None) };
     }
-    let now = glib::DateTime::now_local().ok()?;
+    let now = glib::DateTime::now(&local_zone()).ok()?;
     if let Some((at, today, yesterday)) = DAYS.with(|d| d.get()) {
         if now.to_unix() - at < 60 && now.ymd() == today {
             return Some((today, yesterday));
@@ -326,8 +353,7 @@ fn recent_days() -> Option<(Date, Date)> {
 }
 
 pub fn format_time_long(t: i64) -> String {
-    glib::DateTime::from_unix_local(t)
-        .ok()
+    local_time(t)
         // TRANSLATORS: a full date and time in strftime's notation: %A the
         // weekday, %-d the day, %B the month, %Y the year.
         .and_then(|d| d.format(&tr("%A, %-d %B %Y, %H:%M:%S")).ok())
@@ -969,6 +995,19 @@ mod tests {
         assert!(locale.contains("2001") && !locale.contains("Today"), "{locale}");
         assert!(format_time(now.to_unix()).starts_with("Today "));
         assert!(format_time_long(1_000_000_000).contains("September 2001"));
+    }
+
+    #[test]
+    fn local_times_as_glibs() {
+        // The cached zone gives what GLib's own local time does, also an
+        // hour either side of summer time's start and end (in Europe:
+        // 29 March and 25 October 2026, 01:00 UTC).
+        let f = "%Y-%m-%d %H:%M:%S %z";
+        for t in [0, 1_000_000_000, 1_774_746_000 - 3600, 1_774_746_000, 1_774_746_000 + 3600, 1_792_890_000 - 3600, 1_792_890_000, 1_792_890_000 + 3600] {
+            let ours = local_time(t).unwrap().format(f).unwrap();
+            let glibs = glib::DateTime::from_unix_local(t).unwrap().format(f).unwrap();
+            assert_eq!(ours, glibs, "{t}");
+        }
     }
 
     #[test]
