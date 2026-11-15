@@ -8,7 +8,7 @@ Say what you did, what you expected and what happened instead, and include the v
 
 ## Testing
 
-Every push to `master` and every pull request is checked on GitHub (`.github/workflows/ci.yml`): the build, the unit tests, clippy (no warnings), the translations and their placeholders, and, once those have passed, a package for every distribution Arkha supports, each built and installed in a container of that distribution as the release makes it: Debian 13 (with its Rust 1.85, the oldest Arkha supports), Ubuntu 26.04 (its own package and the Debian one, which the release offers for it), Fedora and Arch Linux, and the prebuilt program for the others. A commit that doesn't need it (a typo in a document, say) can skip the checks with `[skip ci]` in its message; never tag one for a release, as GitHub then skips the release workflow too.
+Every push to `master` and every pull request is checked on GitHub (`.github/workflows/ci.yml`): the build, the unit tests, clippy (no warnings), the translations and their placeholders, and, once those have passed, a package for every distribution Arkha supports, each built and installed in a container of that distribution as the release makes it: Debian 13 (with its Rust 1.85, the oldest Arkha supports), Ubuntu 26.04 (the Debian package installed there, as the release offers it for Ubuntu too), Fedora and Arch Linux, and the prebuilt program for the others. A commit that doesn't need it (a typo in a document, say) can skip the checks with `[skip ci]` in its message; never tag one for a release, as GitHub then skips the release workflow too.
 
 ```sh
 cargo test --release                                  # unit tests (no display needed)
