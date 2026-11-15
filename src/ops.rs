@@ -1482,8 +1482,11 @@ fn start_next() {
     }
     let next = QUEUE.with(|q| q.borrow_mut().pop_front());
     if let Some(w) = next {
-        remove_op(w.id);
+        // Started before its waiting entry goes: in between nothing would be
+        // running, waiting or listed, and the File Operations window, kept
+        // open by the user, closed as the next job started.
         (w.start)();
+        remove_op(w.id);
     }
 }
 
