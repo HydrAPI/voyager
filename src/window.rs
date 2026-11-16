@@ -744,6 +744,18 @@ impl AppWindow {
             };
             ops::on_change(update);
         }
+        {
+            // Search results have no folder monitor: they learn here of
+            // items moved, trashed or deleted.
+            let w = Rc::downgrade(&this);
+            ops::on_moved(move |went| {
+                if let Some(s) = w.upgrade() {
+                    for p in s.panes.borrow().iter() {
+                        p.files_moved(went);
+                    }
+                }
+            });
+        }
         this.update_ops_button();
         this.setup_actions();
         this.update_undo();

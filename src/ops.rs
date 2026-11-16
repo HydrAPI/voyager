@@ -1150,6 +1150,7 @@ thread_local! {
     static VIEWS: RefCell<Vec<Rc<View>>> = const { RefCell::new(vec![]) };
     static OPS_WINDOW: RefCell<Option<gtk::Window>> = const { RefCell::new(None) };
     static LISTENERS: RefCell<Vec<Box<dyn Fn()>>> = RefCell::new(vec![]);
+    static MOVE_LISTENERS: RefCell<Vec<Box<WentFn>>> = RefCell::new(vec![]);
 }
 
 /// A new list of the operations (for a window's operations popover); it
@@ -1185,6 +1186,38 @@ pub fn open_window() {
     });
     win.show_all();
     win.present();
+}
+
+/// Told of items an operation took from where they were (see on_moved).
+type WentFn = dyn Fn(&[(String, Option<String>)]);
+
+/// Calls `f` when an operation has taken items from where they were, with
+/// (each one's URI before, its new one if it was moved, None if it was
+/// trashed or deleted). A folder's monitor tells its pane; search results
+/// have nothing watching them.
+pub fn on_moved(f: impl Fn(&[(String, Option<String>)]) + 'static) {
+    MOVE_LISTENERS.with(|l| l.borrow_mut().push(Box::new(f)));
+}
+
+/// What `job` takes from where it was (moves, trashing, deleting), and
+/// whether it's a move.
+fn taken_by(job: &Job) -> (Vec<String>, bool) {
+    match job {
+        Job::Transfer { kind: Kind::Move, items, .. } => (items.iter().map(|i| i.src.clone()).collect(), true),
+        Job::Trash(v) | Job::Delete(v) => (v.clone(), false),
+        _ => (vec![], false),
+    }
+}
+
+/// Which of `taken` (see taken_by) went: (URI before, new URI for a move
+/// as `done` has it). Items `done` doesn't name are gone if they're no
+/// longer there (`gone` tells; it's asked only of local files, quick to
+/// look at: one that couldn't be deleted stays).
+fn went(taken: &[String], moves: bool, done: &[Moved], gone: impl Fn(&str) -> bool) -> Vec<(String, Option<String>)> {
+    let moved: std::collections::HashSet<&str> = if moves { done.iter().map(|m| m.src.as_str()).collect() } else { Default::default() };
+    let mut out: Vec<(String, Option<String>)> = done.iter().filter(|_| moves).map(|m| (m.src.clone(), Some(m.dst.clone()))).collect();
+    out.extend(taken.iter().filter(|t| !moved.contains(t.as_str()) && gone(t)).map(|t| (t.clone(), None)));
+    out
 }
 
 /// Calls `f` whenever operations come, go or make progress.
@@ -1521,6 +1554,7 @@ fn bold_label(text: &str) -> gtk::Label {
 fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn Fn(Vec<String>)>, show_now: bool) {
     let (tx, rx) = async_channel::unbounded::<Msg>();
     let shape = shape_of(&job);
+    let (taken, moves) = taken_by(&job);
     let op = Rc::new(Op {
         id: next_id(),
         title: title_for(&job),
@@ -1589,6 +1623,10 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
                 }
                 Msg::Done(created, done) => {
                     let did = !done.is_empty();
+                    let went = went(&taken, moves, &done, |uri| {
+                        let f = gio::File::for_uri(uri);
+                        f.is_native() && !f.query_exists(gio::Cancellable::NONE)
+                    });
                     match std::mem::replace(&mut record, Record::Redo) {
                         Record::New => {
                             if let Some(a) = action_of(shape, done) {
@@ -1608,6 +1646,13 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
                     // Also hides the window if this was the last operation.
                     remove_op(op.id);
                     on_done(created);
+                    if !went.is_empty() {
+                        MOVE_LISTENERS.with(|l| {
+                            for f in l.borrow().iter() {
+                                f(&went);
+                            }
+                        });
+                    }
                     start_next();
                     if !is_busy() && LISTED.with(|l| l.replace(false)) {
                         notify_done(&parent);
@@ -2373,6 +2418,23 @@ mod tests {
         pub static CORRUPT_NEXT_COPY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn what_went() {
+        let m = |a: &str, b: &str| Moved { src: a.into(), dst: b.into(), replaced: false };
+        let taken = vec!["file:///d/a".to_string(), "file:///d/b".to_string(), "file:///d/c".to_string()];
+        // A move: what it did, with where to; one not moved and still
+        // there (c) stays; b not done but gone (merged away) went.
+        let done = [m("file:///d/a", "file:///e/a"), m("file:///d/b/x", "file:///e/b/x")];
+        let went = went(&taken, true, &done, |u| u == "file:///d/b");
+        assert_eq!(went, vec![
+            ("file:///d/a".to_string(), Some("file:///e/a".to_string())),
+            ("file:///d/b/x".to_string(), Some("file:///e/b/x".to_string())),
+            ("file:///d/b".to_string(), None),
+        ]);
+        // Trashing or deleting: only what's no longer there.
+        assert_eq!(super::went(&taken, false, &[], |u| u != "file:///d/c").len(), 2);
+    }
 
     #[test]
     fn started_jobs_listed_above_waiting_ones() {
