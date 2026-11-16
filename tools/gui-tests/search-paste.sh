@@ -1,0 +1,31 @@
+#!/bin/bash
+# search-paste.sh x11|wayland: files cut from search results paste with
+# Ctrl+V in another tab. The search runs in one tab, its results are cut,
+# then the other tab (a folder) is chosen and Ctrl+V pressed: the files
+# have to move there. (Switching tabs set the actions as the tab left
+# allowed them: the search results' Paste stayed off.) Ctrl+V in the
+# results themselves still pastes nothing, as in Caja.
+GT_CONF='default_view=list'
+. "$(dirname "$0")/lib.sh"
+gt_session "$@"
+
+mkdir -p "$HOME/Downloads/old" "$HOME/sorted"
+touch "$HOME/Downloads/report-1.txt" "$HOME/Downloads/old/report-2.txt" "$HOME/Downloads/notes.txt"
+gt_display
+gt_arkha "$HOME/sorted"
+# A second tab with Downloads, searched for "report".
+gt_key ctrl+t; gt_key ctrl+l; gt_type "$HOME/Downloads"; gt_key Return; sleep 0.5
+gt_key ctrl+f; gt_type report; gt_key Return; sleep 2
+gt_shot results
+# The results get the focus (the search field has it), all of them are cut.
+gt_click 500 270; gt_key ctrl+a; gt_key ctrl+x
+gt_key ctrl+v; sleep 1
+gt_check "Ctrl+V in the search results pastes nothing" "$(ls "$HOME/sorted" | wc -l)" "0"
+# The first tab, then Ctrl+V.
+gt_key ctrl+Page_Up; sleep 0.5
+gt_key ctrl+v
+for _ in $(seq 1 30); do [ "$(ls "$HOME/sorted" | wc -l)" = 2 ] && break; sleep 0.2; done
+gt_shot pasted
+gt_check "Ctrl+V in the other tab moves the cut results there" "$(ls "$HOME/sorted" | tr '\n' ' ')" "report-1.txt report-2.txt "
+gt_check "and they're gone from where they were" "$(find "$HOME/Downloads" -name 'report-*' | wc -l)" "0"
+gt_end

@@ -2234,11 +2234,19 @@ impl AppWindow {
         } else {
             self.spinner.stop();
         }
-        self.update_action_states();
+        self.update_action_states_for(pane);
     }
 
     fn update_action_states(&self) {
-        let Some(p) = self.current_pane() else { return };
+        if let Some(p) = self.current_pane() {
+            self.update_action_states_for(&p);
+        }
+    }
+
+    /// The actions as `p` allows them. `p` is passed in when switching
+    /// tabs: GTK still reports the tab left as the current one then, and
+    /// a search's results there left Paste off in the tab switched to.
+    fn update_action_states_for(&self, p: &Rc<Pane>) {
         let sel = p.selected();
         let has = !sel.is_empty();
         let in_trash = p.is_trash();
@@ -2281,7 +2289,7 @@ impl AppWindow {
         self.set_enabled("swap-panes", self.split_on());
         self.set_enabled("same-location", self.other_pane().is_some_and(|o| !o.current().equal(&p.current())));
         let nb = self.active();
-        let (cur, n) = (nb.current_page().unwrap_or(0), nb.n_pages());
+        let (cur, n) = (nb.page_num(&p.root).unwrap_or(0), nb.n_pages());
         self.set_enabled("tab-left", cur > 0);
         self.set_enabled("tab-right", cur + 1 < n);
     }
