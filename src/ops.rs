@@ -1221,8 +1221,23 @@ pub fn summary() -> (usize, f64) {
     })
 }
 
+/// Where a new entry goes in the list: running jobs above the waiting ones,
+/// each in the order they came. (A queued job that starts gets a running
+/// entry of its own; at the end it was listed below the jobs still
+/// waiting, which then looked first in line.)
+fn insert_at(states: &[OpState], new: OpState) -> usize {
+    match new {
+        OpState::Waiting => states.len(),
+        OpState::Running => states.iter().position(|s| *s == OpState::Waiting).unwrap_or(states.len()),
+    }
+}
+
 fn add_op(op: Rc<Op>) {
-    OPS.with(|o| o.borrow_mut().push(op));
+    OPS.with(|o| {
+        let mut o = o.borrow_mut();
+        let states: Vec<OpState> = o.iter().map(|op| op.state).collect();
+        o.insert(insert_at(&states, op.state), op);
+    });
     sync_views();
     changed();
 }
@@ -2358,6 +2373,19 @@ mod tests {
         pub static CORRUPT_NEXT_COPY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn started_jobs_listed_above_waiting_ones() {
+        use OpState::{Running as R, Waiting as W};
+        assert_eq!(insert_at(&[], R), 0);
+        assert_eq!(insert_at(&[R, W], W), 2);
+        // The job ahead ended, the first waiting one starts: its running
+        // entry comes before the one still waiting (its own waiting entry
+        // is removed right after).
+        assert_eq!(insert_at(&[W, W], R), 0);
+        assert_eq!(insert_at(&[R, W, W], R), 1);
+        assert_eq!(insert_at(&[R, R], R), 2);
+    }
 
     /// Runs `job` on a worker whose conflict dialogs are answered from
     /// `answers` in order (with "apply to all" off) and whose error dialogs

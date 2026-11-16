@@ -17,6 +17,9 @@ same on X11 and Wayland, where window titles can't be read otherwise.
     a11y.py buttons     its first dialog's buttons: "name|on" or "name|off"
     a11y.py labels      its first dialog's texts (labels), a line each
     a11y.py window-labels  the main windows' texts (status bar, side pane, …)
+    a11y.py press-in TITLE TEXT  presses that button in its window TITLE
+                        (* for any), as a screen reader would
+    a11y.py labels-in TITLE  the texts in its window called TITLE, in order
     a11y.py focused-text  the text of the text field that has the focus
     a11y.py where-tab NAME  "x y", the middle of that dialog's tab NAME
     a11y.py focus ROLE  gives the dialog's first ROLE (e.g. text) the focus
@@ -160,6 +163,26 @@ def main():
             for x in find(w, "label", []):
                 if x.get_name():
                     print(x.get_name())
+    elif what == "press-in":
+        # Presses the button whose name or tooltip starts with sys.argv[3]
+        # in the window called sys.argv[2] ("*": any), as a screen reader
+        # would: no screen position needed (Wayland gives none).
+        for w in windows(app):
+            if sys.argv[2] not in ("*", w.get_name()):
+                continue
+            for role in ("button", "push button", "toggle button"):
+                for b in find(w, role, []):
+                    if (b.get_name() or "").startswith(sys.argv[3]) or (b.get_description() or "").startswith(sys.argv[3]):
+                        b.get_action_iface().do_action(0)
+                        return
+        sys.exit(1)
+    elif what == "labels-in":
+        # The labels shown in the window called sys.argv[2], top to bottom.
+        for w in windows(app):
+            if w.get_name() == sys.argv[2]:
+                for x in find(w, "label", []):
+                    if x.get_name():
+                        print(x.get_name())
     elif what == "focused-text":
         for w in windows(app):
             for x in find(w, "text", []):
