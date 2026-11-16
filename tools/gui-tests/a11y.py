@@ -8,7 +8,7 @@ same on X11 and Wayland, where window titles can't be read otherwise.
     a11y.py headers     the column headers of its first window's list
     a11y.py cells       the texts of that list's cells, a line each
     a11y.py press NAME  presses the button or check box called NAME in its
-                        first dialog (as a screen reader would)
+                        dialogs or message boxes (as a screen reader would)
     a11y.py tab NAME    shows the dialog's tab called NAME
     a11y.py where TEXT  "x y", the middle of the shown button in its first
                         window whose name or tooltip starts with TEXT (to
@@ -109,7 +109,7 @@ def main():
                 if name:
                     print(name)
     elif what == "press":
-        for d in windows(app, ("dialog", "file chooser")):
+        for d in windows(app, ("dialog", "alert", "file chooser")):
             for role in ("check box", "button", "push button", "toggle button"):
                 for b in find(d, role, []):
                     if b.get_name().replace("_", "") == sys.argv[2]:

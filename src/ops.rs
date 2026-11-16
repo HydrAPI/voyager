@@ -10,6 +10,7 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use crate::i18n::{fill, n_, tr, trn};
+use crate::thumbcache;
 use crate::util;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,6 +98,8 @@ struct Worker {
     cancel: gio::Cancellable,
     /// What was copied, moved or linked, for Edit → Undo.
     undo: Vec<Moved>,
+    /// Where thumbnails are kept (see thumbcache).
+    thumbs: std::path::PathBuf,
     total_bytes: u64,
     done_bytes: u64,
     total_items: u64,
@@ -267,6 +270,7 @@ impl Worker {
             tx,
             cancel,
             undo: vec![],
+            thumbs: thumbcache::root(),
             total_bytes: 0,
             done_bytes: 0,
             total_items: 0,
@@ -497,7 +501,11 @@ impl Worker {
 
     /// Deletes `f` and all inside it. `inner`: it's inside what was asked
     /// to be deleted (see remove_path).
-    fn delete_rec(&mut self, f: &gio::File, inner: bool) -> Flow {
+    /// Deletes `f`, a folder with everything in it. `thumb`: the URI its
+    /// thumbnails are kept under (a trashed item's: where it came from),
+    /// removed with it; None leaves them (an original moved: they go with
+    /// the move).
+    fn delete_rec(&mut self, f: &gio::File, inner: bool, thumb: Option<String>) -> Flow {
         let remove = |f: &gio::File, cancel: &gio::Cancellable| match f.path().filter(|_| inner) {
             Some(path) => remove_path(&path),
             None => f.delete(Some(cancel)),
@@ -509,6 +517,9 @@ impl Worker {
             match remove(f, &self.cancel) {
                 Ok(()) => {
                     self.done_items += 1;
+                    if let Some(t) = &thumb {
+                        thumbcache::forget(&self.thumbs, t);
+                    }
                     self.progress(&fill(&tr("Deleting “{name}”"), &[("name", &base_name(f))]), false);
                     return Ok(());
                 }
@@ -519,7 +530,8 @@ impl Worker {
                     };
                     let before = self.skipped;
                     for c in children {
-                        self.delete_rec(&f.child(c), true)?;
+                        let t = thumb.as_ref().map(|t| gio::File::for_uri(t).child(&c).uri().to_string());
+                        self.delete_rec(&f.child(c), true, t)?;
                     }
                     if self.skipped != before {
                         return Ok(()); // something inside was kept
@@ -528,6 +540,9 @@ impl Worker {
                     match remove(f, &self.cancel) {
                         Ok(()) => {
                             self.done_items += 1;
+                            if let Some(t) = &thumb {
+                                thumbcache::forget(&self.thumbs, t);
+                            }
                             return Ok(());
                         }
                         Err(e) => {
@@ -552,6 +567,15 @@ impl Worker {
     }
 
     /// Notes for Edit → Undo that `src` went to `dst`.
+    /// In a move, `src`'s thumbnails go with it to `dst` (a folder's: those
+    /// of all in it), as soon as it's there: before the folder shown asks
+    /// for them, which would make them again.
+    fn thumbnails_moved(&self, src: &gio::File, dst: &gio::File) {
+        if self.kind == Kind::Move {
+            thumbcache::moved(&self.thumbs, &[(src.uri().to_string(), dst.uri().to_string())]);
+        }
+    }
+
     fn record(&mut self, src: &gio::File, dst: &gio::File, replaced: bool) {
         self.undo.push(Moved { src: src.uri().to_string(), dst: dst.uri().to_string(), replaced });
     }
@@ -601,7 +625,7 @@ impl Worker {
                                     break;
                                 }
                                 let before = self.skipped;
-                                self.delete_rec(&dst, false)?;
+                                self.delete_rec(&dst, false, Some(dst.uri().to_string()))?;
                                 if self.skipped != before {
                                     return Ok(()); // couldn't remove it, give up on this item
                                 }
@@ -748,6 +772,8 @@ impl Worker {
                     if record {
                         self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
                     }
+                    // A move across drives copies file by file.
+                    self.thumbnails_moved(src, &dst);
                     self.progress(&doing(self.copy_kind(), &name), false);
                     return Ok(());
                 }
@@ -764,7 +790,7 @@ impl Worker {
                         Resolution::Replace => {
                             if dst_dir {
                                 let before = self.skipped;
-                                self.delete_rec(&dst, false)?;
+                                self.delete_rec(&dst, false, Some(dst.uri().to_string()))?;
                                 if self.skipped != before {
                                     self.done_bytes += size;
                                     return Ok(()); // couldn't remove it, give up on this item
@@ -844,6 +870,7 @@ impl Worker {
         loop {
             match src.move_(&dst, flags, Some(&self.cancel), None) {
                 Ok(()) => {
+                    self.thumbnails_moved(src, &dst);
                     self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
                     self.done_items += 1;
                     if created.is_none() {
@@ -884,7 +911,7 @@ impl Worker {
                             }
                             if dst_dir {
                                 let before = self.skipped;
-                                self.delete_rec(&dst, false)?;
+                                self.delete_rec(&dst, false, Some(dst.uri().to_string()))?;
                                 if self.skipped != before {
                                     return Ok(()); // couldn't remove it, keep the source
                                 }
@@ -908,7 +935,7 @@ impl Worker {
                     let overwrite = flags.contains(gio::FileCopyFlags::OVERWRITE);
                     self.copy_rec(src, &dst, overwrite, created, true)?;
                     if self.skipped == before {
-                        self.delete_rec(src, false)?;
+                        self.delete_rec(src, false, None)?;
                     }
                     return Ok(());
                 }
@@ -1039,7 +1066,7 @@ impl Worker {
                             ) {
                                 ErrChoice::Retry => continue,
                                 ErrChoice::DeletePermanently => {
-                                    let _ = self.delete_rec(&f, false);
+                                    let _ = self.delete_rec(&f, false, Some(u.clone()));
                                     break;
                                 }
                                 _ => break,
@@ -1059,27 +1086,30 @@ impl Worker {
                 }
                 self.progress(&tr("Preparing…"), true);
                 for u in uris {
-                    if self.delete_rec(&gio::File::for_uri(&u), false).is_err() {
+                    let f = gio::File::for_uri(&u);
+                    let thumb = thumb_uri(&f);
+                    if self.delete_rec(&f, false, Some(thumb)).is_err() {
                         break;
                     }
                 }
             }
             Job::EmptyTrash => {
                 let trash = gio::File::for_uri("trash:///");
-                let kids: Vec<gio::File> = trash
-                    .enumerate_children("standard::name", NOFOLLOW, Some(&self.cancel))
+                let kids: Vec<(gio::File, Option<String>)> = trash
+                    .enumerate_children("standard::name,trash::orig-path", NOFOLLOW, Some(&self.cancel))
                     .map(|en| {
                         let mut v = vec![];
                         while let Ok(Some(ci)) = en.next_file(Some(&self.cancel)) {
-                            v.push(trash.child(ci.name()));
+                            let orig = ci.attribute_byte_string("trash::orig-path").map(|p| gio::File::for_path(p.as_str()).uri().to_string());
+                            v.push((trash.child(ci.name()), orig));
                         }
                         v
                     })
                     .unwrap_or_default();
                 self.total_items = kids.len() as u64;
                 self.progress(&tr("Preparing…"), true);
-                for k in kids {
-                    if self.delete_rec(&k, false).is_err() {
+                for (k, orig) in kids {
+                    if self.delete_rec(&k, false, orig).is_err() {
                         break;
                     }
                 }
@@ -1190,6 +1220,17 @@ pub fn open_window() {
 
 /// Told of items an operation took from where they were (see on_moved).
 type WentFn = dyn Fn(&[(String, Option<String>)]);
+
+/// The URI `f`'s thumbnails are kept under: for an item in the trash,
+/// where it came from (trashed, it kept them).
+fn thumb_uri(f: &gio::File) -> String {
+    if f.uri_scheme().as_deref() == Some("trash") {
+        if let Some(p) = f.query_info("trash::orig-path", NOFOLLOW, gio::Cancellable::NONE).ok().and_then(|i| i.attribute_byte_string("trash::orig-path")) {
+            return gio::File::for_path(p.as_str()).uri().to_string();
+        }
+    }
+    f.uri().to_string()
+}
 
 /// Calls `f` when an operation has taken items from where they were, with
 /// (each one's URI before, its new one if it was moved, None if it was
@@ -1767,6 +1808,7 @@ pub fn note_rename(from: &gio::File, to: &gio::File) {
     if from.equal(to) {
         return;
     }
+    thumbnails_renamed(vec![(from.uri().to_string(), to.uri().to_string())]);
     // A new item named right away (New Folder, then typing its name): one
     // step, "Creation of Folder “Photos”".
     let (from_uri, to_uri) = (from.uri().to_string(), to.uri().to_string());
@@ -1789,8 +1831,15 @@ pub fn note_rename(from: &gio::File, to: &gio::File) {
 /// Notes renames done together (Rename All), as one step.
 pub fn note_renames(items: Vec<(String, String)>) {
     if !items.is_empty() {
+        thumbnails_renamed(items.clone());
         push_new(Action::Rename { items });
     }
+}
+
+/// Renamed items' thumbnails renamed too, in a thread of their own (a
+/// renamed folder's are those of everything in it).
+fn thumbnails_renamed(items: Vec<(String, String)>) {
+    std::thread::spawn(move || thumbcache::moved(&thumbcache::root(), &items));
 }
 
 /// Notes a new folder or document (`template`: the file it's a copy of).
@@ -1936,6 +1985,7 @@ fn perform(parent: Option<gtk::Window>, a: Action, back: bool) -> Result<(), Str
                 }
                 from.set_display_name(&base_name(&to), gio::Cancellable::NONE).map_err(|e| e.message().to_string())?;
             }
+            thumbnails_renamed(steps);
             push(if back { &REDO } else { &UNDO }, a);
         }
         (_, Action::Mode { items }) => {
