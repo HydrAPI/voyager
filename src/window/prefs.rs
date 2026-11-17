@@ -331,6 +331,15 @@ impl AppWindow {
         ffm.bind_property("active", &delay, "sensitive").sync_create().build();
         let after = f.inline(&b, &tr("After the pointer rests on it for"), &[delay.upcast_ref(), gtk::Label::new(Some("ms")).upcast_ref()]);
         after.set_margin_start(after.margin_start() + 24);
+        f.head(&b, &tr("File Operations"));
+        let own = setting_check(
+            &tr("Show file operations in their own _window"),
+            Some(&tr("Instead of the button in the location bar and its popup: the File Operations window opens when an operation takes a while, and closes when the last one is done")),
+            s.ops_window,
+            |s, v| s.ops_window = v,
+            |_| crate::window::ops_shown_as_set(),
+        );
+        f.indent(&b, own.upcast_ref());
         f.head(&b, &tr("Trash"));
         let confirm = setting_check(&tr("Ask before moving files to the T_rash"), None, s.confirm_trash, |s, v| s.confirm_trash = v, |_| {});
         f.indent(&b, confirm.upcast_ref());

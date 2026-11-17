@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Arkha 1.1.0-dev\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 15:49+0100\n"
+"POT-Creation-Date: 2026-11-17 15:58+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -162,7 +162,7 @@ msgstr ""
 msgid "View › Statusbar"
 msgstr ""
 
-#: src/actions.rs:52 src/window/prefs.rs:1471
+#: src/actions.rs:52 src/window/prefs.rs:1480
 msgid "Add Bookmark"
 msgstr ""
 
@@ -199,7 +199,7 @@ msgstr ""
 msgid "Archives"
 msgstr ""
 
-#: src/autorun.rs:194 src/window.rs:3334
+#: src/autorun.rs:194 src/window.rs:3363
 #, rust-format
 msgid "Could not open “{name}”"
 msgstr ""
@@ -313,11 +313,11 @@ msgid "_Unmount"
 msgstr ""
 
 #: src/autorun.rs:348 src/backgrounds.rs:379 src/backgrounds.rs:429
-#: src/connect.rs:89 src/ops.rs:2216 src/ops.rs:2280 src/props.rs:469
-#: src/props.rs:567 src/props.rs:1094 src/sidebar.rs:842 src/window.rs:2784
-#: src/window.rs:3002 src/window.rs:3130 src/window.rs:3245
-#: src/window/prefs.rs:921 src/window/prefs.rs:1474 src/window/prefs.rs:1591
-#: src/window/prefs.rs:1667
+#: src/connect.rs:89 src/ops.rs:2226 src/ops.rs:2290 src/props.rs:469
+#: src/props.rs:567 src/props.rs:1094 src/sidebar.rs:842 src/window.rs:2798
+#: src/window.rs:3016 src/window.rs:3144 src/window.rs:3259
+#: src/window/prefs.rs:930 src/window/prefs.rs:1483 src/window/prefs.rs:1600
+#: src/window/prefs.rs:1676
 msgid "_Cancel"
 msgstr ""
 
@@ -406,8 +406,8 @@ msgstr ""
 msgid "{name}: drag it onto an item"
 msgstr ""
 
-#: src/backgrounds.rs:195 src/sidebar.rs:801 src/window/prefs.rs:1452
-#: src/window/prefs.rs:1806
+#: src/backgrounds.rs:195 src/sidebar.rs:801 src/window/prefs.rs:1461
+#: src/window/prefs.rs:1815
 msgid "_Remove"
 msgstr ""
 
@@ -416,7 +416,7 @@ msgid "Backgrounds and Emblems"
 msgstr ""
 
 #: src/backgrounds.rs:231 src/bulkrename.rs:560 src/props.rs:94
-#: src/window.rs:2193 src/window.rs:3279 src/window.rs:3342
+#: src/window.rs:2207 src/window.rs:3293 src/window.rs:3371
 msgid "_Close"
 msgstr ""
 
@@ -486,7 +486,7 @@ msgstr ""
 msgid "Add a New Emblem"
 msgstr ""
 
-#: src/backgrounds.rs:379 src/backgrounds.rs:429 src/window/prefs.rs:1474
+#: src/backgrounds.rs:379 src/backgrounds.rs:429 src/window/prefs.rs:1483
 msgid "_Add"
 msgstr ""
 
@@ -792,7 +792,7 @@ msgstr ""
 msgid "Bookmark _name:"
 msgstr ""
 
-#: src/connect.rs:223 src/window.rs:1063
+#: src/connect.rs:223 src/window.rs:1075
 msgid "Could not add bookmark"
 msgstr ""
 
@@ -885,7 +885,7 @@ msgstr ""
 msgid "By _Location"
 msgstr ""
 
-#: src/details.rs:49 src/search.rs:21 src/window/prefs.rs:1414
+#: src/details.rs:49 src/search.rs:21 src/window/prefs.rs:1423
 msgid "Location"
 msgstr ""
 
@@ -906,7 +906,7 @@ msgid "Original Location"
 msgstr ""
 
 #: src/i18n.rs:105 src/i18n.rs:106 src/i18n.rs:107 src/info.rs:255
-#: src/ops.rs:1478 src/pane.rs:1594 src/pane.rs:4023 src/props.rs:301
+#: src/ops.rs:1483 src/pane.rs:1594 src/pane.rs:4023 src/props.rs:301
 #: src/props.rs:482
 #, rust-format
 msgid "{n} item"
@@ -929,7 +929,7 @@ msgid_plural "{n} folders"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/info.rs:333 src/ops.rs:2121
+#: src/info.rs:333 src/ops.rs:2131
 #, rust-format
 msgid "{n} file"
 msgid_plural "{n} files"
@@ -965,7 +965,7 @@ msgstr ""
 msgid "New window"
 msgstr ""
 
-#: src/keys.rs:25 src/window.rs:1676
+#: src/keys.rs:25 src/window.rs:1688
 msgid "Close tab"
 msgstr ""
 
@@ -1045,7 +1045,7 @@ msgstr ""
 msgid "Go to last tab"
 msgstr ""
 
-#: src/keys.rs:45 src/window.rs:420
+#: src/keys.rs:45 src/window.rs:432
 msgid "Back"
 msgstr ""
 
@@ -1055,7 +1055,7 @@ msgstr ""
 msgid "Navigation"
 msgstr ""
 
-#: src/keys.rs:46 src/window.rs:421
+#: src/keys.rs:46 src/window.rs:433
 msgid "Forward"
 msgstr ""
 
@@ -1076,7 +1076,7 @@ msgid "Desktop"
 msgstr ""
 
 #: src/keys.rs:51 src/pane.rs:1195 src/pane/build.rs:208 src/sidebar.rs:1169
-#: src/sidebar.rs:1170 src/window.rs:2354 src/window/prefs.rs:334
+#: src/sidebar.rs:1170 src/window.rs:2368 src/window/prefs.rs:343
 msgid "Trash"
 msgstr ""
 
@@ -1105,7 +1105,7 @@ msgstr ""
 msgid "Opening"
 msgstr ""
 
-#: src/keys.rs:59 src/window.rs:3379
+#: src/keys.rs:59 src/window.rs:3408
 msgid "Open in new tab"
 msgstr ""
 
@@ -1130,7 +1130,7 @@ msgstr ""
 #: src/keys.rs:74 src/keys.rs:75 src/keys.rs:76 src/keys.rs:77 src/keys.rs:78
 #: src/keys.rs:79 src/keys.rs:80 src/keys.rs:81 src/keys.rs:82 src/keys.rs:83
 #: src/keys.rs:84 src/keys.rs:85 src/keys.rs:86 src/keys.rs:87
-#: src/window/prefs.rs:392
+#: src/window/prefs.rs:401
 msgid "Files"
 msgstr ""
 
@@ -1283,15 +1283,15 @@ msgstr ""
 msgid "Lock the toolbar (no dragging its buttons around)"
 msgstr ""
 
-#: src/keys.rs:106 src/window.rs:489
+#: src/keys.rs:106 src/window.rs:501
 msgid "Zoom in"
 msgstr ""
 
-#: src/keys.rs:107 src/window.rs:487
+#: src/keys.rs:107 src/window.rs:499
 msgid "Zoom out"
 msgstr ""
 
-#: src/keys.rs:108 src/window.rs:488
+#: src/keys.rs:108 src/window.rs:500
 msgid "Normal size"
 msgstr ""
 
@@ -1472,7 +1472,7 @@ msgid "Error while moving “{name}”"
 msgstr ""
 
 #: src/ops.rs:971 src/ops.rs:1047 src/ops.rs:1087 src/ops.rs:1110
-#: src/ops.rs:1603
+#: src/ops.rs:1608
 msgid "Preparing…"
 msgstr ""
 
@@ -1516,189 +1516,189 @@ msgstr ""
 msgid "Paused — {progress}"
 msgstr ""
 
-#: src/ops.rs:1203
+#: src/ops.rs:1203 src/window/prefs.rs:334
 msgid "File Operations"
 msgstr ""
 
-#: src/ops.rs:1386
+#: src/ops.rs:1391
 msgid "Pause"
 msgstr ""
 
-#: src/ops.rs:1386
+#: src/ops.rs:1391
 msgid "Resume"
 msgstr ""
 
-#: src/ops.rs:1411 src/window.rs:3159
+#: src/ops.rs:1416 src/window.rs:3173
 msgid "Cancel"
 msgstr ""
 
-#: src/ops.rs:1415
+#: src/ops.rs:1420
 msgid "Waiting for other operations…"
 msgstr ""
 
-#: src/ops.rs:1418
+#: src/ops.rs:1423
 msgid "Start now, alongside the running operations"
 msgstr ""
 
-#: src/ops.rs:1485
+#: src/ops.rs:1490
 #, rust-format
 msgid "Copying {what} to “{folder}”"
 msgstr ""
 
-#: src/ops.rs:1486
+#: src/ops.rs:1491
 #, rust-format
 msgid "Moving {what} to “{folder}”"
 msgstr ""
 
-#: src/ops.rs:1487
+#: src/ops.rs:1492
 #, rust-format
 msgid "Creating links to {what}"
 msgstr ""
 
-#: src/ops.rs:1490
+#: src/ops.rs:1495
 #, rust-format
 msgid "Moving {n} item to the Trash"
 msgid_plural "Moving {n} items to the Trash"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:1491
+#: src/ops.rs:1496
 #, rust-format
 msgid "Deleting {n} item"
 msgid_plural "Deleting {n} items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:1492
+#: src/ops.rs:1497
 msgid "Emptying the Trash"
 msgstr ""
 
-#: src/ops.rs:1873
+#: src/ops.rs:1883
 #, rust-format
 msgid "{n} Item"
 msgid_plural "{n} Items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:1881
+#: src/ops.rs:1891
 #, rust-format
 msgid "Copy of {what}"
 msgstr ""
 
-#: src/ops.rs:1882
+#: src/ops.rs:1892
 #, rust-format
 msgid "Move of {what}"
 msgstr ""
 
-#: src/ops.rs:1883
+#: src/ops.rs:1893
 #, rust-format
 msgid "Link of {what}"
 msgstr ""
 
-#: src/ops.rs:1888
+#: src/ops.rs:1898
 #, rust-format
 msgid "Move to Trash of {what}"
 msgstr ""
 
-#: src/ops.rs:1890
+#: src/ops.rs:1900
 #, rust-format
 msgid "Restore of {what}"
 msgstr ""
 
-#: src/ops.rs:1892
+#: src/ops.rs:1902
 #, rust-format
 msgid "Rename of {what}"
 msgstr ""
 
-#: src/ops.rs:1894
+#: src/ops.rs:1904
 #, rust-format
 msgid "Creation of Folder {what}"
 msgstr ""
 
-#: src/ops.rs:1894
+#: src/ops.rs:1904
 #, rust-format
 msgid "Creation of {what}"
 msgstr ""
 
-#: src/ops.rs:1896
+#: src/ops.rs:1906
 #, rust-format
 msgid "Change of Permissions of {what}"
 msgstr ""
 
-#: src/ops.rs:1898
+#: src/ops.rs:1908
 #, rust-format
 msgid "Change of Owner or Group of {what}"
 msgstr ""
 
-#: src/ops.rs:1905
+#: src/ops.rs:1915
 #, rust-format
 msgid "_Undo {action}"
 msgstr ""
 
-#: src/ops.rs:1910
+#: src/ops.rs:1920
 #, rust-format
 msgid "_Redo {action}"
 msgstr ""
 
-#: src/ops.rs:1922
+#: src/ops.rs:1932
 msgid "There is nothing to undo."
 msgstr ""
 
-#: src/ops.rs:1931
+#: src/ops.rs:1941
 msgid "There is nothing to redo."
 msgstr ""
 
-#: src/ops.rs:1951
+#: src/ops.rs:1961
 msgid "Nothing to do: the items are gone."
 msgstr ""
 
-#: src/ops.rs:1962
+#: src/ops.rs:1972
 msgid "Nothing to undo: the item is gone."
 msgstr ""
 
-#: src/ops.rs:1984
+#: src/ops.rs:1994
 #, rust-format
 msgid "“{name}” is already used."
 msgstr ""
 
-#: src/ops.rs:2001
+#: src/ops.rs:2011
 msgid "Only local files can change owner or group."
 msgstr ""
 
-#: src/ops.rs:2018
+#: src/ops.rs:2028
 msgid "Nothing to undo: the copies are gone or replaced other files."
 msgstr ""
 
-#: src/ops.rs:2024
+#: src/ops.rs:2034
 msgid "Nothing to undo: the moved items are gone."
 msgstr ""
 
-#: src/ops.rs:2060
+#: src/ops.rs:2070
 msgid "Nothing to redo: the items are gone."
 msgstr ""
 
-#: src/ops.rs:2071
+#: src/ops.rs:2081
 msgid "Nothing to do: the items are no longer in the Trash."
 msgstr ""
 
-#: src/ops.rs:2122
+#: src/ops.rs:2132
 #, rust-format
 msgid "Checked {files}: every copy matches its original."
 msgstr ""
 
-#: src/ops.rs:2126
+#: src/ops.rs:2136
 #, rust-format
 msgid "… and {n} more"
 msgstr ""
 
-#: src/ops.rs:2132
+#: src/ops.rs:2142
 #, rust-format
 msgid "{n} copy doesn’t match its original"
 msgid_plural "{n} copies don’t match their originals"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:2136
+#: src/ops.rs:2146
 #, rust-format
 msgid ""
 "They were kept as they are, and the originals of moved files were kept too. "
@@ -1709,102 +1709,102 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:2150
+#: src/ops.rs:2160
 msgid "Process completed"
 msgstr ""
 
-#: src/ops.rs:2167
+#: src/ops.rs:2177
 #, rust-format
 msgid "Merge folder “{name}”?"
 msgstr ""
 
-#: src/ops.rs:2169
+#: src/ops.rs:2179
 #, rust-format
 msgid "Replace folder “{name}”?"
 msgstr ""
 
-#: src/ops.rs:2171
+#: src/ops.rs:2181
 #, rust-format
 msgid "Replace file “{name}”?"
 msgstr ""
 
-#: src/ops.rs:2174
+#: src/ops.rs:2184
 #, rust-format
 msgid ""
 "A folder with the same name already exists in “{folder}”.\n"
 "Merging will ask before replacing any files in it that conflict."
 msgstr ""
 
-#: src/ops.rs:2176
+#: src/ops.rs:2186
 #, rust-format
 msgid ""
 "Another folder with the same name already exists in “{folder}”.\n"
 "Replacing it will overwrite its content."
 msgstr ""
 
-#: src/ops.rs:2178
+#: src/ops.rs:2188
 #, rust-format
 msgid ""
 "Another file with the same name already exists in “{folder}”.\n"
 "Replacing it will overwrite its content."
 msgstr ""
 
-#: src/ops.rs:2187
+#: src/ops.rs:2197
 msgid "File conflict"
 msgstr ""
 
-#: src/ops.rs:2190
+#: src/ops.rs:2200
 #, rust-format
 msgid ""
 "Original: {original}\n"
 "Replace with: {new}"
 msgstr ""
 
-#: src/ops.rs:2192
+#: src/ops.rs:2202
 msgid "Apply this action to all conflicts"
 msgstr ""
 
-#: src/ops.rs:2200
+#: src/ops.rs:2210
 msgid "Select a _new name for the destination"
 msgstr ""
 
-#: src/ops.rs:2206 src/window/prefs.rs:1610
+#: src/ops.rs:2216 src/window/prefs.rs:1619
 msgid "R_eset"
 msgstr ""
 
-#: src/ops.rs:2217 src/ops.rs:2282
+#: src/ops.rs:2227 src/ops.rs:2292
 msgid "_Skip"
 msgstr ""
 
-#: src/ops.rs:2218
+#: src/ops.rs:2228
 msgid "_Keep Both"
 msgstr ""
 
-#: src/ops.rs:2219
+#: src/ops.rs:2229
 msgid "_Merge"
 msgstr ""
 
-#: src/ops.rs:2219
+#: src/ops.rs:2229
 msgid "_Replace"
 msgstr ""
 
-#: src/ops.rs:2233 src/sidebar.rs:842
+#: src/ops.rs:2243 src/sidebar.rs:842
 msgid "_Rename"
 msgstr ""
 
-#: src/ops.rs:2281
+#: src/ops.rs:2291
 msgid "S_kip All"
 msgstr ""
 
-#: src/ops.rs:2284 src/window/menus.rs:176
+#: src/ops.rs:2294 src/window/menus.rs:176
 msgid "_Delete Permanently"
 msgstr ""
 
-#: src/ops.rs:2286
+#: src/ops.rs:2296
 msgid "_Retry"
 msgstr ""
 
-#: src/ops.rs:2357
+#: src/ops.rs:2367
 #, rust-format
 msgid "Error removing file {path}: {reason}"
 msgstr ""
@@ -1813,11 +1813,11 @@ msgstr ""
 msgid "Folder"
 msgstr ""
 
-#: src/pane.rs:1198 src/sidebar.rs:1163 src/window.rs:2359
+#: src/pane.rs:1198 src/sidebar.rs:1163 src/window.rs:2373
 msgid "File System"
 msgstr ""
 
-#: src/pane.rs:1201 src/sidebar.rs:1134 src/window.rs:2352
+#: src/pane.rs:1201 src/sidebar.rs:1134 src/window.rs:2366
 msgid "Home"
 msgstr ""
 
@@ -1914,8 +1914,8 @@ msgid_plural "{n} other items selected"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/pane/build.rs:112 src/search.rs:719 src/window/prefs.rs:1407
-#: src/window/prefs.rs:1715 src/window/prefs.rs:1934
+#: src/pane/build.rs:112 src/search.rs:719 src/window/prefs.rs:1416
+#: src/window/prefs.rs:1724 src/window/prefs.rs:1943
 msgid "Name"
 msgstr ""
 
@@ -1966,11 +1966,11 @@ msgstr ""
 msgid "Notes"
 msgstr ""
 
-#: src/props.rs:165 src/props.rs:796 src/window/prefs.rs:603
+#: src/props.rs:165 src/props.rs:796 src/window/prefs.rs:612
 msgid "Media Info"
 msgstr ""
 
-#: src/props.rs:172 src/props.rs:794 src/window/prefs.rs:803
+#: src/props.rs:172 src/props.rs:794 src/window/prefs.rs:812
 msgid "Checksums"
 msgstr ""
 
@@ -2544,7 +2544,7 @@ msgstr ""
 msgid "Re_name…"
 msgstr ""
 
-#: src/sidebar.rs:808 src/window.rs:3110 src/window/menus.rs:37
+#: src/sidebar.rs:808 src/window.rs:3124 src/window/menus.rs:37
 #: src/window/menus.rs:224
 msgid "_Empty Trash"
 msgstr ""
@@ -2650,232 +2650,232 @@ msgstr ""
 msgid "_Reset to Default"
 msgstr ""
 
-#: src/window.rs:420
+#: src/window.rs:432
 msgid "Go to the previous visited location (right-click for history)"
 msgstr ""
 
-#: src/window.rs:421
+#: src/window.rs:433
 msgid "Go to the next visited location"
 msgstr ""
 
-#: src/window.rs:422
+#: src/window.rs:434
 msgid "Open the parent folder"
 msgstr ""
 
-#: src/window.rs:423
+#: src/window.rs:435
 msgid "Reload the current location"
 msgstr ""
 
-#: src/window.rs:424
+#: src/window.rs:436
 msgid "Open your personal folder"
 msgstr ""
 
-#: src/window.rs:425
+#: src/window.rs:437
 msgid "Browse the file system"
 msgstr ""
 
-#: src/window.rs:430
+#: src/window.rs:442
 msgid "Search documents and folders by name"
 msgstr ""
 
-#: src/window.rs:449
+#: src/window.rs:461
 msgid "Toggle between button and text-based location bar (Ctrl+L)"
 msgstr ""
 
-#: src/window.rs:465
+#: src/window.rs:477
 msgid "Type a path, e.g. ~/Documents or /etc"
 msgstr ""
 
-#: src/window.rs:472
+#: src/window.rs:484
 msgid "_Search:"
 msgstr ""
 
-#: src/window.rs:501
+#: src/window.rs:513
 msgid "Icon View (Ctrl+1)"
 msgstr ""
 
-#: src/window.rs:502
+#: src/window.rs:514
 msgid "List View (Ctrl+2)"
 msgstr ""
 
-#: src/window.rs:503
+#: src/window.rs:515
 msgid "Compact View (Ctrl+3)"
 msgstr ""
 
-#: src/window.rs:504
+#: src/window.rs:516
 msgid "Columns View (Ctrl+4)"
 msgstr ""
 
-#: src/window.rs:533
+#: src/window.rs:545
 msgid "Split view: show a second pane"
 msgstr ""
 
-#: src/window.rs:539
+#: src/window.rs:551
 msgid "Swap the panes: their tabs change sides (Ctrl+U)"
 msgstr ""
 
-#: src/window.rs:543
+#: src/window.rs:555
 msgid "Swap Panes"
 msgstr ""
 
-#: src/window.rs:555
+#: src/window.rs:567
 msgid ""
 "Info panel: the selected item's picture and details, in this folder (F11)"
 msgstr ""
 
-#: src/window.rs:561 src/window.rs:1999
+#: src/window.rs:573 src/window.rs:2013
 msgid "File operations"
 msgstr ""
 
-#: src/window.rs:581
+#: src/window.rs:593
 msgid "Open in Window"
 msgstr ""
 
-#: src/window.rs:864 src/window/menus.rs:43
+#: src/window.rs:876 src/window/menus.rs:43
 msgid "_Undo"
 msgstr ""
 
-#: src/window.rs:865 src/window/menus.rs:44
+#: src/window.rs:877 src/window/menus.rs:44
 msgid "_Redo"
 msgstr ""
 
-#: src/window.rs:1062
+#: src/window.rs:1074
 msgid "This location is already bookmarked"
 msgstr ""
 
-#: src/window.rs:1498
+#: src/window.rs:1510
 #, rust-format
 msgid "Could not find “{text}”"
 msgstr ""
 
-#: src/window.rs:2000
+#: src/window.rs:2014
 #, rust-format
 msgid "{n} file operation"
 msgid_plural "{n} file operations"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2193
+#: src/window.rs:2207
 msgid "Visible Columns"
 msgstr ""
 
-#: src/window.rs:2197
+#: src/window.rs:2211
 msgid "Choose the order of information to appear in the list view."
 msgstr ""
 
-#: src/window.rs:2763
+#: src/window.rs:2777
 #, rust-format
 msgid "Could not open with {program}"
 msgstr ""
 
-#: src/window.rs:2774
+#: src/window.rs:2788
 #, rust-format
 msgid "Do you want to run “{name}”, or display its contents?"
 msgstr ""
 
-#: src/window.rs:2776
+#: src/window.rs:2790
 #, rust-format
 msgid "“{name}” is an executable file."
 msgstr ""
 
-#: src/window.rs:2779
+#: src/window.rs:2793
 msgid "Run in _Terminal"
 msgstr ""
 
-#: src/window.rs:2782
+#: src/window.rs:2796
 msgid "_Display"
 msgstr ""
 
-#: src/window.rs:2785
+#: src/window.rs:2799
 msgid "_Run"
 msgstr ""
 
-#: src/window.rs:2810
+#: src/window.rs:2824
 msgid "Could not run the program"
 msgstr ""
 
-#: src/window.rs:2851
+#: src/window.rs:2865
 msgid "Untitled Folder"
 msgstr ""
 
-#: src/window.rs:2859
+#: src/window.rs:2873
 msgid "Could not create the folder"
 msgstr ""
 
-#: src/window.rs:2868
+#: src/window.rs:2882
 msgid "Untitled Document"
 msgstr ""
 
-#: src/window.rs:2886
+#: src/window.rs:2900
 msgid "Could not create the document"
 msgstr ""
 
-#: src/window.rs:2892
+#: src/window.rs:2906
 msgid "File names cannot contain “/”."
 msgstr ""
 
-#: src/window.rs:2892
+#: src/window.rs:2906
 msgid "Invalid name"
 msgstr ""
 
-#: src/window.rs:2901
+#: src/window.rs:2915
 #, rust-format
 msgid "The name “{name}” is already used in this location."
 msgstr ""
 
-#: src/window.rs:2902
+#: src/window.rs:2916
 msgid "Please use a different name."
 msgstr ""
 
-#: src/window.rs:2914
+#: src/window.rs:2928
 #, rust-format
 msgid "Could not rename “{name}”"
 msgstr ""
 
-#: src/window.rs:2938
+#: src/window.rs:2952
 msgid "There is nothing on the clipboard to paste."
 msgstr ""
 
-#: src/window.rs:3000
+#: src/window.rs:3014
 msgid "Copy To"
 msgstr ""
 
-#: src/window.rs:3000
+#: src/window.rs:3014
 msgid "Move To"
 msgstr ""
 
-#: src/window.rs:3003 src/window/menus.rs:46 src/window/menus.rs:175
+#: src/window.rs:3017 src/window/menus.rs:46 src/window/menus.rs:175
 #: src/window/menus.rs:197
 msgid "_Copy"
 msgstr ""
 
-#: src/window.rs:3003
+#: src/window.rs:3017
 msgid "_Move"
 msgstr ""
 
-#: src/window.rs:3006
+#: src/window.rs:3020
 msgid "C_heck the copies"
 msgstr ""
 
-#: src/window.rs:3008
+#: src/window.rs:3022
 msgid ""
 "Each file moved to another drive is read back from there and compared with "
 "its original (CRC32), which is deleted only once they match. A move within "
 "one drive copies nothing, so there’s nothing to check."
 msgstr ""
 
-#: src/window.rs:3010
+#: src/window.rs:3024
 msgid ""
 "Each copy is read back from where it went and compared with its original "
 "(CRC32). It takes about as long again as the copy."
 msgstr ""
 
-#: src/window.rs:3046
+#: src/window.rs:3060
 #, rust-format
 msgid "“{name}” can’t be moved to the Trash. Delete it permanently?"
 msgstr ""
 
-#: src/window.rs:3048
+#: src/window.rs:3062
 #, rust-format
 msgid "This item can’t be moved to the Trash. Delete it permanently?"
 msgid_plural ""
@@ -2883,39 +2883,39 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:3050
+#: src/window.rs:3064
 msgid ""
 "This location has no trash. If you delete an item, it will be permanently "
 "lost."
 msgstr ""
 
-#: src/window.rs:3050 src/window.rs:3084 src/window/menus.rs:50
+#: src/window.rs:3064 src/window.rs:3098 src/window/menus.rs:50
 #: src/window/menus.rs:210
 msgid "_Delete"
 msgstr ""
 
-#: src/window.rs:3058
+#: src/window.rs:3072
 #, rust-format
 msgid "Move “{name}” to the Trash?"
 msgstr ""
 
-#: src/window.rs:3060
+#: src/window.rs:3074
 #, rust-format
 msgid "Move {n} item to the Trash?"
 msgid_plural "Move {n} items to the Trash?"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:3062
+#: src/window.rs:3076
 msgid "Move to _Trash"
 msgstr ""
 
-#: src/window.rs:3076
+#: src/window.rs:3090
 #, rust-format
 msgid "Are you sure you want to permanently delete “{name}”?"
 msgstr ""
 
-#: src/window.rs:3079
+#: src/window.rs:3093
 #, rust-format
 msgid "Are you sure you want to permanently delete the {n} selected item?"
 msgid_plural ""
@@ -2923,119 +2923,119 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:3084
+#: src/window.rs:3098
 msgid "If you delete an item, it will be permanently lost."
 msgstr ""
 
-#: src/window.rs:3108
+#: src/window.rs:3122
 msgid "Empty all items from the Trash?"
 msgstr ""
 
-#: src/window.rs:3109
+#: src/window.rs:3123
 msgid "All items in the Trash will be permanently deleted."
 msgstr ""
 
-#: src/window.rs:3154
+#: src/window.rs:3168
 msgid "_Move Here"
 msgstr ""
 
-#: src/window.rs:3155
+#: src/window.rs:3169
 msgid "_Copy Here"
 msgstr ""
 
-#: src/window.rs:3156
+#: src/window.rs:3170
 msgid "_Link Here"
 msgstr ""
 
-#: src/window.rs:3157
+#: src/window.rs:3171
 msgid "Move and C_heck Here"
 msgstr ""
 
-#: src/window.rs:3158
+#: src/window.rs:3172
 msgid "Copy and Ch_eck Here"
 msgstr ""
 
-#: src/window.rs:3202
+#: src/window.rs:3216
 msgid "Install mate-terminal or set $TERMINAL."
 msgstr ""
 
-#: src/window.rs:3202
+#: src/window.rs:3216
 msgid "No terminal found"
 msgstr ""
 
-#: src/window.rs:3210
+#: src/window.rs:3224
 msgid "Could not open a terminal"
 msgstr ""
 
-#: src/window.rs:3236
+#: src/window.rs:3250
 msgid "Could not start the archive manager"
 msgstr ""
 
-#: src/window.rs:3242
+#: src/window.rs:3256
 msgid "Select Items Matching"
 msgstr ""
 
-#: src/window.rs:3245
+#: src/window.rs:3259
 msgid "_Select"
 msgstr ""
 
-#: src/window.rs:3251
+#: src/window.rs:3265
 msgid "Pattern (e.g. *.jpg, report-??.pdf):"
 msgstr ""
 
-#: src/window.rs:3276
+#: src/window.rs:3290
 msgid "Edit Bookmarks"
 msgstr ""
 
-#: src/window.rs:3313
+#: src/window.rs:3328
 msgid "A fast graphical file manager."
 msgstr ""
 
-#: src/window.rs:3313
+#: src/window.rs:3328
 msgid "This program comes with absolutely no warranty."
 msgstr ""
 
-#: src/window.rs:3320
+#: src/window.rs:3335
 msgid "_License"
 msgstr ""
 
-#: src/window.rs:3320
+#: src/window.rs:3335
 msgid "_Source Code"
 msgstr ""
 
-#: src/window.rs:3342 src/window/prefs.rs:815
+#: src/window.rs:3371 src/window/prefs.rs:824
 msgid "Keyboard Shortcuts"
 msgstr ""
 
-#: src/window.rs:3378
+#: src/window.rs:3407
 msgid "Mouse"
 msgstr ""
 
-#: src/window.rs:3379
+#: src/window.rs:3408
 msgid "Middle-click a folder"
 msgstr ""
 
-#: src/window.rs:3380
+#: src/window.rs:3409
 msgid "Copy / Move / Ask"
 msgstr ""
 
-#: src/window.rs:3380
+#: src/window.rs:3409
 msgid "Drag with Ctrl / Shift / Alt"
 msgstr ""
 
-#: src/window.rs:3381
+#: src/window.rs:3410
 msgid "Ctrl+scroll"
 msgstr ""
 
-#: src/window.rs:3381 src/window/prefs.rs:164
+#: src/window.rs:3410 src/window/prefs.rs:164
 msgid "Zoom"
 msgstr ""
 
-#: src/window.rs:3382
+#: src/window.rs:3411
 msgid "Back / Forward"
 msgstr ""
 
-#: src/window.rs:3382
+#: src/window.rs:3411
 msgid "Back / forward mouse buttons"
 msgstr ""
 
@@ -3409,7 +3409,7 @@ msgstr ""
 msgid "Display"
 msgstr ""
 
-#: src/window/prefs.rs:49 src/window/prefs.rs:543
+#: src/window/prefs.rs:49 src/window/prefs.rs:552
 msgid "List Columns"
 msgstr ""
 
@@ -3543,7 +3543,7 @@ msgstr ""
 msgid "_Single click to open items"
 msgstr ""
 
-#: src/window/prefs.rs:302 src/window/prefs.rs:797
+#: src/window/prefs.rs:302 src/window/prefs.rs:806
 msgid "Tabs"
 msgstr ""
 
@@ -3584,19 +3584,30 @@ msgstr ""
 msgid "After the pointer rests on it for"
 msgstr ""
 
-#: src/window/prefs.rs:335
-msgid "Ask before moving files to the T_rash"
+#: src/window/prefs.rs:336
+msgid "Show file operations in their own _window"
 msgstr ""
 
 #: src/window/prefs.rs:337
+msgid ""
+"Instead of the button in the location bar and its popup: the File Operations "
+"window opens when an operation takes a while, and closes when the last one "
+"is done"
+msgstr ""
+
+#: src/window/prefs.rs:344
+msgid "Ask before moving files to the T_rash"
+msgstr ""
+
+#: src/window/prefs.rs:346
 msgid "Other Programs"
 msgstr ""
 
-#: src/window/prefs.rs:338
+#: src/window/prefs.rs:347
 msgid "Open folders when other programs _ask, also when Arkha isn't running"
 msgstr ""
 
-#: src/window/prefs.rs:339
+#: src/window/prefs.rs:348
 msgid ""
 "“Show in folder” in web browsers, download lists and the like opens Arkha, "
 "with the file selected. While Arkha runs it does this anyway, unless another "
@@ -3604,20 +3615,20 @@ msgid ""
 "for it too."
 msgstr ""
 
-#: src/window/prefs.rs:345
+#: src/window/prefs.rs:354
 msgid "Could not change it"
 msgstr ""
 
-#: src/window/prefs.rs:351
+#: src/window/prefs.rs:360
 msgid "Scrolling"
 msgstr ""
 
-#: src/window/prefs.rs:353
+#: src/window/prefs.rs:362
 msgid ""
 "_Middle-click on empty space (or an item in the list view) to autoscroll"
 msgstr ""
 
-#: src/window/prefs.rs:354
+#: src/window/prefs.rs:363
 msgid ""
 "A marker appears where you clicked and the view scrolls towards the pointer, "
 "faster the further away it is. Click, press a key or use the wheel to stop "
@@ -3626,231 +3637,231 @@ msgid ""
 "with Shift, a middle-click opens them there (a folder in a new tab)."
 msgstr ""
 
-#: src/window/prefs.rs:367
+#: src/window/prefs.rs:376
 msgid "Language"
 msgstr ""
 
-#: src/window/prefs.rs:370
+#: src/window/prefs.rs:379
 msgid "System default"
 msgstr ""
 
-#: src/window/prefs.rs:378
+#: src/window/prefs.rs:387
 msgid "Applies the next time Arkha starts."
 msgstr ""
 
-#: src/window/prefs.rs:390
+#: src/window/prefs.rs:399
 msgid "Language:"
 msgstr ""
 
-#: src/window/prefs.rs:393
+#: src/window/prefs.rs:402
 msgid "Show _hidden and backup files"
 msgstr ""
 
-#: src/window/prefs.rs:396
+#: src/window/prefs.rs:405
 msgid "_List view"
 msgstr ""
 
-#: src/window/prefs.rs:398
+#: src/window/prefs.rs:407
 msgid "_Bulk rename list"
 msgstr ""
 
-#: src/window/prefs.rs:399
+#: src/window/prefs.rs:408
 msgid ""
 "Shade every second row of the file list in the Rename All… window (applies "
 "the next time it opens)"
 msgstr ""
 
-#: src/window/prefs.rs:404
+#: src/window/prefs.rs:413
 msgid "Alternating row colors:"
 msgstr ""
 
-#: src/window/prefs.rs:406
+#: src/window/prefs.rs:415
 msgid "Show file sizes in _IEC units (KiB, MiB, GiB)"
 msgstr ""
 
-#: src/window/prefs.rs:407
+#: src/window/prefs.rs:416
 msgid ""
 "Sizes in powers of 1024 (1 KiB = 1024 bytes) instead of powers of 1000 (1 kB "
 "= 1000 bytes)"
 msgstr ""
 
-#: src/window/prefs.rs:420
+#: src/window/prefs.rs:429
 msgid "ISO"
 msgstr ""
 
-#: src/window/prefs.rs:420
+#: src/window/prefs.rs:429
 msgid "Informal"
 msgstr ""
 
-#: src/window/prefs.rs:420
+#: src/window/prefs.rs:429
 msgid "Your language’s"
 msgstr ""
 
 #. TRANSLATORS: a date format's name and how a date looks with it.
-#: src/window/prefs.rs:423
+#: src/window/prefs.rs:432
 #, rust-format
 msgid "{format}: {example}"
 msgstr ""
 
-#: src/window/prefs.rs:435
+#: src/window/prefs.rs:444
 msgid "Dates:"
 msgstr ""
 
-#: src/window/prefs.rs:436
+#: src/window/prefs.rs:445
 msgid "Icon Captions"
 msgstr ""
 
-#: src/window/prefs.rs:437
+#: src/window/prefs.rs:446
 msgid ""
 "What shows under the names in the icon view. More of it shows as you zoom in."
 msgstr ""
 
-#: src/window/prefs.rs:442
+#: src/window/prefs.rs:451
 msgid "First:"
 msgstr ""
 
-#: src/window/prefs.rs:442
+#: src/window/prefs.rs:451
 msgid "Second:"
 msgstr ""
 
-#: src/window/prefs.rs:442
+#: src/window/prefs.rs:451
 msgid "Third:"
 msgstr ""
 
-#: src/window/prefs.rs:444
+#: src/window/prefs.rs:453
 msgid "None"
 msgstr ""
 
-#: src/window/prefs.rs:462
+#: src/window/prefs.rs:471
 msgid "Window"
 msgstr ""
 
-#: src/window/prefs.rs:463
+#: src/window/prefs.rs:472
 msgid "Show the side _pane"
 msgstr ""
 
-#: src/window/prefs.rs:466
+#: src/window/prefs.rs:475
 msgid "Show the _main toolbar"
 msgstr ""
 
-#: src/window/prefs.rs:469
+#: src/window/prefs.rs:478
 msgid "Show the l_ocation bar"
 msgstr ""
 
-#: src/window/prefs.rs:470
+#: src/window/prefs.rs:479
 msgid ""
 "Hidden, it still shows while you type a location (Ctrl+L) or search (Ctrl+F)"
 msgstr ""
 
-#: src/window/prefs.rs:473
+#: src/window/prefs.rs:482
 msgid "Show the status_bar"
 msgstr ""
 
-#: src/window/prefs.rs:477
+#: src/window/prefs.rs:486
 msgid "Say how many items are _hidden"
 msgstr ""
 
-#: src/window/prefs.rs:478
+#: src/window/prefs.rs:487
 msgid ""
 "The status bar adds how many items of the folder are hidden, as in “12 items "
 "(3 hidden)”"
 msgstr ""
 
-#: src/window/prefs.rs:494
+#: src/window/prefs.rs:503
 msgid "Always show the _tab bar"
 msgstr ""
 
-#: src/window/prefs.rs:495
+#: src/window/prefs.rs:504
 msgid ""
 "Also show it when a window has only one tab, so that tab can be dragged to "
 "another window or out into a new one"
 msgstr ""
 
-#: src/window/prefs.rs:502
+#: src/window/prefs.rs:511
 msgid "Show te_xt on toolbar buttons"
 msgstr ""
 
-#: src/window/prefs.rs:503
+#: src/window/prefs.rs:512
 msgid "The Back and Forward buttons show their name next to the icon"
 msgstr ""
 
-#: src/window/prefs.rs:515
+#: src/window/prefs.rs:524
 msgid "Location Bar"
 msgstr ""
 
-#: src/window/prefs.rs:517
+#: src/window/prefs.rs:526
 msgid "Always show the _location as text"
 msgstr ""
 
-#: src/window/prefs.rs:518
+#: src/window/prefs.rs:527
 msgid ""
 "Show the folder's path as editable text instead of buttons for each folder"
 msgstr ""
 
-#: src/window/prefs.rs:527
+#: src/window/prefs.rs:536
 msgid "Zoom in, zoom out and the zoom level"
 msgstr ""
 
-#: src/window/prefs.rs:527
+#: src/window/prefs.rs:536
 msgid "_Zoom"
 msgstr ""
 
-#: src/window/prefs.rs:528
+#: src/window/prefs.rs:537
 msgid "Icon, list and compact view"
 msgstr ""
 
-#: src/window/prefs.rs:528
+#: src/window/prefs.rs:537
 msgid "Vi_ew"
 msgstr ""
 
-#: src/window/prefs.rs:529
+#: src/window/prefs.rs:538
 msgid "Show or hide the extra pane (F3)"
 msgstr ""
 
-#: src/window/prefs.rs:529
+#: src/window/prefs.rs:538
 msgid "_Split view"
 msgstr ""
 
-#: src/window/prefs.rs:531
+#: src/window/prefs.rs:540
 msgid "S_wap panes"
 msgstr ""
 
-#: src/window/prefs.rs:531
+#: src/window/prefs.rs:540
 msgid "Swap the two sides of split view (Ctrl+U); shown in split view"
 msgstr ""
 
-#: src/window/prefs.rs:534
+#: src/window/prefs.rs:543
 msgid "Show or hide the info panel in the folder you're in (F11)"
 msgstr ""
 
-#: src/window/prefs.rs:534
+#: src/window/prefs.rs:543
 msgid "_Info panel"
 msgstr ""
 
-#: src/window/prefs.rs:535
+#: src/window/prefs.rs:544
 msgid "Buttons:"
 msgstr ""
 
-#: src/window/prefs.rs:544
+#: src/window/prefs.rs:553
 msgid ""
 "Choose the order of information to appear in the list view. Columns can also "
 "be dragged to another place, and a right click on the column headers shows "
 "or hides them."
 msgstr ""
 
-#: src/window/prefs.rs:561
+#: src/window/prefs.rs:570
 msgid "Always"
 msgstr ""
 
-#: src/window/prefs.rs:561
+#: src/window/prefs.rs:570
 msgid "Local files only"
 msgstr ""
 
-#: src/window/prefs.rs:561
+#: src/window/prefs.rs:570
 msgid "Never"
 msgstr ""
 
-#: src/window/prefs.rs:574
+#: src/window/prefs.rs:583
 msgid ""
 "Local files: those on this computer’s drives, network shares the system "
 "mounts included; not places opened through GVfs (smb://, sftp://, phones), "
@@ -3858,100 +3869,100 @@ msgid ""
 msgstr ""
 
 #. TRANSLATORS: a setting's explanation, then what “local files” are.
-#: src/window/prefs.rs:576
+#: src/window/prefs.rs:585
 #, rust-format
 msgid "{text} {local_files}"
 msgstr ""
 
-#: src/window/prefs.rs:577
+#: src/window/prefs.rs:586
 msgid "Text Files"
 msgstr ""
 
-#: src/window/prefs.rs:578
+#: src/window/prefs.rs:587
 msgid "At bigger icon sizes a text file’s icon shows its first lines."
 msgstr ""
 
-#: src/window/prefs.rs:578
+#: src/window/prefs.rs:587
 msgid "Show text in icons:"
 msgstr ""
 
-#: src/window/prefs.rs:579
+#: src/window/prefs.rs:588
 msgid "Other Previewable Files"
 msgstr ""
 
-#: src/window/prefs.rs:580
+#: src/window/prefs.rs:589
 msgid ""
 "Images get thumbnails built in; other file types through the custom "
 "thumbnailers below, or the ones installed on the system."
 msgstr ""
 
-#: src/window/prefs.rs:580
+#: src/window/prefs.rs:589
 msgid "Show thumbnails:"
 msgstr ""
 
-#: src/window/prefs.rs:590
+#: src/window/prefs.rs:599
 msgid ""
 "Bigger images get no thumbnail: decoding them takes long. Other files' "
 "thumbnailers decide for themselves."
 msgstr ""
 
-#: src/window/prefs.rs:597
+#: src/window/prefs.rs:606
 msgid "Only for files smaller than:"
 msgstr ""
 
-#: src/window/prefs.rs:601
+#: src/window/prefs.rs:610
 msgid "Folders"
 msgstr ""
 
-#: src/window/prefs.rs:602
+#: src/window/prefs.rs:611
 msgid "A folder’s size is how many items it has."
 msgstr ""
 
-#: src/window/prefs.rs:602
+#: src/window/prefs.rs:611
 msgid "Count number of items:"
 msgstr ""
 
-#: src/window/prefs.rs:605
+#: src/window/prefs.rs:614
 msgid "Show a _Media Info tab in file properties"
 msgstr ""
 
-#: src/window/prefs.rs:606
+#: src/window/prefs.rs:615
 msgid ""
 "Shows what the mediainfo program reports about a file: codecs, resolution, "
 "duration, bit rate and more"
 msgstr ""
 
-#: src/window/prefs.rs:613
+#: src/window/prefs.rs:622
 msgid "For:"
 msgstr ""
 
-#: src/window/prefs.rs:615
+#: src/window/prefs.rs:624
 msgid "_Videos"
 msgstr ""
 
-#: src/window/prefs.rs:616
+#: src/window/prefs.rs:625
 msgid "_Audio"
 msgstr ""
 
-#: src/window/prefs.rs:617
+#: src/window/prefs.rs:626
 msgid "_Images"
 msgstr ""
 
-#: src/window/prefs.rs:618
+#: src/window/prefs.rs:627
 msgid "_Other files"
 msgstr ""
 
-#: src/window/prefs.rs:630
+#: src/window/prefs.rs:639
 msgid ""
 "Install mediainfo to use this: the tab shows codecs, resolution, duration, "
 "bit rate and more."
 msgstr ""
 
-#: src/window/prefs.rs:633
+#: src/window/prefs.rs:642
 msgid "Info Panel"
 msgstr ""
 
-#: src/window/prefs.rs:634
+#: src/window/prefs.rs:643
 msgid ""
 "Beside the files (View → Info Panel, F11, or its toolbar button), in the "
 "folders where you turn it on. It shows the selected item: a folder's cover "
@@ -3959,79 +3970,79 @@ msgid ""
 "for covers."
 msgstr ""
 
-#: src/window/prefs.rs:639
+#: src/window/prefs.rs:648
 msgid ""
 "File names to use as a folder's cover, separated by semicolons, in order of "
 "preference. Upper and lower case don't matter."
 msgstr ""
 
-#: src/window/prefs.rs:656
+#: src/window/prefs.rs:665
 msgid "Cover file names:"
 msgstr ""
 
-#: src/window/prefs.rs:671
+#: src/window/prefs.rs:680
 msgid "Hide the panel"
 msgstr ""
 
-#: src/window/prefs.rs:671
+#: src/window/prefs.rs:680
 msgid "Keep showing the last item"
 msgstr ""
 
-#: src/window/prefs.rs:671
+#: src/window/prefs.rs:680
 msgid "Show the open folder"
 msgstr ""
 
-#: src/window/prefs.rs:671
+#: src/window/prefs.rs:680
 msgid "Show their number and total size"
 msgstr ""
 
-#: src/window/prefs.rs:672
+#: src/window/prefs.rs:681
 msgid "With several items selected:"
 msgstr ""
 
-#: src/window/prefs.rs:673
+#: src/window/prefs.rs:682
 msgid "Show its icon and the details"
 msgstr ""
 
-#: src/window/prefs.rs:673
+#: src/window/prefs.rs:682
 msgid "Show nothing"
 msgstr ""
 
-#: src/window/prefs.rs:674
+#: src/window/prefs.rs:683
 msgid "Folders without a cover:"
 msgstr ""
 
-#: src/window/prefs.rs:675
+#: src/window/prefs.rs:684
 msgid "Show the _details (type, size, date, …)"
 msgstr ""
 
-#: src/window/prefs.rs:684
+#: src/window/prefs.rs:693
 msgid "Computer Entries"
 msgstr ""
 
-#: src/window/prefs.rs:685
+#: src/window/prefs.rs:694
 msgid ""
 "Unchecked entries are hidden. Drag an entry by its handle, or select it and "
 "use the arrows, to move it; they can also be dragged in the side pane itself."
 msgstr ""
 
-#: src/window/prefs.rs:695
+#: src/window/prefs.rs:704
 msgid "Appearance"
 msgstr ""
 
-#: src/window/prefs.rs:696
+#: src/window/prefs.rs:705
 msgid "Custom _row height:"
 msgstr ""
 
-#: src/window/prefs.rs:728
+#: src/window/prefs.rs:737
 msgid "Removable Media"
 msgstr ""
 
-#: src/window/prefs.rs:729
+#: src/window/prefs.rs:738
 msgid "Mount drives and media when they're _inserted"
 msgstr ""
 
-#: src/window/prefs.rs:731
+#: src/window/prefs.rs:740
 #, rust-format
 msgid ""
 "Flash drives, memory cards, discs… are mounted right away. This is "
@@ -4039,230 +4050,230 @@ msgid ""
 "they’re mounted when you click them in the side pane."
 msgstr ""
 
-#: src/window/prefs.rs:732
+#: src/window/prefs.rs:741
 msgid ""
 "Flash drives, memory cards, discs… inserted while Arkha runs are mounted "
 "right away. Turned off, they’re mounted when you click them in the side pane."
 msgstr ""
 
-#: src/window/prefs.rs:746
+#: src/window/prefs.rs:755
 msgid "The eject button only _unmounts"
 msgstr ""
 
-#: src/window/prefs.rs:747
+#: src/window/prefs.rs:756
 msgid ""
 "Clicking the button next to a drive in the side pane unmounts it, but "
 "doesn't eject it or power it off (the drive stays in the list, ready to be "
 "mounted again)"
 msgstr ""
 
-#: src/window/prefs.rs:766
+#: src/window/prefs.rs:775
 msgid "Context Menu Entries"
 msgstr ""
 
-#: src/window/prefs.rs:767
+#: src/window/prefs.rs:776
 msgid ""
 "Drag an entry by its handle, or select it and use the arrows, to move it. "
 "Unchecked entries are hidden. Entries that don't apply are left out of the "
 "menu (Restore outside the Trash, say)."
 msgstr ""
 
-#: src/window/prefs.rs:772
+#: src/window/prefs.rs:781
 msgid "Files and Folders"
 msgstr ""
 
-#: src/window/prefs.rs:773
+#: src/window/prefs.rs:782
 msgid "A Folder’s Empty Space"
 msgstr ""
 
-#: src/window/prefs.rs:786
+#: src/window/prefs.rs:795
 msgid "Custom Actions in the Context Menu"
 msgstr ""
 
-#: src/window/prefs.rs:798
+#: src/window/prefs.rs:807
 msgid ""
 "Unchecked tabs aren't shown in the Properties window. Drag a tab by its "
 "handle, or select it and use the arrows, to move it; dragging the tabs in "
 "the Properties window moves them here too."
 msgstr ""
 
-#: src/window/prefs.rs:804
+#: src/window/prefs.rs:813
 msgid ""
 "Unchecked ones aren't offered. Drag one by its handle, or select it and use "
 "the arrows, to move it."
 msgstr ""
 
-#: src/window/prefs.rs:921
+#: src/window/prefs.rs:930
 msgid "_Save"
 msgstr ""
 
-#: src/window/prefs.rs:962 src/window/prefs.rs:1808
+#: src/window/prefs.rs:971 src/window/prefs.rs:1817
 msgid "Move up"
 msgstr ""
 
-#: src/window/prefs.rs:964 src/window/prefs.rs:1810
+#: src/window/prefs.rs:973 src/window/prefs.rs:1819
 msgid "Move down"
 msgstr ""
 
-#: src/window/prefs.rs:1008
+#: src/window/prefs.rs:1017
 msgid "Drag to move"
 msgstr ""
 
-#: src/window/prefs.rs:1148
+#: src/window/prefs.rs:1157
 msgid "Separator"
 msgstr ""
 
-#: src/window/prefs.rs:1164
+#: src/window/prefs.rs:1173
 msgid "custom action"
 msgstr ""
 
-#: src/window/prefs.rs:1184
+#: src/window/prefs.rs:1193
 msgid "Add _Separator"
 msgstr ""
 
-#: src/window/prefs.rs:1185
+#: src/window/prefs.rs:1194
 msgid "Add a separator below the selected entry"
 msgstr ""
 
-#: src/window/prefs.rs:1186
+#: src/window/prefs.rs:1195
 msgid "Re_move Separator"
 msgstr ""
 
-#: src/window/prefs.rs:1188 src/window/prefs.rs:1303 src/window/prefs.rs:1336
+#: src/window/prefs.rs:1197 src/window/prefs.rs:1312 src/window/prefs.rs:1345
 msgid "Reset _Order"
 msgstr ""
 
-#: src/window/prefs.rs:1189
+#: src/window/prefs.rs:1198
 msgid ""
 "Put every entry back in its original place (which entries are hidden stays "
 "as it is)"
 msgstr ""
 
-#: src/window/prefs.rs:1230
+#: src/window/prefs.rs:1239
 msgid "View submenu:"
 msgstr ""
 
-#: src/window/prefs.rs:1304
+#: src/window/prefs.rs:1313
 msgid ""
 "Put every entry back in its usual place (which entries are hidden stays as "
 "it is)"
 msgstr ""
 
-#: src/window/prefs.rs:1337
+#: src/window/prefs.rs:1346
 msgid ""
 "Put every checksum back in its usual place (which are offered stays as it is)"
 msgstr ""
 
-#: src/window/prefs.rs:1363
+#: src/window/prefs.rs:1372
 msgid "Always shown, so the window has a tab"
 msgstr ""
 
-#: src/window/prefs.rs:1380
+#: src/window/prefs.rs:1389
 msgid "Reset O_rder"
 msgstr ""
 
-#: src/window/prefs.rs:1381
+#: src/window/prefs.rs:1390
 msgid "Put every tab back in its usual place (which are shown stays as it is)"
 msgstr ""
 
-#: src/window/prefs.rs:1462
+#: src/window/prefs.rs:1471
 msgid "Drag to reorder. Double-click a name to rename it."
 msgstr ""
 
-#: src/window/prefs.rs:1465 src/window/prefs.rs:1804
+#: src/window/prefs.rs:1474 src/window/prefs.rs:1813
 msgid "_Add…"
 msgstr ""
 
-#: src/window/prefs.rs:1539
+#: src/window/prefs.rs:1548
 msgid "Action"
 msgstr ""
 
-#: src/window/prefs.rs:1539
+#: src/window/prefs.rs:1548
 msgid "Shortcut"
 msgstr ""
 
-#: src/window/prefs.rs:1588
+#: src/window/prefs.rs:1597
 #, rust-format
 msgid "“{shortcut}” is already the shortcut for “{action}”"
 msgstr ""
 
-#: src/window/prefs.rs:1590
+#: src/window/prefs.rs:1599
 #, rust-format
 msgid "Use it for “{action}” instead? “{other}” will no longer have it."
 msgstr ""
 
-#: src/window/prefs.rs:1592
+#: src/window/prefs.rs:1601
 msgid "_Reassign"
 msgstr ""
 
-#: src/window/prefs.rs:1607
+#: src/window/prefs.rs:1616
 msgid "C_hange…"
 msgstr ""
 
-#: src/window/prefs.rs:1608
+#: src/window/prefs.rs:1617
 msgid "C_lear"
 msgstr ""
 
-#: src/window/prefs.rs:1609
+#: src/window/prefs.rs:1618
 msgid "Remove the shortcut"
 msgstr ""
 
-#: src/window/prefs.rs:1611
+#: src/window/prefs.rs:1620
 msgid "Go back to the default shortcut"
 msgstr ""
 
-#: src/window/prefs.rs:1612
+#: src/window/prefs.rs:1621
 msgid "Reset _All"
 msgstr ""
 
-#: src/window/prefs.rs:1613
+#: src/window/prefs.rs:1622
 msgid "Go back to the default shortcuts for every action"
 msgstr ""
 
-#: src/window/prefs.rs:1652
+#: src/window/prefs.rs:1661
 msgid ""
 "Double-click an action to give it a new shortcut. Changed shortcuts are "
 "shown in bold."
 msgstr ""
 
-#: src/window/prefs.rs:1667
+#: src/window/prefs.rs:1676
 msgid "Set Shortcut"
 msgstr ""
 
 #. TRANSLATORS: keep <b>{action}</b>: the action's name is shown in bold.
-#: src/window/prefs.rs:1670
+#: src/window/prefs.rs:1679
 #, rust-format
 msgid ""
 "Press the new shortcut for <b>{action}</b>,\n"
 "or Escape to cancel."
 msgstr ""
 
-#: src/window/prefs.rs:1696
+#: src/window/prefs.rs:1705
 msgid "That key needs Ctrl, Alt or Super with it."
 msgstr ""
 
-#: src/window/prefs.rs:1715 src/window/prefs.rs:1934
+#: src/window/prefs.rs:1724 src/window/prefs.rs:1943
 msgid "Command"
 msgstr ""
 
-#: src/window/prefs.rs:1715
+#: src/window/prefs.rs:1724
 msgid "File types"
 msgstr ""
 
-#: src/window/prefs.rs:1718
+#: src/window/prefs.rs:1727
 #, rust-format
 msgid "{name} (not installed)"
 msgstr ""
 
-#: src/window/prefs.rs:1723
+#: src/window/prefs.rs:1732
 msgid "Add Thumbnailer"
 msgstr ""
 
-#: src/window/prefs.rs:1724
+#: src/window/prefs.rs:1733
 msgid "Edit Thumbnailer"
 msgstr ""
 
-#: src/window/prefs.rs:1734
+#: src/window/prefs.rs:1743
 msgid ""
 "Custom thumbnailers make thumbnails for other file types, e.g. videos with "
 "ffmpeg. The first one whose file types match and whose program is installed "
@@ -4270,106 +4281,106 @@ msgid ""
 "the system: PDF with Evince, office documents, audio cover art and so on."
 msgstr ""
 
-#: src/window/prefs.rs:1805
+#: src/window/prefs.rs:1814
 msgid "_Edit…"
 msgstr ""
 
-#: src/window/prefs.rs:1890
+#: src/window/prefs.rs:1899
 msgid "e.g. Videos"
 msgstr ""
 
-#: src/window/prefs.rs:1891
+#: src/window/prefs.rs:1900
 msgid "e.g. video/*"
 msgstr ""
 
-#: src/window/prefs.rs:1892
+#: src/window/prefs.rs:1901
 msgid "e.g. ffmpegthumbnailer -i %i -o %o -s %s -f"
 msgstr ""
 
-#: src/window/prefs.rs:1894
+#: src/window/prefs.rs:1903
 msgid ""
 "File types are MIME types, separated by “;” (“*” matches anything). In the "
 "command, %i is the file, %o the image to write (PNG or JPEG) and %s the size "
 "in pixels. It runs with sh and may take up to 30 seconds."
 msgstr ""
 
-#: src/window/prefs.rs:1899
+#: src/window/prefs.rs:1908
 msgid "File _types:"
 msgstr ""
 
-#: src/window/prefs.rs:1899 src/window/prefs.rs:2038
+#: src/window/prefs.rs:1908 src/window/prefs.rs:2047
 msgid "_Command:"
 msgstr ""
 
-#: src/window/prefs.rs:1899 src/window/prefs.rs:2037
+#: src/window/prefs.rs:1908 src/window/prefs.rs:2046
 msgid "_Name:"
 msgstr ""
 
-#: src/window/prefs.rs:1938
+#: src/window/prefs.rs:1947
 msgid "Add Custom Action"
 msgstr ""
 
-#: src/window/prefs.rs:1939
+#: src/window/prefs.rs:1948
 msgid "Edit Custom Action"
 msgstr ""
 
-#: src/window/prefs.rs:1944
+#: src/window/prefs.rs:1953
 msgid ""
 "Commands run in the current folder. %f selected file, %F all selected files, "
 "%n / %N their names, %d current folder."
 msgstr ""
 
-#: src/window/prefs.rs:1950
+#: src/window/prefs.rs:1959
 msgid ""
 "A shell that accepts -c, such as sh, bash, zsh or fish, or its full path. "
 "Empty means sh."
 msgstr ""
 
-#: src/window/prefs.rs:1965
+#: src/window/prefs.rs:1974
 msgid "Run commands _with:"
 msgstr ""
 
-#: src/window/prefs.rs:1990
+#: src/window/prefs.rs:1999
 msgid "e.g. gimp %F"
 msgstr ""
 
-#: src/window/prefs.rs:1991
+#: src/window/prefs.rs:2000
 msgid ""
 "%f first selected file, %F all selected files, %n / %N their names, %d "
 "current folder, %% a % sign. Paths are quoted for you."
 msgstr ""
 
-#: src/window/prefs.rs:1996
+#: src/window/prefs.rs:2005
 msgid "_Files"
 msgstr ""
 
-#: src/window/prefs.rs:1998
+#: src/window/prefs.rs:2007
 msgid "F_olders"
 msgstr ""
 
-#: src/window/prefs.rs:2000
+#: src/window/prefs.rs:2009
 msgid "Empty space in a _folder"
 msgstr ""
 
-#: src/window/prefs.rs:2024
+#: src/window/prefs.rs:2033
 msgid "e.g. *.srt; *.nfo"
 msgstr ""
 
-#: src/window/prefs.rs:2025
+#: src/window/prefs.rs:2034
 msgid ""
 "A file needs one of the checked types or a name matching a pattern; with "
 "neither set, the action is offered for any file. Folders only go by the "
 "patterns."
 msgstr ""
 
-#: src/window/prefs.rs:2040
+#: src/window/prefs.rs:2049
 msgid "Show for:"
 msgstr ""
 
-#: src/window/prefs.rs:2041
+#: src/window/prefs.rs:2050
 msgid "File types:"
 msgstr ""
 
-#: src/window/prefs.rs:2042
+#: src/window/prefs.rs:2051
 msgid "Name _patterns:"
 msgstr ""

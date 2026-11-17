@@ -274,6 +274,18 @@ pub fn show_backgrounds_of(folder: &gio::File) {
     });
 }
 
+/// After the setting for operations in their own window changed: the
+/// operations button shown or hidden, and the window opened if operations
+/// are running.
+pub fn ops_shown_as_set() {
+    for w in all_windows() {
+        w.update_ops_button();
+    }
+    if config::with(|s| s.ops_window) && ops::is_busy() {
+        ops::open_window();
+    }
+}
+
 /// Every window's side pane with the background now chosen.
 pub fn show_side_pane_backgrounds() {
     for w in all_windows() {
@@ -1993,13 +2005,15 @@ impl AppWindow {
     /// their overall progress.
     fn update_ops_button(&self) {
         let (n, fraction) = ops::summary();
-        self.ops_btn.set_visible(n > 0);
+        // Not with operations shown in their own window (a setting).
+        let own_window = config::with(|s| s.ops_window);
+        self.ops_btn.set_visible(n > 0 && !own_window);
         self.ops_bar.set_fraction(fraction);
         self.ops_btn.set_tooltip_text(Some(&match n {
             0 => tr("File operations"),
             n => fill(&trn("{n} file operation", "{n} file operations", n as u64), &[("n", &n)]),
         }));
-        if n == 0 {
+        if n == 0 || own_window {
             self.ops_pop.popdown();
         }
     }

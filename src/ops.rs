@@ -1307,6 +1307,11 @@ fn insert_at(states: &[OpState], new: OpState) -> usize {
 }
 
 fn add_op(op: Rc<Op>) {
+    // Operations in their own window (a setting): it opens with the first
+    // one listed, also again if it was closed meanwhile.
+    if crate::config::with(|s| s.ops_window) && !OPS_WINDOW.with(|w| w.borrow().as_ref().is_some_and(|w| w.is_visible())) {
+        glib::idle_add_local_once(open_window);
+    }
     OPS.with(|o| {
         let mut o = o.borrow_mut();
         let states: Vec<OpState> = o.iter().map(|op| op.state).collect();
