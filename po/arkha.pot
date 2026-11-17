@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Arkha 1.0.0-dev\n"
+"Project-Id-Version: Arkha 1.1.0-dev\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-14 17:16+0100\n"
+"POT-Creation-Date: 2026-11-17 15:49+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -199,7 +199,7 @@ msgstr ""
 msgid "Archives"
 msgstr ""
 
-#: src/autorun.rs:194
+#: src/autorun.rs:194 src/window.rs:3334
 #, rust-format
 msgid "Could not open “{name}”"
 msgstr ""
@@ -313,9 +313,9 @@ msgid "_Unmount"
 msgstr ""
 
 #: src/autorun.rs:348 src/backgrounds.rs:379 src/backgrounds.rs:429
-#: src/connect.rs:89 src/ops.rs:2103 src/ops.rs:2167 src/props.rs:469
-#: src/props.rs:567 src/props.rs:1094 src/sidebar.rs:842 src/window.rs:2764
-#: src/window.rs:2982 src/window.rs:3110 src/window.rs:3225
+#: src/connect.rs:89 src/ops.rs:2216 src/ops.rs:2280 src/props.rs:469
+#: src/props.rs:567 src/props.rs:1094 src/sidebar.rs:842 src/window.rs:2784
+#: src/window.rs:3002 src/window.rs:3130 src/window.rs:3245
 #: src/window/prefs.rs:921 src/window/prefs.rs:1474 src/window/prefs.rs:1591
 #: src/window/prefs.rs:1667
 msgid "_Cancel"
@@ -416,7 +416,7 @@ msgid "Backgrounds and Emblems"
 msgstr ""
 
 #: src/backgrounds.rs:231 src/bulkrename.rs:560 src/props.rs:94
-#: src/window.rs:2181 src/window.rs:3259 src/window.rs:3300
+#: src/window.rs:2193 src/window.rs:3279 src/window.rs:3342
 msgid "_Close"
 msgstr ""
 
@@ -792,7 +792,7 @@ msgstr ""
 msgid "Bookmark _name:"
 msgstr ""
 
-#: src/connect.rs:223 src/window.rs:1051
+#: src/connect.rs:223 src/window.rs:1063
 msgid "Could not add bookmark"
 msgstr ""
 
@@ -906,7 +906,7 @@ msgid "Original Location"
 msgstr ""
 
 #: src/i18n.rs:105 src/i18n.rs:106 src/i18n.rs:107 src/info.rs:255
-#: src/ops.rs:1389 src/pane.rs:1594 src/pane.rs:3991 src/props.rs:301
+#: src/ops.rs:1478 src/pane.rs:1594 src/pane.rs:4023 src/props.rs:301
 #: src/props.rs:482
 #, rust-format
 msgid "{n} item"
@@ -929,7 +929,7 @@ msgid_plural "{n} folders"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/info.rs:333 src/ops.rs:2008
+#: src/info.rs:333 src/ops.rs:2121
 #, rust-format
 msgid "{n} file"
 msgid_plural "{n} files"
@@ -965,7 +965,7 @@ msgstr ""
 msgid "New window"
 msgstr ""
 
-#: src/keys.rs:25 src/window.rs:1664
+#: src/keys.rs:25 src/window.rs:1676
 msgid "Close tab"
 msgstr ""
 
@@ -1076,7 +1076,7 @@ msgid "Desktop"
 msgstr ""
 
 #: src/keys.rs:51 src/pane.rs:1195 src/pane/build.rs:208 src/sidebar.rs:1169
-#: src/sidebar.rs:1170 src/window.rs:2334 src/window/prefs.rs:334
+#: src/sidebar.rs:1170 src/window.rs:2354 src/window/prefs.rs:334
 msgid "Trash"
 msgstr ""
 
@@ -1105,7 +1105,7 @@ msgstr ""
 msgid "Opening"
 msgstr ""
 
-#: src/keys.rs:59 src/window.rs:3337
+#: src/keys.rs:59 src/window.rs:3379
 msgid "Open in new tab"
 msgstr ""
 
@@ -1344,21 +1344,21 @@ msgstr ""
 msgid "About"
 msgstr ""
 
-#: src/ops.rs:183
+#: src/ops.rs:186
 #, rust-format
 msgid "{n} second"
 msgid_plural "{n} seconds"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:184
+#: src/ops.rs:187
 #, rust-format
 msgid "{n} minute"
 msgid_plural "{n} minutes"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:185
+#: src/ops.rs:188
 #, rust-format
 msgid "{n} hour"
 msgid_plural "{n} hours"
@@ -1366,339 +1366,339 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. TRANSLATORS: "2 hours, 5 minutes".
-#: src/ops.rs:190
+#: src/ops.rs:193
 #, rust-format
 msgid "{hours}, {minutes}"
 msgstr ""
 
-#: src/ops.rs:191
+#: src/ops.rs:194
 #, rust-format
 msgid "approximately {hours}"
 msgstr ""
 
-#: src/ops.rs:199
+#: src/ops.rs:202
 #, rust-format
 msgid "Copying “{name}”"
 msgstr ""
 
-#: src/ops.rs:200 src/ops.rs:852
+#: src/ops.rs:203 src/ops.rs:879
 #, rust-format
 msgid "Moving “{name}”"
 msgstr ""
 
-#: src/ops.rs:201
+#: src/ops.rs:204
 #, rust-format
 msgid "Linking “{name}”"
 msgstr ""
 
-#: src/ops.rs:211
+#: src/ops.rs:214
 #, rust-format
 msgid "{done} of {total}"
 msgstr ""
 
 #. TRANSLATORS: after "4 MB of 10 MB": " — 2 minutes left (1 MB/sec)".
-#: src/ops.rs:216
+#: src/ops.rs:219
 #, rust-format
 msgid " — {time} left ({rate}/sec)"
 msgstr ""
 
-#: src/ops.rs:224
+#: src/ops.rs:227
 #, rust-format
 msgid "{done} of {total} item"
 msgid_plural "{done} of {total} items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:227
+#: src/ops.rs:230
 #, rust-format
 msgid " — {time} left"
 msgstr ""
 
-#: src/ops.rs:249
+#: src/ops.rs:252
 #, rust-format
 msgid "Folder, modified {date}"
 msgstr ""
 
-#: src/ops.rs:251
+#: src/ops.rs:254
 #, rust-format
 msgid "{size}, modified {date}"
 msgstr ""
 
-#: src/ops.rs:512
+#: src/ops.rs:523
 #, rust-format
 msgid "Deleting “{name}”"
 msgstr ""
 
-#: src/ops.rs:517 src/ops.rs:534 src/ops.rs:544
+#: src/ops.rs:528 src/ops.rs:549 src/ops.rs:559
 #, rust-format
 msgid "Error while deleting “{name}”"
 msgstr ""
 
-#: src/ops.rs:570 src/ops.rs:614 src/ops.rs:781
+#: src/ops.rs:594 src/ops.rs:638 src/ops.rs:807
 #, rust-format
 msgid "Error while copying “{name}”"
 msgstr ""
 
-#: src/ops.rs:630 src/ops.rs:868
+#: src/ops.rs:654 src/ops.rs:895
 #, rust-format
 msgid "Error while reading “{name}”"
 msgstr ""
 
-#: src/ops.rs:718
+#: src/ops.rs:742
 #, rust-format
 msgid "“{name}” is different after copying"
 msgstr ""
 
-#: src/ops.rs:719
+#: src/ops.rs:743
 msgid ""
 "The copy doesn’t match the original (their CRC32 checksums differ): it was "
 "changed on the way. Retry copies it again; Skip keeps it as it is (and a "
 "moved file’s original too)."
 msgstr ""
 
-#: src/ops.rs:721
+#: src/ops.rs:745
 #, rust-format
 msgid "Error while checking “{name}”"
 msgstr ""
 
-#: src/ops.rs:797
+#: src/ops.rs:823
 #, rust-format
 msgid "Checking “{name}”"
 msgstr ""
 
-#: src/ops.rs:915
+#: src/ops.rs:942
 #, rust-format
 msgid "Error while moving “{name}”"
 msgstr ""
 
-#: src/ops.rs:944 src/ops.rs:1020 src/ops.rs:1060 src/ops.rs:1080
-#: src/ops.rs:1510
+#: src/ops.rs:971 src/ops.rs:1047 src/ops.rs:1087 src/ops.rs:1110
+#: src/ops.rs:1603
 msgid "Preparing…"
 msgstr ""
 
-#: src/ops.rs:953
+#: src/ops.rs:980
 msgid "The destination is inside the source folder."
 msgstr ""
 
-#: src/ops.rs:956
+#: src/ops.rs:983
 #, rust-format
 msgid "Cannot copy “{name}” into itself"
 msgstr ""
 
-#: src/ops.rs:956
+#: src/ops.rs:983
 #, rust-format
 msgid "Cannot move “{name}” into itself"
 msgstr ""
 
 #. TRANSLATORS: the name of a link made beside its target.
-#: src/ops.rs:984
+#: src/ops.rs:1011
 #, rust-format
 msgid "Link to {name}"
 msgstr ""
 
-#: src/ops.rs:998
+#: src/ops.rs:1025
 #, rust-format
 msgid "Cannot create link to “{name}”"
 msgstr ""
 
-#: src/ops.rs:1032
+#: src/ops.rs:1059
 #, rust-format
 msgid "Trashing “{name}”"
 msgstr ""
 
-#: src/ops.rs:1036
+#: src/ops.rs:1063
 #, rust-format
 msgid "“{name}” can’t be put in the trash. Delete it permanently?"
 msgstr ""
 
-#: src/ops.rs:1137
+#: src/ops.rs:1167
 #, rust-format
 msgid "Paused — {progress}"
 msgstr ""
 
-#: src/ops.rs:1172
+#: src/ops.rs:1203
 msgid "File Operations"
 msgstr ""
 
-#: src/ops.rs:1297
+#: src/ops.rs:1386
 msgid "Pause"
 msgstr ""
 
-#: src/ops.rs:1297
+#: src/ops.rs:1386
 msgid "Resume"
 msgstr ""
 
-#: src/ops.rs:1322 src/window.rs:3139
+#: src/ops.rs:1411 src/window.rs:3159
 msgid "Cancel"
 msgstr ""
 
-#: src/ops.rs:1326
+#: src/ops.rs:1415
 msgid "Waiting for other operations…"
 msgstr ""
 
-#: src/ops.rs:1329
+#: src/ops.rs:1418
 msgid "Start now, alongside the running operations"
 msgstr ""
 
-#: src/ops.rs:1396
+#: src/ops.rs:1485
 #, rust-format
 msgid "Copying {what} to “{folder}”"
 msgstr ""
 
-#: src/ops.rs:1397
+#: src/ops.rs:1486
 #, rust-format
 msgid "Moving {what} to “{folder}”"
 msgstr ""
 
-#: src/ops.rs:1398
+#: src/ops.rs:1487
 #, rust-format
 msgid "Creating links to {what}"
 msgstr ""
 
-#: src/ops.rs:1401
+#: src/ops.rs:1490
 #, rust-format
 msgid "Moving {n} item to the Trash"
 msgid_plural "Moving {n} items to the Trash"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:1402
+#: src/ops.rs:1491
 #, rust-format
 msgid "Deleting {n} item"
 msgid_plural "Deleting {n} items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:1403
+#: src/ops.rs:1492
 msgid "Emptying the Trash"
 msgstr ""
 
-#: src/ops.rs:1761
+#: src/ops.rs:1873
 #, rust-format
 msgid "{n} Item"
 msgid_plural "{n} Items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:1769
+#: src/ops.rs:1881
 #, rust-format
 msgid "Copy of {what}"
 msgstr ""
 
-#: src/ops.rs:1770
+#: src/ops.rs:1882
 #, rust-format
 msgid "Move of {what}"
 msgstr ""
 
-#: src/ops.rs:1771
+#: src/ops.rs:1883
 #, rust-format
 msgid "Link of {what}"
 msgstr ""
 
-#: src/ops.rs:1776
+#: src/ops.rs:1888
 #, rust-format
 msgid "Move to Trash of {what}"
 msgstr ""
 
-#: src/ops.rs:1778
+#: src/ops.rs:1890
 #, rust-format
 msgid "Restore of {what}"
 msgstr ""
 
-#: src/ops.rs:1780
+#: src/ops.rs:1892
 #, rust-format
 msgid "Rename of {what}"
 msgstr ""
 
-#: src/ops.rs:1782
+#: src/ops.rs:1894
 #, rust-format
 msgid "Creation of Folder {what}"
 msgstr ""
 
-#: src/ops.rs:1782
+#: src/ops.rs:1894
 #, rust-format
 msgid "Creation of {what}"
 msgstr ""
 
-#: src/ops.rs:1784
+#: src/ops.rs:1896
 #, rust-format
 msgid "Change of Permissions of {what}"
 msgstr ""
 
-#: src/ops.rs:1786
+#: src/ops.rs:1898
 #, rust-format
 msgid "Change of Owner or Group of {what}"
 msgstr ""
 
-#: src/ops.rs:1793
+#: src/ops.rs:1905
 #, rust-format
 msgid "_Undo {action}"
 msgstr ""
 
-#: src/ops.rs:1798
+#: src/ops.rs:1910
 #, rust-format
 msgid "_Redo {action}"
 msgstr ""
 
-#: src/ops.rs:1810
+#: src/ops.rs:1922
 msgid "There is nothing to undo."
 msgstr ""
 
-#: src/ops.rs:1819
+#: src/ops.rs:1931
 msgid "There is nothing to redo."
 msgstr ""
 
-#: src/ops.rs:1839
+#: src/ops.rs:1951
 msgid "Nothing to do: the items are gone."
 msgstr ""
 
-#: src/ops.rs:1850
+#: src/ops.rs:1962
 msgid "Nothing to undo: the item is gone."
 msgstr ""
 
-#: src/ops.rs:1872
+#: src/ops.rs:1984
 #, rust-format
 msgid "“{name}” is already used."
 msgstr ""
 
-#: src/ops.rs:1888
+#: src/ops.rs:2001
 msgid "Only local files can change owner or group."
 msgstr ""
 
-#: src/ops.rs:1905
+#: src/ops.rs:2018
 msgid "Nothing to undo: the copies are gone or replaced other files."
 msgstr ""
 
-#: src/ops.rs:1911
+#: src/ops.rs:2024
 msgid "Nothing to undo: the moved items are gone."
 msgstr ""
 
-#: src/ops.rs:1947
+#: src/ops.rs:2060
 msgid "Nothing to redo: the items are gone."
 msgstr ""
 
-#: src/ops.rs:1958
+#: src/ops.rs:2071
 msgid "Nothing to do: the items are no longer in the Trash."
 msgstr ""
 
-#: src/ops.rs:2009
+#: src/ops.rs:2122
 #, rust-format
 msgid "Checked {files}: every copy matches its original."
 msgstr ""
 
-#: src/ops.rs:2013
+#: src/ops.rs:2126
 #, rust-format
 msgid "… and {n} more"
 msgstr ""
 
-#: src/ops.rs:2019
+#: src/ops.rs:2132
 #, rust-format
 msgid "{n} copy doesn’t match its original"
 msgid_plural "{n} copies don’t match their originals"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:2023
+#: src/ops.rs:2136
 #, rust-format
 msgid ""
 "They were kept as they are, and the originals of moved files were kept too. "
@@ -1709,102 +1709,102 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ops.rs:2037
+#: src/ops.rs:2150
 msgid "Process completed"
 msgstr ""
 
-#: src/ops.rs:2054
+#: src/ops.rs:2167
 #, rust-format
 msgid "Merge folder “{name}”?"
 msgstr ""
 
-#: src/ops.rs:2056
+#: src/ops.rs:2169
 #, rust-format
 msgid "Replace folder “{name}”?"
 msgstr ""
 
-#: src/ops.rs:2058
+#: src/ops.rs:2171
 #, rust-format
 msgid "Replace file “{name}”?"
 msgstr ""
 
-#: src/ops.rs:2061
+#: src/ops.rs:2174
 #, rust-format
 msgid ""
 "A folder with the same name already exists in “{folder}”.\n"
 "Merging will ask before replacing any files in it that conflict."
 msgstr ""
 
-#: src/ops.rs:2063
+#: src/ops.rs:2176
 #, rust-format
 msgid ""
 "Another folder with the same name already exists in “{folder}”.\n"
 "Replacing it will overwrite its content."
 msgstr ""
 
-#: src/ops.rs:2065
+#: src/ops.rs:2178
 #, rust-format
 msgid ""
 "Another file with the same name already exists in “{folder}”.\n"
 "Replacing it will overwrite its content."
 msgstr ""
 
-#: src/ops.rs:2074
+#: src/ops.rs:2187
 msgid "File conflict"
 msgstr ""
 
-#: src/ops.rs:2077
+#: src/ops.rs:2190
 #, rust-format
 msgid ""
 "Original: {original}\n"
 "Replace with: {new}"
 msgstr ""
 
-#: src/ops.rs:2079
+#: src/ops.rs:2192
 msgid "Apply this action to all conflicts"
 msgstr ""
 
-#: src/ops.rs:2087
+#: src/ops.rs:2200
 msgid "Select a _new name for the destination"
 msgstr ""
 
-#: src/ops.rs:2093 src/window/prefs.rs:1610
+#: src/ops.rs:2206 src/window/prefs.rs:1610
 msgid "R_eset"
 msgstr ""
 
-#: src/ops.rs:2104 src/ops.rs:2169
+#: src/ops.rs:2217 src/ops.rs:2282
 msgid "_Skip"
 msgstr ""
 
-#: src/ops.rs:2105
+#: src/ops.rs:2218
 msgid "_Keep Both"
 msgstr ""
 
-#: src/ops.rs:2106
+#: src/ops.rs:2219
 msgid "_Merge"
 msgstr ""
 
-#: src/ops.rs:2106
+#: src/ops.rs:2219
 msgid "_Replace"
 msgstr ""
 
-#: src/ops.rs:2120 src/sidebar.rs:842
+#: src/ops.rs:2233 src/sidebar.rs:842
 msgid "_Rename"
 msgstr ""
 
-#: src/ops.rs:2168
+#: src/ops.rs:2281
 msgid "S_kip All"
 msgstr ""
 
-#: src/ops.rs:2171 src/window/menus.rs:176
+#: src/ops.rs:2284 src/window/menus.rs:176
 msgid "_Delete Permanently"
 msgstr ""
 
-#: src/ops.rs:2173
+#: src/ops.rs:2286
 msgid "_Retry"
 msgstr ""
 
-#: src/ops.rs:2244
+#: src/ops.rs:2357
 #, rust-format
 msgid "Error removing file {path}: {reason}"
 msgstr ""
@@ -1813,11 +1813,11 @@ msgstr ""
 msgid "Folder"
 msgstr ""
 
-#: src/pane.rs:1198 src/sidebar.rs:1163 src/window.rs:2339
+#: src/pane.rs:1198 src/sidebar.rs:1163 src/window.rs:2359
 msgid "File System"
 msgstr ""
 
-#: src/pane.rs:1201 src/sidebar.rs:1134 src/window.rs:2332
+#: src/pane.rs:1201 src/sidebar.rs:1134 src/window.rs:2352
 msgid "Home"
 msgstr ""
 
@@ -1846,68 +1846,68 @@ msgstr ""
 msgid "_Visible Columns…"
 msgstr ""
 
-#: src/pane.rs:3884 src/props.rs:1329
+#: src/pane.rs:3916 src/props.rs:1329
 msgid "Could not change the emblems"
 msgstr ""
 
-#: src/pane.rs:3900
+#: src/pane.rs:3932
 msgid "Could not change the background"
 msgstr ""
 
 #. TRANSLATORS: after the number of items in the status bar.
-#: src/pane.rs:3984
+#: src/pane.rs:4016
 #, rust-format
 msgid ", Free space: {size}"
 msgstr ""
 
-#: src/pane.rs:3987
+#: src/pane.rs:4019
 #, rust-format
 msgid "Loading… {n} item"
 msgid_plural "Loading… {n} items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/pane.rs:3993
+#: src/pane.rs:4025
 #, rust-format
 msgid " ({n} hidden)"
 msgstr ""
 
 #. TRANSLATORS: {count} is a folder's number of items: "12 items".
-#: src/pane.rs:4005
+#: src/pane.rs:4037
 #, rust-format
 msgid "“{name}” selected (containing {count})"
 msgstr ""
 
-#: src/pane.rs:4006
+#: src/pane.rs:4038
 #, rust-format
 msgid "“{name}” selected"
 msgstr ""
 
-#: src/pane.rs:4009
+#: src/pane.rs:4041
 #, rust-format
 msgid "“{name}” selected ({size})"
 msgstr ""
 
-#: src/pane.rs:4017
+#: src/pane.rs:4049
 #, rust-format
 msgid "{n} item selected ({size})"
 msgid_plural "{n} items selected ({size})"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/pane.rs:4018 src/pane.rs:4023
+#: src/pane.rs:4050 src/pane.rs:4055
 #, rust-format
 msgid "{n} folder selected"
 msgid_plural "{n} folders selected"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/pane.rs:4021
+#: src/pane.rs:4053
 #, rust-format
 msgid "{folders}, {others} ({size})"
 msgstr ""
 
-#: src/pane.rs:4024
+#: src/pane.rs:4056
 #, rust-format
 msgid "{n} other item selected"
 msgid_plural "{n} other items selected"
@@ -1998,7 +1998,7 @@ msgstr ""
 msgid "Counting…"
 msgstr ""
 
-#: src/props.rs:256 src/util.rs:335
+#: src/props.rs:256 src/util.rs:361
 msgid "Unknown"
 msgstr ""
 
@@ -2544,7 +2544,7 @@ msgstr ""
 msgid "Re_name…"
 msgstr ""
 
-#: src/sidebar.rs:808 src/window.rs:3090 src/window/menus.rs:37
+#: src/sidebar.rs:808 src/window.rs:3110 src/window/menus.rs:37
 #: src/window/menus.rs:224
 msgid "_Empty Trash"
 msgstr ""
@@ -2616,24 +2616,24 @@ msgstr ""
 
 #. TRANSLATORS: a full date and time in strftime's notation: %A the
 #. weekday, %-d the day, %B the month, %Y the year.
-#: src/util.rs:333
+#: src/util.rs:359
 msgid "%A, %-d %B %Y, %H:%M:%S"
 msgstr ""
 
 #. TRANSLATORS: the name for another item of the same name: "photo (2).jpg".
-#: src/util.rs:362
+#: src/util.rs:388
 #, rust-format
 msgid "{name} ({number}){extension}"
 msgstr ""
 
 #. TRANSLATORS: the name of a copy pasted beside its original: "photo (copy).jpg".
-#: src/util.rs:374
+#: src/util.rs:400
 #, rust-format
 msgid "{name} (copy){extension}"
 msgstr ""
 
 #. TRANSLATORS: the name of a further copy: "photo (copy 2).jpg".
-#: src/util.rs:380
+#: src/util.rs:406
 #, rust-format
 msgid "{name} (copy {number}){extension}"
 msgstr ""
@@ -2723,7 +2723,7 @@ msgid ""
 "Info panel: the selected item's picture and details, in this folder (F11)"
 msgstr ""
 
-#: src/window.rs:561 src/window.rs:1987
+#: src/window.rs:561 src/window.rs:1999
 msgid "File operations"
 msgstr ""
 
@@ -2731,151 +2731,151 @@ msgstr ""
 msgid "Open in Window"
 msgstr ""
 
-#: src/window.rs:852 src/window/menus.rs:43
+#: src/window.rs:864 src/window/menus.rs:43
 msgid "_Undo"
 msgstr ""
 
-#: src/window.rs:853 src/window/menus.rs:44
+#: src/window.rs:865 src/window/menus.rs:44
 msgid "_Redo"
 msgstr ""
 
-#: src/window.rs:1050
+#: src/window.rs:1062
 msgid "This location is already bookmarked"
 msgstr ""
 
-#: src/window.rs:1486
+#: src/window.rs:1498
 #, rust-format
 msgid "Could not find “{text}”"
 msgstr ""
 
-#: src/window.rs:1988
+#: src/window.rs:2000
 #, rust-format
 msgid "{n} file operation"
 msgid_plural "{n} file operations"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2181
+#: src/window.rs:2193
 msgid "Visible Columns"
 msgstr ""
 
-#: src/window.rs:2185
+#: src/window.rs:2197
 msgid "Choose the order of information to appear in the list view."
 msgstr ""
 
-#: src/window.rs:2743
+#: src/window.rs:2763
 #, rust-format
 msgid "Could not open with {program}"
 msgstr ""
 
-#: src/window.rs:2754
+#: src/window.rs:2774
 #, rust-format
 msgid "Do you want to run “{name}”, or display its contents?"
 msgstr ""
 
-#: src/window.rs:2756
+#: src/window.rs:2776
 #, rust-format
 msgid "“{name}” is an executable file."
 msgstr ""
 
-#: src/window.rs:2759
+#: src/window.rs:2779
 msgid "Run in _Terminal"
 msgstr ""
 
-#: src/window.rs:2762
+#: src/window.rs:2782
 msgid "_Display"
 msgstr ""
 
-#: src/window.rs:2765
+#: src/window.rs:2785
 msgid "_Run"
 msgstr ""
 
-#: src/window.rs:2790
+#: src/window.rs:2810
 msgid "Could not run the program"
 msgstr ""
 
-#: src/window.rs:2831
+#: src/window.rs:2851
 msgid "Untitled Folder"
 msgstr ""
 
-#: src/window.rs:2839
+#: src/window.rs:2859
 msgid "Could not create the folder"
 msgstr ""
 
-#: src/window.rs:2848
+#: src/window.rs:2868
 msgid "Untitled Document"
 msgstr ""
 
-#: src/window.rs:2866
+#: src/window.rs:2886
 msgid "Could not create the document"
 msgstr ""
 
-#: src/window.rs:2872
+#: src/window.rs:2892
 msgid "File names cannot contain “/”."
 msgstr ""
 
-#: src/window.rs:2872
+#: src/window.rs:2892
 msgid "Invalid name"
 msgstr ""
 
-#: src/window.rs:2881
+#: src/window.rs:2901
 #, rust-format
 msgid "The name “{name}” is already used in this location."
 msgstr ""
 
-#: src/window.rs:2882
+#: src/window.rs:2902
 msgid "Please use a different name."
 msgstr ""
 
-#: src/window.rs:2894
+#: src/window.rs:2914
 #, rust-format
 msgid "Could not rename “{name}”"
 msgstr ""
 
-#: src/window.rs:2918
+#: src/window.rs:2938
 msgid "There is nothing on the clipboard to paste."
 msgstr ""
 
-#: src/window.rs:2980
+#: src/window.rs:3000
 msgid "Copy To"
 msgstr ""
 
-#: src/window.rs:2980
+#: src/window.rs:3000
 msgid "Move To"
 msgstr ""
 
-#: src/window.rs:2983 src/window/menus.rs:46 src/window/menus.rs:175
+#: src/window.rs:3003 src/window/menus.rs:46 src/window/menus.rs:175
 #: src/window/menus.rs:197
 msgid "_Copy"
 msgstr ""
 
-#: src/window.rs:2983
+#: src/window.rs:3003
 msgid "_Move"
 msgstr ""
 
-#: src/window.rs:2986
+#: src/window.rs:3006
 msgid "C_heck the copies"
 msgstr ""
 
-#: src/window.rs:2988
+#: src/window.rs:3008
 msgid ""
 "Each file moved to another drive is read back from there and compared with "
 "its original (CRC32), which is deleted only once they match. A move within "
 "one drive copies nothing, so there’s nothing to check."
 msgstr ""
 
-#: src/window.rs:2990
+#: src/window.rs:3010
 msgid ""
 "Each copy is read back from where it went and compared with its original "
 "(CRC32). It takes about as long again as the copy."
 msgstr ""
 
-#: src/window.rs:3026
+#: src/window.rs:3046
 #, rust-format
 msgid "“{name}” can’t be moved to the Trash. Delete it permanently?"
 msgstr ""
 
-#: src/window.rs:3028
+#: src/window.rs:3048
 #, rust-format
 msgid "This item can’t be moved to the Trash. Delete it permanently?"
 msgid_plural ""
@@ -2883,39 +2883,39 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:3030
+#: src/window.rs:3050
 msgid ""
 "This location has no trash. If you delete an item, it will be permanently "
 "lost."
 msgstr ""
 
-#: src/window.rs:3030 src/window.rs:3064 src/window/menus.rs:50
+#: src/window.rs:3050 src/window.rs:3084 src/window/menus.rs:50
 #: src/window/menus.rs:210
 msgid "_Delete"
 msgstr ""
 
-#: src/window.rs:3038
+#: src/window.rs:3058
 #, rust-format
 msgid "Move “{name}” to the Trash?"
 msgstr ""
 
-#: src/window.rs:3040
+#: src/window.rs:3060
 #, rust-format
 msgid "Move {n} item to the Trash?"
 msgid_plural "Move {n} items to the Trash?"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:3042
+#: src/window.rs:3062
 msgid "Move to _Trash"
 msgstr ""
 
-#: src/window.rs:3056
+#: src/window.rs:3076
 #, rust-format
 msgid "Are you sure you want to permanently delete “{name}”?"
 msgstr ""
 
-#: src/window.rs:3059
+#: src/window.rs:3079
 #, rust-format
 msgid "Are you sure you want to permanently delete the {n} selected item?"
 msgid_plural ""
@@ -2923,107 +2923,119 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:3064
+#: src/window.rs:3084
 msgid "If you delete an item, it will be permanently lost."
 msgstr ""
 
-#: src/window.rs:3088
+#: src/window.rs:3108
 msgid "Empty all items from the Trash?"
 msgstr ""
 
-#: src/window.rs:3089
+#: src/window.rs:3109
 msgid "All items in the Trash will be permanently deleted."
 msgstr ""
 
-#: src/window.rs:3134
+#: src/window.rs:3154
 msgid "_Move Here"
 msgstr ""
 
-#: src/window.rs:3135
+#: src/window.rs:3155
 msgid "_Copy Here"
 msgstr ""
 
-#: src/window.rs:3136
+#: src/window.rs:3156
 msgid "_Link Here"
 msgstr ""
 
-#: src/window.rs:3137
+#: src/window.rs:3157
 msgid "Move and C_heck Here"
 msgstr ""
 
-#: src/window.rs:3138
+#: src/window.rs:3158
 msgid "Copy and Ch_eck Here"
 msgstr ""
 
-#: src/window.rs:3182
+#: src/window.rs:3202
 msgid "Install mate-terminal or set $TERMINAL."
 msgstr ""
 
-#: src/window.rs:3182
+#: src/window.rs:3202
 msgid "No terminal found"
 msgstr ""
 
-#: src/window.rs:3190
+#: src/window.rs:3210
 msgid "Could not open a terminal"
 msgstr ""
 
-#: src/window.rs:3216
+#: src/window.rs:3236
 msgid "Could not start the archive manager"
 msgstr ""
 
-#: src/window.rs:3222
+#: src/window.rs:3242
 msgid "Select Items Matching"
 msgstr ""
 
-#: src/window.rs:3225
+#: src/window.rs:3245
 msgid "_Select"
 msgstr ""
 
-#: src/window.rs:3231
+#: src/window.rs:3251
 msgid "Pattern (e.g. *.jpg, report-??.pdf):"
 msgstr ""
 
-#: src/window.rs:3256
+#: src/window.rs:3276
 msgid "Edit Bookmarks"
 msgstr ""
 
-#: src/window.rs:3291
+#: src/window.rs:3313
 msgid "A fast graphical file manager."
 msgstr ""
 
-#: src/window.rs:3300 src/window/prefs.rs:815
+#: src/window.rs:3313
+msgid "This program comes with absolutely no warranty."
+msgstr ""
+
+#: src/window.rs:3320
+msgid "_License"
+msgstr ""
+
+#: src/window.rs:3320
+msgid "_Source Code"
+msgstr ""
+
+#: src/window.rs:3342 src/window/prefs.rs:815
 msgid "Keyboard Shortcuts"
 msgstr ""
 
-#: src/window.rs:3336
+#: src/window.rs:3378
 msgid "Mouse"
 msgstr ""
 
-#: src/window.rs:3337
+#: src/window.rs:3379
 msgid "Middle-click a folder"
 msgstr ""
 
-#: src/window.rs:3338
+#: src/window.rs:3380
 msgid "Copy / Move / Ask"
 msgstr ""
 
-#: src/window.rs:3338
+#: src/window.rs:3380
 msgid "Drag with Ctrl / Shift / Alt"
 msgstr ""
 
-#: src/window.rs:3339
+#: src/window.rs:3381
 msgid "Ctrl+scroll"
 msgstr ""
 
-#: src/window.rs:3339 src/window/prefs.rs:164
+#: src/window.rs:3381 src/window/prefs.rs:164
 msgid "Zoom"
 msgstr ""
 
-#: src/window.rs:3340
+#: src/window.rs:3382
 msgid "Back / Forward"
 msgstr ""
 
-#: src/window.rs:3340
+#: src/window.rs:3382
 msgid "Back / forward mouse buttons"
 msgstr ""
 
