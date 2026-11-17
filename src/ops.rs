@@ -1623,12 +1623,17 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
     // the worker thread) alive ourselves if every main window gets closed.
     let hold = gio::Application::default().map(|a| a.hold());
 
-    // List the operation only if it takes a while.
+    // List the operation only if it takes a while; one from the queue (it
+    // was listed) at once: listed a moment later, the list was empty in
+    // between, and the operations popover, open to follow the queue,
+    // closed (as the button hid).
     let finished = Rc::new(std::cell::Cell::new(false));
-    {
+    if show_now {
+        LISTED.with(|l| l.set(true));
+        add_op(op.clone());
+    } else {
         let (op, finished) = (op.clone(), finished.clone());
-        let delay = if show_now { 0 } else { 600 };
-        glib::timeout_add_local_once(Duration::from_millis(delay), move || {
+        glib::timeout_add_local_once(Duration::from_millis(600), move || {
             if !finished.get() {
                 LISTED.with(|l| l.set(true));
                 add_op(op);
