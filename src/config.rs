@@ -105,6 +105,9 @@ pub struct Settings {
     /// Always show the location as editable text instead of breadcrumbs.
     pub path_as_text: bool,
     pub confirm_trash: bool,
+    /// File operations in their own window (opened when one takes a while)
+    /// instead of the location bar's button and its popover.
+    pub ops_window: bool,
     pub single_click: bool,
     /// Previews, as Caja has them, each "always", "local" (local files
     /// only: not GVfs places such as network shares) or "never" (see
@@ -302,6 +305,7 @@ impl Default for Settings {
             autorun_open_folder: vec![],
             path_as_text: false,
             confirm_trash: true,
+            ops_window: false,
             single_click: false,
             show_thumbnails: "local".into(),
             own_colors: vec![],
@@ -561,6 +565,7 @@ fn from_keyfile(kf: &glib::KeyFile) -> Settings {
         s.bar_order = order;
     }
     b!(confirm_trash);
+    b!(ops_window);
     b!(single_click);
     for (key, field) in [("show_thumbnails", &mut s.show_thumbnails), ("text_in_icons", &mut s.text_in_icons), ("count_items", &mut s.count_items)] {
         if let Ok(v) = kf.string(g, key) {
@@ -733,6 +738,7 @@ fn to_keyfile(s: &Settings) -> glib::KeyFile {
     kf.set_boolean(g, "unmount_only", s.unmount_only);
     kf.set_boolean(g, "path_as_text", s.path_as_text);
     kf.set_boolean(g, "confirm_trash", s.confirm_trash);
+    kf.set_boolean(g, "ops_window", s.ops_window);
     kf.set_boolean(g, "single_click", s.single_click);
     kf.set_string(g, "show_thumbnails", &s.show_thumbnails);
     set_string_list(&kf, g, "own_colors", &s.own_colors);

@@ -10,6 +10,7 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use crate::i18n::{fill, n_, tr, trn};
+use crate::thumbcache;
 use crate::util;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,6 +98,8 @@ struct Worker {
     cancel: gio::Cancellable,
     /// What was copied, moved or linked, for Edit → Undo.
     undo: Vec<Moved>,
+    /// Where thumbnails are kept (see thumbcache).
+    thumbs: std::path::PathBuf,
     total_bytes: u64,
     done_bytes: u64,
     total_items: u64,
@@ -267,6 +270,7 @@ impl Worker {
             tx,
             cancel,
             undo: vec![],
+            thumbs: thumbcache::root(),
             total_bytes: 0,
             done_bytes: 0,
             total_items: 0,
@@ -497,7 +501,11 @@ impl Worker {
 
     /// Deletes `f` and all inside it. `inner`: it's inside what was asked
     /// to be deleted (see remove_path).
-    fn delete_rec(&mut self, f: &gio::File, inner: bool) -> Flow {
+    /// Deletes `f`, a folder with everything in it. `thumb`: the URI its
+    /// thumbnails are kept under (a trashed item's: where it came from),
+    /// removed with it; None leaves them (an original moved: they go with
+    /// the move).
+    fn delete_rec(&mut self, f: &gio::File, inner: bool, thumb: Option<String>) -> Flow {
         let remove = |f: &gio::File, cancel: &gio::Cancellable| match f.path().filter(|_| inner) {
             Some(path) => remove_path(&path),
             None => f.delete(Some(cancel)),
@@ -509,6 +517,9 @@ impl Worker {
             match remove(f, &self.cancel) {
                 Ok(()) => {
                     self.done_items += 1;
+                    if let Some(t) = &thumb {
+                        thumbcache::forget(&self.thumbs, t);
+                    }
                     self.progress(&fill(&tr("Deleting “{name}”"), &[("name", &base_name(f))]), false);
                     return Ok(());
                 }
@@ -519,7 +530,8 @@ impl Worker {
                     };
                     let before = self.skipped;
                     for c in children {
-                        self.delete_rec(&f.child(c), true)?;
+                        let t = thumb.as_ref().map(|t| gio::File::for_uri(t).child(&c).uri().to_string());
+                        self.delete_rec(&f.child(c), true, t)?;
                     }
                     if self.skipped != before {
                         return Ok(()); // something inside was kept
@@ -528,6 +540,9 @@ impl Worker {
                     match remove(f, &self.cancel) {
                         Ok(()) => {
                             self.done_items += 1;
+                            if let Some(t) = &thumb {
+                                thumbcache::forget(&self.thumbs, t);
+                            }
                             return Ok(());
                         }
                         Err(e) => {
@@ -552,6 +567,15 @@ impl Worker {
     }
 
     /// Notes for Edit → Undo that `src` went to `dst`.
+    /// In a move, `src`'s thumbnails go with it to `dst` (a folder's: those
+    /// of all in it), as soon as it's there: before the folder shown asks
+    /// for them, which would make them again.
+    fn thumbnails_moved(&self, src: &gio::File, dst: &gio::File) {
+        if self.kind == Kind::Move {
+            thumbcache::moved(&self.thumbs, &[(src.uri().to_string(), dst.uri().to_string())]);
+        }
+    }
+
     fn record(&mut self, src: &gio::File, dst: &gio::File, replaced: bool) {
         self.undo.push(Moved { src: src.uri().to_string(), dst: dst.uri().to_string(), replaced });
     }
@@ -601,7 +625,7 @@ impl Worker {
                                     break;
                                 }
                                 let before = self.skipped;
-                                self.delete_rec(&dst, false)?;
+                                self.delete_rec(&dst, false, Some(dst.uri().to_string()))?;
                                 if self.skipped != before {
                                     return Ok(()); // couldn't remove it, give up on this item
                                 }
@@ -748,6 +772,8 @@ impl Worker {
                     if record {
                         self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
                     }
+                    // A move across drives copies file by file.
+                    self.thumbnails_moved(src, &dst);
                     self.progress(&doing(self.copy_kind(), &name), false);
                     return Ok(());
                 }
@@ -764,7 +790,7 @@ impl Worker {
                         Resolution::Replace => {
                             if dst_dir {
                                 let before = self.skipped;
-                                self.delete_rec(&dst, false)?;
+                                self.delete_rec(&dst, false, Some(dst.uri().to_string()))?;
                                 if self.skipped != before {
                                     self.done_bytes += size;
                                     return Ok(()); // couldn't remove it, give up on this item
@@ -844,6 +870,7 @@ impl Worker {
         loop {
             match src.move_(&dst, flags, Some(&self.cancel), None) {
                 Ok(()) => {
+                    self.thumbnails_moved(src, &dst);
                     self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
                     self.done_items += 1;
                     if created.is_none() {
@@ -884,7 +911,7 @@ impl Worker {
                             }
                             if dst_dir {
                                 let before = self.skipped;
-                                self.delete_rec(&dst, false)?;
+                                self.delete_rec(&dst, false, Some(dst.uri().to_string()))?;
                                 if self.skipped != before {
                                     return Ok(()); // couldn't remove it, keep the source
                                 }
@@ -908,7 +935,7 @@ impl Worker {
                     let overwrite = flags.contains(gio::FileCopyFlags::OVERWRITE);
                     self.copy_rec(src, &dst, overwrite, created, true)?;
                     if self.skipped == before {
-                        self.delete_rec(src, false)?;
+                        self.delete_rec(src, false, None)?;
                     }
                     return Ok(());
                 }
@@ -1039,7 +1066,7 @@ impl Worker {
                             ) {
                                 ErrChoice::Retry => continue,
                                 ErrChoice::DeletePermanently => {
-                                    let _ = self.delete_rec(&f, false);
+                                    let _ = self.delete_rec(&f, false, Some(u.clone()));
                                     break;
                                 }
                                 _ => break,
@@ -1059,27 +1086,30 @@ impl Worker {
                 }
                 self.progress(&tr("Preparing…"), true);
                 for u in uris {
-                    if self.delete_rec(&gio::File::for_uri(&u), false).is_err() {
+                    let f = gio::File::for_uri(&u);
+                    let thumb = thumb_uri(&f);
+                    if self.delete_rec(&f, false, Some(thumb)).is_err() {
                         break;
                     }
                 }
             }
             Job::EmptyTrash => {
                 let trash = gio::File::for_uri("trash:///");
-                let kids: Vec<gio::File> = trash
-                    .enumerate_children("standard::name", NOFOLLOW, Some(&self.cancel))
+                let kids: Vec<(gio::File, Option<String>)> = trash
+                    .enumerate_children("standard::name,trash::orig-path", NOFOLLOW, Some(&self.cancel))
                     .map(|en| {
                         let mut v = vec![];
                         while let Ok(Some(ci)) = en.next_file(Some(&self.cancel)) {
-                            v.push(trash.child(ci.name()));
+                            let orig = ci.attribute_byte_string("trash::orig-path").map(|p| gio::File::for_path(p.as_str()).uri().to_string());
+                            v.push((trash.child(ci.name()), orig));
                         }
                         v
                     })
                     .unwrap_or_default();
                 self.total_items = kids.len() as u64;
                 self.progress(&tr("Preparing…"), true);
-                for k in kids {
-                    if self.delete_rec(&k, false).is_err() {
+                for (k, orig) in kids {
+                    if self.delete_rec(&k, false, orig).is_err() {
                         break;
                     }
                 }
@@ -1150,6 +1180,7 @@ thread_local! {
     static VIEWS: RefCell<Vec<Rc<View>>> = const { RefCell::new(vec![]) };
     static OPS_WINDOW: RefCell<Option<gtk::Window>> = const { RefCell::new(None) };
     static LISTENERS: RefCell<Vec<Box<dyn Fn()>>> = RefCell::new(vec![]);
+    static MOVE_LISTENERS: RefCell<Vec<Box<WentFn>>> = RefCell::new(vec![]);
 }
 
 /// A new list of the operations (for a window's operations popover); it
@@ -1187,6 +1218,49 @@ pub fn open_window() {
     win.present();
 }
 
+/// Told of items an operation took from where they were (see on_moved).
+type WentFn = dyn Fn(&[(String, Option<String>)]);
+
+/// The URI `f`'s thumbnails are kept under: for an item in the trash,
+/// where it came from (trashed, it kept them).
+fn thumb_uri(f: &gio::File) -> String {
+    if f.uri_scheme().as_deref() == Some("trash") {
+        if let Some(p) = f.query_info("trash::orig-path", NOFOLLOW, gio::Cancellable::NONE).ok().and_then(|i| i.attribute_byte_string("trash::orig-path")) {
+            return gio::File::for_path(p.as_str()).uri().to_string();
+        }
+    }
+    f.uri().to_string()
+}
+
+/// Calls `f` when an operation has taken items from where they were, with
+/// (each one's URI before, its new one if it was moved, None if it was
+/// trashed or deleted). A folder's monitor tells its pane; search results
+/// have nothing watching them.
+pub fn on_moved(f: impl Fn(&[(String, Option<String>)]) + 'static) {
+    MOVE_LISTENERS.with(|l| l.borrow_mut().push(Box::new(f)));
+}
+
+/// What `job` takes from where it was (moves, trashing, deleting), and
+/// whether it's a move.
+fn taken_by(job: &Job) -> (Vec<String>, bool) {
+    match job {
+        Job::Transfer { kind: Kind::Move, items, .. } => (items.iter().map(|i| i.src.clone()).collect(), true),
+        Job::Trash(v) | Job::Delete(v) => (v.clone(), false),
+        _ => (vec![], false),
+    }
+}
+
+/// Which of `taken` (see taken_by) went: (URI before, new URI for a move
+/// as `done` has it). Items `done` doesn't name are gone if they're no
+/// longer there (`gone` tells; it's asked only of local files, quick to
+/// look at: one that couldn't be deleted stays).
+fn went(taken: &[String], moves: bool, done: &[Moved], gone: impl Fn(&str) -> bool) -> Vec<(String, Option<String>)> {
+    let moved: std::collections::HashSet<&str> = if moves { done.iter().map(|m| m.src.as_str()).collect() } else { Default::default() };
+    let mut out: Vec<(String, Option<String>)> = done.iter().filter(|_| moves).map(|m| (m.src.clone(), Some(m.dst.clone()))).collect();
+    out.extend(taken.iter().filter(|t| !moved.contains(t.as_str()) && gone(t)).map(|t| (t.clone(), None)));
+    out
+}
+
 /// Calls `f` whenever operations come, go or make progress.
 pub fn on_change(f: impl Fn() + 'static) {
     LISTENERS.with(|l| l.borrow_mut().push(Box::new(f)));
@@ -1221,8 +1295,28 @@ pub fn summary() -> (usize, f64) {
     })
 }
 
+/// Where a new entry goes in the list: running jobs above the waiting ones,
+/// each in the order they came. (A queued job that starts gets a running
+/// entry of its own; at the end it was listed below the jobs still
+/// waiting, which then looked first in line.)
+fn insert_at(states: &[OpState], new: OpState) -> usize {
+    match new {
+        OpState::Waiting => states.len(),
+        OpState::Running => states.iter().position(|s| *s == OpState::Waiting).unwrap_or(states.len()),
+    }
+}
+
 fn add_op(op: Rc<Op>) {
-    OPS.with(|o| o.borrow_mut().push(op));
+    // Operations in their own window (a setting): it opens with the first
+    // one listed, also again if it was closed meanwhile.
+    if crate::config::with(|s| s.ops_window) && !OPS_WINDOW.with(|w| w.borrow().as_ref().is_some_and(|w| w.is_visible())) {
+        glib::idle_add_local_once(open_window);
+    }
+    OPS.with(|o| {
+        let mut o = o.borrow_mut();
+        let states: Vec<OpState> = o.iter().map(|op| op.state).collect();
+        o.insert(insert_at(&states, op.state), op);
+    });
     sync_views();
     changed();
 }
@@ -1506,6 +1600,7 @@ fn bold_label(text: &str) -> gtk::Label {
 fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn Fn(Vec<String>)>, show_now: bool) {
     let (tx, rx) = async_channel::unbounded::<Msg>();
     let shape = shape_of(&job);
+    let (taken, moves) = taken_by(&job);
     let op = Rc::new(Op {
         id: next_id(),
         title: title_for(&job),
@@ -1533,12 +1628,17 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
     // the worker thread) alive ourselves if every main window gets closed.
     let hold = gio::Application::default().map(|a| a.hold());
 
-    // List the operation only if it takes a while.
+    // List the operation only if it takes a while; one from the queue (it
+    // was listed) at once: listed a moment later, the list was empty in
+    // between, and the operations popover, open to follow the queue,
+    // closed (as the button hid).
     let finished = Rc::new(std::cell::Cell::new(false));
-    {
+    if show_now {
+        LISTED.with(|l| l.set(true));
+        add_op(op.clone());
+    } else {
         let (op, finished) = (op.clone(), finished.clone());
-        let delay = if show_now { 0 } else { 600 };
-        glib::timeout_add_local_once(Duration::from_millis(delay), move || {
+        glib::timeout_add_local_once(Duration::from_millis(600), move || {
             if !finished.get() {
                 LISTED.with(|l| l.set(true));
                 add_op(op);
@@ -1574,6 +1674,10 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
                 }
                 Msg::Done(created, done) => {
                     let did = !done.is_empty();
+                    let went = went(&taken, moves, &done, |uri| {
+                        let f = gio::File::for_uri(uri);
+                        f.is_native() && !f.query_exists(gio::Cancellable::NONE)
+                    });
                     match std::mem::replace(&mut record, Record::Redo) {
                         Record::New => {
                             if let Some(a) = action_of(shape, done) {
@@ -1593,6 +1697,13 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
                     // Also hides the window if this was the last operation.
                     remove_op(op.id);
                     on_done(created);
+                    if !went.is_empty() {
+                        MOVE_LISTENERS.with(|l| {
+                            for f in l.borrow().iter() {
+                                f(&went);
+                            }
+                        });
+                    }
                     start_next();
                     if !is_busy() && LISTED.with(|l| l.replace(false)) {
                         notify_done(&parent);
@@ -1707,6 +1818,7 @@ pub fn note_rename(from: &gio::File, to: &gio::File) {
     if from.equal(to) {
         return;
     }
+    thumbnails_renamed(vec![(from.uri().to_string(), to.uri().to_string())]);
     // A new item named right away (New Folder, then typing its name): one
     // step, "Creation of Folder “Photos”".
     let (from_uri, to_uri) = (from.uri().to_string(), to.uri().to_string());
@@ -1729,8 +1841,15 @@ pub fn note_rename(from: &gio::File, to: &gio::File) {
 /// Notes renames done together (Rename All), as one step.
 pub fn note_renames(items: Vec<(String, String)>) {
     if !items.is_empty() {
+        thumbnails_renamed(items.clone());
         push_new(Action::Rename { items });
     }
+}
+
+/// Renamed items' thumbnails renamed too, in a thread of their own (a
+/// renamed folder's are those of everything in it).
+fn thumbnails_renamed(items: Vec<(String, String)>) {
+    std::thread::spawn(move || thumbcache::moved(&thumbcache::root(), &items));
 }
 
 /// Notes a new folder or document (`template`: the file it's a copy of).
@@ -1876,6 +1995,7 @@ fn perform(parent: Option<gtk::Window>, a: Action, back: bool) -> Result<(), Str
                 }
                 from.set_display_name(&base_name(&to), gio::Cancellable::NONE).map_err(|e| e.message().to_string())?;
             }
+            thumbnails_renamed(steps);
             push(if back { &REDO } else { &UNDO }, a);
         }
         (_, Action::Mode { items }) => {
@@ -2358,6 +2478,36 @@ mod tests {
         pub static CORRUPT_NEXT_COPY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn what_went() {
+        let m = |a: &str, b: &str| Moved { src: a.into(), dst: b.into(), replaced: false };
+        let taken = vec!["file:///d/a".to_string(), "file:///d/b".to_string(), "file:///d/c".to_string()];
+        // A move: what it did, with where to; one not moved and still
+        // there (c) stays; b not done but gone (merged away) went.
+        let done = [m("file:///d/a", "file:///e/a"), m("file:///d/b/x", "file:///e/b/x")];
+        let went = went(&taken, true, &done, |u| u == "file:///d/b");
+        assert_eq!(went, vec![
+            ("file:///d/a".to_string(), Some("file:///e/a".to_string())),
+            ("file:///d/b/x".to_string(), Some("file:///e/b/x".to_string())),
+            ("file:///d/b".to_string(), None),
+        ]);
+        // Trashing or deleting: only what's no longer there.
+        assert_eq!(super::went(&taken, false, &[], |u| u != "file:///d/c").len(), 2);
+    }
+
+    #[test]
+    fn started_jobs_listed_above_waiting_ones() {
+        use OpState::{Running as R, Waiting as W};
+        assert_eq!(insert_at(&[], R), 0);
+        assert_eq!(insert_at(&[R, W], W), 2);
+        // The job ahead ended, the first waiting one starts: its running
+        // entry comes before the one still waiting (its own waiting entry
+        // is removed right after).
+        assert_eq!(insert_at(&[W, W], R), 0);
+        assert_eq!(insert_at(&[R, W, W], R), 1);
+        assert_eq!(insert_at(&[R, R], R), 2);
+    }
 
     /// Runs `job` on a worker whose conflict dialogs are answered from
     /// `answers` in order (with "apply to all" off) and whose error dialogs
