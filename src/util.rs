@@ -815,6 +815,70 @@ pub fn numbered_groups(kf: &glib::KeyFile, prefix: &str) -> Vec<String> {
     groups.into_iter().map(|(_, g)| g).collect()
 }
 
+/// `command`, a shell command, with each %x replaced by the words `value`
+/// gives for x, each shell-quoted (joined by spaces): "%%" is a % sign,
+/// and a %x it has nothing for stays as it is. A placeholder within quotes
+/// written in the command ("%f", '%f', "%f.bak") gets the quotes closed
+/// around it and opened again after it: quoted twice, a name with $(…) in
+/// it ran that inside double quotes.
+pub fn expand_shell(command: &str, value: impl Fn(char) -> Option<Vec<String>>) -> String {
+    #[derive(PartialEq, Clone, Copy)]
+    enum In {
+        Plain,
+        Single,
+        Double,
+    }
+    let mut at = In::Plain;
+    let mut out = String::new();
+    let mut chars = command.chars();
+    while let Some(c) = chars.next() {
+        match (at, c) {
+            (_, '%') => match chars.next() {
+                Some('%') => out.push('%'),
+                Some(x) => match value(x) {
+                    Some(words) => {
+                        // Words of only harmless characters (a size) as they are.
+                        let plain = |w: &str| !w.is_empty() && w.chars().all(|c| c.is_ascii_alphanumeric() || "_./+,:=@-".contains(c));
+                        let quoted = words.iter().map(|w| if plain(w) { w.clone() } else { glib::shell_quote(w).to_string_lossy().to_string() }).collect::<Vec<_>>().join(" ");
+                        match at {
+                            In::Plain => out.push_str(&quoted),
+                            In::Single => out.push_str(&format!("'{quoted}'")),
+                            In::Double => out.push_str(&format!("\"{quoted}\"")),
+                        }
+                    }
+                    None => {
+                        out.push('%');
+                        out.push(x);
+                    }
+                },
+                None => out.push('%'),
+            },
+            // A backslash keeps the next character as it is (outside
+            // quotes and in double quotes, not in single ones).
+            (In::Plain | In::Double, '\\') => {
+                out.push(c);
+                if let Some(n) = chars.next() {
+                    out.push(n);
+                }
+            }
+            (In::Plain, '\'') => {
+                at = In::Single;
+                out.push(c);
+            }
+            (In::Plain, '"') => {
+                at = In::Double;
+                out.push(c);
+            }
+            (In::Single, '\'') | (In::Double, '"') => {
+                at = In::Plain;
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// `command` with each %x replaced by what `value` gives for x: "%%" is a
 /// % sign, and a %x it has nothing for stays as it is.
 pub fn expand_placeholders(command: &str, value: impl Fn(char) -> Option<String>) -> String {

@@ -146,27 +146,27 @@ fn parse_system(path: &Path) -> Option<Thumbnailer> {
     (installed(&t) && !t.types.is_empty()).then_some(t)
 }
 
-/// Fills in %i (input file), %u (its URI), %o (output image) and %s (size
-/// in pixels), shell-quoted; %% is a literal %.
+/// The value of placeholder `c`: %i (input file), %u (its URI), %o
+/// (output image), %s (size in pixels).
+fn value(c: char, input: &Path, output: &Path, size: u32) -> Option<String> {
+    match c {
+        'i' => Some(input.to_string_lossy().to_string()),
+        'u' => Some(gio::prelude::FileExt::uri(&gio::File::for_path(input)).to_string()),
+        'o' => Some(output.to_string_lossy().to_string()),
+        's' => Some(size.to_string()),
+        _ => None,
+    }
+}
+
+/// Fills in the placeholders shell-quoted (also within quotes in the
+/// command: see util::expand_shell); %% is a literal %.
 pub fn expand(command: &str, input: &Path, output: &Path, size: u32) -> String {
-    expand_with(command, input, output, size, &|s: &str| glib::shell_quote(s).to_string_lossy().to_string())
+    crate::util::expand_shell(command, |c| value(c, input, output, size).map(|v| vec![v]))
 }
 
 /// `expand` for one argument of a command run directly (not quoted).
 fn expand_arg(arg: &str, input: &Path, output: &Path, size: u32) -> String {
-    expand_with(arg, input, output, size, &|s: &str| s.to_string())
-}
-
-fn expand_with(command: &str, input: &Path, output: &Path, size: u32, q: &dyn Fn(&str) -> String) -> String {
-    let path = |p: &Path| q(&p.to_string_lossy());
-    let uri = || q(gio::prelude::FileExt::uri(&gio::File::for_path(input)).as_str());
-    crate::util::expand_placeholders(command, |c| match c {
-        'i' => Some(path(input)),
-        'u' => Some(uri()),
-        'o' => Some(path(output)),
-        's' => Some(size.to_string()),
-        _ => None,
-    })
+    crate::util::expand_placeholders(arg, |c| value(c, input, output, size))
 }
 
 /// Runs `t` for `input`, writing an image to `output`. Called on the
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn expand_and_match() {
         let cmd = expand("ffmpeg -i %i -vf scale=%s:-1 %o 100%%", Path::new("/a b/v.mp4"), Path::new("/t/o.png"), 256);
-        assert_eq!(cmd, "ffmpeg -i '/a b/v.mp4' -vf scale=256:-1 '/t/o.png' 100%");
+        assert_eq!(cmd, "ffmpeg -i '/a b/v.mp4' -vf scale=256:-1 /t/o.png 100%");
         let t = Thumbnailer { name: "v".into(), types: "video/*; application/PDF".into(), command: "x".into(), system: false };
         assert!(matches(&t, "video/mp4"));
         assert!(installed(&Thumbnailer { command: "sh -c 'true'".into(), ..t.clone() }));
