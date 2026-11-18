@@ -65,7 +65,7 @@ Architecture: ${arch}
 Maintainer: ${DEB_MAINTAINER:-dekart811 <mail@dekart811.net>}
 Installed-Size: $(du -sk --exclude=DEBIAN "$stage" | cut -f1)
 Depends: ${depends}
-Recommends: gvfs
+Recommends: gvfs, bubblewrap
 Suggests: gvfs-backends, ffmpegthumbnailer | ffmpeg, mediainfo, engrampa | file-roller | xarchiver
 Section: utils
 Priority: optional
