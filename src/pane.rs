@@ -3703,6 +3703,38 @@ impl Pane {
         });
     }
 
+    /// Brings the search results in line with items an operation took
+    /// away (see ops::on_moved): results that went, or were in a folder
+    /// that went, are dropped; moved within the folder searched, they're
+    /// shown at their new place. (A folder's own monitor does this for it.)
+    pub fn files_moved(self: &Rc<Self>, went: &[(String, Option<String>)]) {
+        let Some(root) = self.search.borrow().as_ref().map(|q| q.params().root().uri().to_string()) else { return };
+        let went: HashMap<&str, Option<&str>> = went.iter().map(|(a, b)| (a.as_str(), b.as_deref())).collect();
+        let shown: Vec<String> = self.index.borrow().keys().cloned().collect();
+        let mut now_at = vec![];
+        for uri in shown {
+            let Some(to) = moved_to(&uri, &went) else { continue };
+            self.remove_uri(&uri);
+            if let Some(to) = to.filter(|to| inside(to, &root)) {
+                let f = gio::File::for_uri(&to);
+                if let (Some(parent), Some(name)) = (f.parent(), f.basename()) {
+                    now_at.push((parent.uri().to_string(), name.to_string_lossy().to_string()));
+                }
+            }
+        }
+        if now_at.is_empty() {
+            return;
+        }
+        let (w, gen, attrs) = (Rc::downgrade(self), self.gen.get(), self.attrs());
+        glib::MainContext::default().spawn_local(async move {
+            let found = read_infos(now_at, &attrs).await;
+            if let Some(p) = w.upgrade().filter(|p| p.gen.get() == gen) {
+                p.add_rows(found, false);
+                p.emit(Event::Selection);
+            }
+        });
+    }
+
     /// Opens the folder a search result is in, with it selected (Caja's
     /// "Open parent location").
     pub fn open_parent_location(self: &Rc<Self>, uri: &str) {
@@ -4259,6 +4291,30 @@ fn mark_drawing(view: &gtk::Widget) {
 
 /// The details of items found, (folder URI, name) pairs, read all at once
 /// (one after another, each would wait for the last).
+/// Where the item at `uri` is now, after the items `went` (old URI → new
+/// URI, None: gone) went, itself or a folder it's in: None if it's
+/// untouched, Some(None) if it's gone.
+fn moved_to(uri: &str, went: &HashMap<&str, Option<&str>>) -> Option<Option<String>> {
+    let mut at = uri;
+    loop {
+        if let Some(to) = went.get(at) {
+            return Some(to.map(|to| format!("{to}{}", &uri[at.len()..])));
+        }
+        // The folder it's in: up to the last "/" (not one ending "//").
+        let i = at.trim_end_matches('/').rfind('/')?;
+        if at[..i].ends_with('/') {
+            return None;
+        }
+        at = &at[..i];
+    }
+}
+
+/// Whether `uri` is in the folder `root` (somewhere below it).
+fn inside(uri: &str, root: &str) -> bool {
+    let root = root.trim_end_matches('/');
+    uri.strip_prefix(root).is_some_and(|rest| rest.starts_with('/') && rest.len() > 1)
+}
+
 async fn read_infos(found: Vec<(String, String)>, attrs: &str) -> Vec<(gio::File, gio::FileInfo)> {
     let out = Rc::new(RefCell::new(Vec::with_capacity(found.len())));
     let left = Rc::new(Cell::new(found.len()));
@@ -4439,6 +4495,23 @@ fn worth_telling(e: &glib::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn search_results_after_moves() {
+        let went: HashMap<&str, Option<&str>> =
+            [("file:///home/u/Downloads/a.txt", Some("file:///home/u/sorted/a.txt")), ("file:///home/u/Downloads/old", Some("file:///home/u/Downloads/older")), ("file:///home/u/Downloads/gone", None)].into_iter().collect();
+        assert_eq!(moved_to("file:///home/u/Downloads/a.txt", &went), Some(Some("file:///home/u/sorted/a.txt".into())));
+        // In a moved folder: at the same place in it.
+        assert_eq!(moved_to("file:///home/u/Downloads/old/sub/r.txt", &went), Some(Some("file:///home/u/Downloads/older/sub/r.txt".into())));
+        assert_eq!(moved_to("file:///home/u/Downloads/gone/r.txt", &went), Some(None));
+        // Not in it: a name that only starts like it.
+        assert_eq!(moved_to("file:///home/u/Downloads/older2/r.txt", &went), None);
+        assert_eq!(moved_to("file:///home/u/Downloads/b.txt", &went), None);
+        assert!(inside("file:///home/u/Downloads/older/r.txt", "file:///home/u/Downloads"));
+        assert!(!inside("file:///home/u/sorted/a.txt", "file:///home/u/Downloads"));
+        assert!(!inside("file:///home/u/Downloads2/a.txt", "file:///home/u/Downloads/"));
+        assert!(inside("file:///etc/x", "file:///"));
+    }
+
     use super::*;
     use crate::testutil::TestDir;
 

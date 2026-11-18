@@ -29,8 +29,12 @@ thread_local! {
     static LOAD_QUEUE: RefCell<Option<Arc<Pool<ThumbKey>>>> = const { RefCell::new(None) };
     /// Views being drawn (see set_drawing).
     static DRAWING: Cell<u32> = const { Cell::new(0) };
-    /// (uri, mtime) pairs already sent to the worker; an edited file gets a new entry.
-    static QUEUED: RefCell<HashSet<(String, i64)>> = RefCell::new(HashSet::new());
+    /// (uri, mtime, size) sent to the makers and not done yet, so a file
+    /// isn't queued twice; an edited file gets a new entry, as does one
+    /// that grew within the same second (it was still arriving when it was
+    /// tried). Done, the thumbnail or the failure noted takes over: the
+    /// entry goes, so this doesn't grow as long as Voyager runs.
+    static QUEUED: RefCell<HashSet<(String, i64, u64)>> = RefCell::new(HashSet::new());
     static MAKERS: RefCell<Option<Arc<Pool<ThumbJob>>>> = const { RefCell::new(None) };
     /// The custom thumbnailer for each content type asked about.
     /// Shared, not copied: asked about for every file of a folder.
@@ -690,6 +694,8 @@ struct ThumbJob {
     uri: String,
     src: std::path::PathBuf,
     mtime: i64,
+    /// The file's size in bytes, noted with a failure (see record_failure).
+    size: u64,
     out: std::path::PathBuf,
     /// A custom thumbnailer to make the picture; None for built-in images.
     custom: Option<Arc<Thumbnailer>>,
@@ -858,7 +864,7 @@ fn makers() -> Arc<Pool<ThumbJob>> {
     if let Some(q) = MAKERS.with(|m| m.borrow().clone()) {
         return q;
     }
-    let (done_tx, done_rx) = async_channel::unbounded::<(String, Option<String>)>();
+    let (done_tx, done_rx) = async_channel::unbounded::<(String, i64, u64, Option<String>)>();
     let q = Pool::start(
         maker_count(),
         |job: ThumbJob| {
@@ -866,24 +872,30 @@ fn makers() -> Arc<Pool<ThumbJob>> {
             if res.is_none() {
                 record_failure(&job);
             }
-            (job.uri, res)
+            (job.uri, job.mtime, job.size, res)
         },
         done_tx,
     );
     glib::MainContext::default().spawn_local(async move {
-        while let Ok((uri, res)) = done_rx.recv().await {
+        while let Ok((uri, mtime, size, res)) = done_rx.recv().await {
+            QUEUED.with(|q| q.borrow_mut().remove(&(uri.clone(), mtime, size)));
             if let Some(p) = res {
                 forget_thumb(&p);
-                LISTENERS.with(|l| {
-                    for (_, f) in l.borrow().iter() {
-                        f(&uri, &p);
-                    }
-                });
+                thumbnail_ready(&uri, &p);
             }
         }
     });
     MAKERS.with(|m| *m.borrow_mut() = Some(q.clone()));
     q
+}
+
+/// Tells the views that `uri`'s thumbnail is at `path`.
+fn thumbnail_ready(uri: &str, path: &str) {
+    LISTENERS.with(|l| {
+        for (_, f) in l.borrow().iter() {
+            f(uri, path);
+        }
+    });
 }
 
 /// Where Voyager notes the files it couldn't make a thumbnail of, as the
@@ -897,8 +909,11 @@ fn fail_path_for(uri: &str) -> std::path::PathBuf {
     fail_dir().join(large.file_name().unwrap_or_default())
 }
 
-/// A tiny picture with the file's URI and modification time: a changed
-/// file is tried again.
+/// A tiny picture with the file's URI, modification time and size: a
+/// changed file is tried again. (The time alone wasn't enough: it's in
+/// seconds, and a file still arriving that failed in the second its copy
+/// ended had the finished file's time, so it was never tried again. Its
+/// size was smaller.)
 fn record_failure(job: &ThumbJob) {
     let out = fail_path_for(&job.uri);
     let Some(pb) = Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, true, 8, 1, 1) else { return };
@@ -906,8 +921,8 @@ fn record_failure(job: &ThumbJob) {
     if std::fs::create_dir_all(fail_dir()).is_err() {
         return;
     }
-    let mtime = job.mtime.to_string();
-    if let Err(e) = pb.savev(&out, "png", &[("tEXt::Thumb::URI", job.uri.as_str()), ("tEXt::Thumb::MTime", mtime.as_str()), ("tEXt::Software", "Voyager")]) {
+    let (mtime, size) = (job.mtime.to_string(), job.size.to_string());
+    if let Err(e) = pb.savev(&out, "png", &[("tEXt::Thumb::URI", job.uri.as_str()), ("tEXt::Thumb::MTime", mtime.as_str()), ("tEXt::Thumb::Size", size.as_str()), ("tEXt::Software", "Voyager")]) {
         glib::g_debug!("voyager", "thumbnail: couldn't note the failure in {}: {e}", out.display());
     }
 }
@@ -1093,17 +1108,24 @@ pub fn request_thumbnail(uri: &str, path: &std::path::Path, mtime: i64, size: u6
         glib::g_debug!("voyager", "thumbnail: none for {ctype} of {size} bytes ({uri})");
         return;
     }
-    let first = QUEUED.with(|q| q.borrow_mut().insert((uri.to_string(), mtime)));
-    if !first {
-        return;
-    }
     let out = thumb_path_for(uri);
     // Don't thumbnail our own cache.
     if path.starts_with(glib::user_cache_dir().join("thumbnails")) {
         return;
     }
-    if png_thumb_mtime(&fail_path_for(uri)) == Some(mtime.to_string()) {
+    // Made already (asked again before the view had it, or by another
+    // view): the views get it as when it's made, once the view asking is
+    // done with what it's doing.
+    if png_thumb_mtime(&out) == Some(mtime.to_string()) {
+        let (uri, p) = (uri.to_string(), out.to_string_lossy().to_string());
+        glib::idle_add_local_once(move || thumbnail_ready(&uri, &p));
+        return;
+    }
+    if failed_before(&fail_path_for(uri), mtime, size) {
         glib::g_debug!("voyager", "thumbnail: failed before, not tried again until the file changes ({uri})");
+        return;
+    }
+    if !QUEUED.with(|q| q.borrow_mut().insert((uri.to_string(), mtime, size))) {
         return;
     }
     glib::g_debug!("voyager", "thumbnail: asked for {ctype} ({uri})");
@@ -1111,6 +1133,7 @@ pub fn request_thumbnail(uri: &str, path: &std::path::Path, mtime: i64, size: u6
         uri: uri.to_string(),
         src: path.to_path_buf(),
         mtime,
+        size,
         out,
         custom,
     });
@@ -1136,9 +1159,21 @@ pub fn existing_thumbnail(info: &gio::FileInfo, uri: &str, mtime: i64) -> Option
     None
 }
 
-/// The Thumb::MTime text of a thumbnail PNG, read from the chunks before the
-/// image data so we don't decode the picture on the main thread.
+/// Whether the failure noted at `path` is for the file as it is: the same
+/// modification time and size. Notes without a size (made before Voyager
+/// noted it) don't count: such a file is tried once more.
+fn failed_before(path: &std::path::Path, mtime: i64, size: u64) -> bool {
+    png_thumb_mtime(path) == Some(mtime.to_string()) && png_thumb_text(path, "Thumb::Size") == Some(size.to_string())
+}
+
+/// The Thumb::MTime text of a thumbnail PNG.
 fn png_thumb_mtime(path: &std::path::Path) -> Option<String> {
+    png_thumb_text(path, "Thumb::MTime")
+}
+
+/// A thumbnail PNG's text called `key`, read from the chunks before the
+/// image data so we don't decode the picture on the main thread.
+fn png_thumb_text(path: &std::path::Path, key: &str) -> Option<String> {
     use std::io::Read;
     let mut f = std::io::BufReader::new(std::fs::File::open(path).ok()?);
     let mut sig = [0u8; 8];
@@ -1159,7 +1194,7 @@ fn png_thumb_mtime(path: &std::path::Path) -> Option<String> {
         if kind == b"tEXt" {
             let text = &data[..len];
             if let Some(i) = text.iter().position(|b| *b == 0) {
-                if &text[..i] == b"Thumb::MTime" {
+                if &text[..i] == key.as_bytes() {
                     return Some(String::from_utf8_lossy(&text[i + 1..]).to_string());
                 }
             }
@@ -1345,6 +1380,23 @@ mod tests {
         assert_eq!(png_thumb_mtime(&write("cut.png", &good[..good.len() / 2])), None);
         assert_eq!(png_thumb_mtime(&write("jpeg.png", b"\xff\xd8\xff\xe0 not a png")), None);
         assert_eq!(png_thumb_mtime(&t.0.join("missing.png")), None);
+    }
+
+    #[test]
+    fn failures_noted_with_time_and_size() {
+        let t = TestDir::new("fail");
+        let ihdr: &[u8] = &[0; 13];
+        let note = t.0.join("note.png");
+        std::fs::write(&note, png(&[(b"IHDR", ihdr), (b"tEXt", b"Thumb::MTime\x001700000000"), (b"tEXt", b"Thumb::Size\x004096"), (b"IDAT", b"")])).unwrap();
+        assert!(failed_before(&note, 1_700_000_000, 4096));
+        // Finished in the same second, but bigger than when it failed.
+        assert!(!failed_before(&note, 1_700_000_000, 24_324_302));
+        assert!(!failed_before(&note, 1_700_000_001, 4096));
+        // A note from before sizes were noted: tried once more.
+        let old = t.0.join("old.png");
+        std::fs::write(&old, png(&[(b"IHDR", ihdr), (b"tEXt", b"Thumb::MTime\x001700000000"), (b"IDAT", b"")])).unwrap();
+        assert!(!failed_before(&old, 1_700_000_000, 4096));
+        assert!(!failed_before(&t.0.join("none.png"), 1_700_000_000, 4096));
     }
 
     #[test]

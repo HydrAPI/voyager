@@ -274,6 +274,18 @@ pub fn show_backgrounds_of(folder: &gio::File) {
     });
 }
 
+/// After the setting for operations in their own window changed: the
+/// operations button shown or hidden, and the window opened if operations
+/// are running.
+pub fn ops_shown_as_set() {
+    for w in all_windows() {
+        w.update_ops_button();
+    }
+    if config::with(|s| s.ops_window) && ops::is_busy() {
+        ops::open_window();
+    }
+}
+
 /// Every window's side pane with the background now chosen.
 pub fn show_side_pane_backgrounds() {
     for w in all_windows() {
@@ -831,6 +843,18 @@ impl AppWindow {
                 }
             };
             ops::on_change(update);
+        }
+        {
+            // Search results have no folder monitor: they learn here of
+            // items moved, trashed or deleted.
+            let w = Rc::downgrade(&this);
+            ops::on_moved(move |went| {
+                if let Some(s) = w.upgrade() {
+                    for p in s.panes.borrow().iter() {
+                        p.files_moved(went);
+                    }
+                }
+            });
         }
         this.update_ops_button();
         this.setup_actions();
@@ -2090,13 +2114,15 @@ impl AppWindow {
     /// their overall progress.
     fn update_ops_button(&self) {
         let (n, fraction) = ops::summary();
-        self.ops_btn.set_visible(n > 0);
+        // Not with operations shown in their own window (a setting).
+        let own_window = config::with(|s| s.ops_window);
+        self.ops_btn.set_visible(n > 0 && !own_window);
         self.ops_bar.set_fraction(fraction);
         self.ops_btn.set_tooltip_text(Some(&match n {
             0 => tr("File operations"),
             n => fill(&trn("{n} file operation", "{n} file operations", n as u64), &[("n", &n)]),
         }));
-        if n == 0 {
+        if n == 0 || own_window {
             self.ops_pop.popdown();
         }
     }
@@ -2351,11 +2377,19 @@ impl AppWindow {
         } else {
             self.spinner.stop();
         }
-        self.update_action_states();
+        self.update_action_states_for(pane);
     }
 
     fn update_action_states(&self) {
-        let Some(p) = self.current_pane() else { return };
+        if let Some(p) = self.current_pane() {
+            self.update_action_states_for(&p);
+        }
+    }
+
+    /// The actions as `p` allows them. `p` is passed in when switching
+    /// tabs: GTK still reports the tab left as the current one then, and
+    /// a search's results there left Paste off in the tab switched to.
+    fn update_action_states_for(&self, p: &Rc<Pane>) {
         let sel = p.selected();
         let has = !sel.is_empty();
         let in_trash = p.is_trash();
@@ -2398,7 +2432,7 @@ impl AppWindow {
         self.set_enabled("swap-panes", self.split_on());
         self.set_enabled("same-location", self.other_pane().is_some_and(|o| !o.current().equal(&p.current())));
         let nb = self.active();
-        let (cur, n) = (nb.current_page().unwrap_or(0), nb.n_pages());
+        let (cur, n) = (nb.page_num(&p.root).unwrap_or(0), nb.n_pages());
         self.set_enabled("tab-left", cur > 0);
         self.set_enabled("tab-right", cur + 1 < n);
     }
@@ -3461,15 +3495,52 @@ impl AppWindow {
         d.set_modal(true);
         d.set_program_name("Voyager");
         // With the build (see build.rs), for bug reports: "1.0.0-dev (r142, 6a7d287)".
-        d.set_version(Some(&match env!("VOYAGER_BUILD") {
+        let version = match env!("VOYAGER_BUILD") {
             "" => env!("CARGO_PKG_VERSION").to_string(),
             build => format!("{} ({build})", env!("CARGO_PKG_VERSION")),
-        }));
-        d.set_comments(Some(&tr("A fast graphical file manager.")));
-        // GTK's own (translated) notice, with a link to the license.
-        d.set_license_type(gtk::License::Gpl30);
+        };
+        d.set_version(Some(&version));
+        // GPLv3's "Appropriate Legal Notices": no warranty (here), and
+        // how to see the license (its button).
+        d.set_comments(Some(&format!("{}\n\n{}", tr("A fast graphical file manager."), tr("This program comes with absolutely no warranty."))));
         d.set_logo_icon_name(Some(util::app_icon()));
-        d.connect_response(|d, _| d.close());
+        // License, then the source code's repository (named so it fits
+        // wherever that is), at the bottom left (as GTK places
+        // its own Credits and License); Close stays at the right.
+        const LICENSE: &str = "https://www.gnu.org/licenses/gpl-3.0.html";
+        const REPOSITORY: &str = "https://github.com/HydrAPI/voyager";
+        let links = [(tr("_License"), LICENSE, 1), (tr("_Source Code"), REPOSITORY, 2)];
+        for (label, _, id) in &links {
+            let b = d.add_button(label, gtk::ResponseType::Other(*id));
+            if let Some(bar) = b.parent().and_downcast::<gtk::ButtonBox>() {
+                bar.set_child_secondary(&b, true);
+            }
+        }
+        // GTK makes all its texts selectable: only the version is worth
+        // copying (for a bug report).
+        fn unselectable(w: &gtk::Widget, keep: &str) {
+            if let Some(l) = w.downcast_ref::<gtk::Label>() {
+                if l.text() != keep {
+                    l.set_selectable(false);
+                }
+            } else if let Some(c) = w.downcast_ref::<gtk::Container>() {
+                for child in c.children() {
+                    unselectable(&child, keep);
+                }
+            }
+        }
+        unselectable(d.content_area().upcast_ref(), &version);
+        d.connect_response(move |d, r| {
+            let gtk::ResponseType::Other(id) = r else {
+                d.close();
+                return;
+            };
+            if let Some((_, uri, _)) = links.iter().find(|(_, _, i)| *i == id) {
+                if let Err(e) = gtk::show_uri_on_window(Some(d), uri, gtk::current_event_time()) {
+                    util::error_dialog(Some(d.upcast_ref()), &fill(&tr("Could not open “{name}”"), &[("name", uri)]), e.message());
+                }
+            }
+        });
         d.show();
     }
 

@@ -33,6 +33,7 @@ mod thispc;
 #[cfg(test)]
 mod testutil;
 mod util;
+mod thumbcache;
 mod thumbnailers;
 mod window;
 mod xds;

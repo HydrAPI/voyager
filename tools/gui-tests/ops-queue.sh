@@ -27,13 +27,24 @@ gt_voyager "$HOME"
 # Wayland nothing outside sees them, so there only the copies and the end
 # are checked.
 ops_up() { xdotool search --onlyvisible --name "^File Operations$" >/dev/null 2>&1; }
+# The operations button's tooltip says how many there are; pressed, then
+# a button in its popover (through accessibility, as on Wayland nothing
+# outside knows where it is), and the popover closed.
+press() {
+  local n; for n in "1 file operation" "2 file operations"; do gt_a11y press-in "*" "$n" && break; done
+  gt_a11y press-in "*" "$1"; sleep 0.3; gt_key Escape
+}
 
 gt_click 900 650; gt_type big; gt_key Escape; gt_key ctrl+c
-gt_key ctrl+l; gt_type "$HOME/to1"; gt_key Return; gt_key shift+ctrl+v; sleep 0.3
+gt_key ctrl+l; gt_type "$HOME/to1"; gt_key Return; gt_key shift+ctrl+v; sleep 1
+# Paused until the second is queued: done before that, the second would
+# just start (on a fast machine it sometimes was).
+press Pause
 gt_key ctrl+l; gt_type "$HOME"; gt_key Return; sleep 0.3
 gt_click 900 650; gt_type second; gt_key Escape; gt_key ctrl+c
 gt_key ctrl+l; gt_type "$HOME/to2"; gt_key Return; gt_key shift+ctrl+v; sleep 0.3
 gt_check "the second copy is queued (the first still runs)" "$([ -e "$HOME/to2/second" ] && echo started || echo queued)" "queued"
+press Resume
 timeout 10 gdbus call --session --dest $APP_ID --object-path $APP_PATH \
   --method org.gtk.Actions.Activate quit [] {} >/dev/null
 sleep 1
