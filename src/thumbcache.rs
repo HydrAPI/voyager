@@ -105,8 +105,14 @@ fn below(old: &str, new: &str, out: &mut Vec<(String, String)>) {
 fn write(path: &Path, png: &[u8]) {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
-    let Some(dir) = path.parent() else { return };
-    let tmp = dir.join(format!(".{}.arkha-tmp", std::process::id()));
+    // Its own temporary name: moves and renames run on threads of their own,
+    // and with one name for all, two at once wrote into each other's file.
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    if path.parent().is_none() {
+        return;
+    }
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_extension(format!("arkha-{}-{n}.tmp", std::process::id()));
     let written = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp).and_then(|mut f| f.write_all(png));
     if written.and_then(|_| std::fs::rename(&tmp, path)).is_err() {
         let _ = std::fs::remove_file(&tmp);
