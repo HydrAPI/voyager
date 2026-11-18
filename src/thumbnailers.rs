@@ -173,19 +173,54 @@ fn expand_arg(arg: &str, input: &Path, output: &Path, size: u32) -> String {
 /// thumbnail worker thread; gives up after TIMEOUT. Err says why there's
 /// no image (with the end of what the command printed as errors).
 pub fn run(t: &Thumbnailer, input: &Path, output: &Path, size: u32) -> Result<(), String> {
-    let mut command = if t.system {
+    // In the sandbox the image is written into a folder of its own, the
+    // only one it can write to, and moved to `output` from there.
+    let jail = if sandboxed(t) { sandbox::bwrap() } else { None };
+    let cell = match jail {
+        Some(_) => Some(sandbox::Cell::new().map_err(|e| format!("no folder for the sandbox: {e}"))?),
+        None => None,
+    };
+    let written = cell.as_ref().map_or_else(|| output.to_path_buf(), |c| c.dir.join(output.file_name().unwrap_or_default()));
+    let argv: Vec<String> = if t.system {
         // A program and its arguments (split as GLib splits them).
         let argv = glib::shell_parse_argv(&t.command).map_err(|e| format!("bad command: {e}"))?;
-        let mut args = argv.iter().map(|a| expand_arg(&a.to_string_lossy(), input, output, size));
-        let Some(program) = args.next() else { return Err("empty command".into()) };
-        let mut c = std::process::Command::new(program);
-        c.args(args);
-        c
+        argv.iter().map(|a| expand_arg(&a.to_string_lossy(), input, &written, size)).collect()
     } else {
-        let mut c = std::process::Command::new("sh");
-        c.arg("-c").arg(expand(&t.command, input, output, size));
-        c
+        vec!["sh".into(), "-c".into(), expand(&t.command, input, &written, size)]
     };
+    let Some(program) = argv.first() else { return Err("empty command".into()) };
+    let mut command = match (jail, &cell) {
+        (Some(bwrap), Some(cell)) => {
+            glib::g_debug!("arkha", "thumbnail: “{}” runs in a sandbox", t.name);
+            let mut c = std::process::Command::new(bwrap);
+            c.args(sandbox::args(input, &cell.dir)).arg("--").args(&argv);
+            c
+        }
+        _ => {
+            let mut c = std::process::Command::new(program);
+            c.args(&argv[1..]);
+            c
+        }
+    };
+    let result = wait_for(&mut command, &written);
+    if result.is_ok() && written != output {
+        std::fs::copy(&written, output).map_err(|e| format!("couldn't take its image: {e}"))?;
+    }
+    result
+}
+
+/// Whether `t` runs in the sandbox: the system's thumbnailers and Arkha's
+/// own (as long as they're unchanged). The user's own commands run as
+/// written: they may well use scripts in the home folder, which the
+/// sandbox doesn't show.
+fn sandboxed(t: &Thumbnailer) -> bool {
+    t.system || defaults().iter().any(|d| d.command == t.command)
+}
+
+/// Runs `command` until it ends (TIMEOUT at most); Ok if it succeeded and
+/// wrote `written`.
+fn wait_for(command: &mut std::process::Command, written: &Path) -> Result<(), String> {
+    let output = written;
     let mut child = command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -220,6 +255,114 @@ pub fn run(t: &Thumbnailer, input: &Path, output: &Path, size: u32) -> Result<()
                     _ => format!("stopped after {} s{}", TIMEOUT.as_secs(), errors()),
                 });
             }
+        }
+    }
+}
+
+/// Thumbnailers in a bubblewrap sandbox, as GNOME runs them: they read
+/// files from anywhere (Downloads, USB drives) as soon as a folder is
+/// shown, and a file made to exploit a bug in one (Ghostscript through
+/// PostScript thumbnails, a media library) would otherwise run with all
+/// the user's rights. In the sandbox the system is there read-only (the
+/// programs, their libraries, fonts), the home folder isn't at all, the
+/// file to read is, read-only, and a folder of its own to write the image
+/// to; no network, no other processes, and it ends with Arkha. Without
+/// bwrap, or where the system doesn't allow sandboxes (some kernels,
+/// containers), thumbnailers run as before, which is noted once.
+mod sandbox {
+    use std::path::{Path, PathBuf};
+    use std::sync::OnceLock;
+
+    /// bwrap, if it's installed and can make a sandbox here (tried once);
+    /// ARKHA_THUMBNAIL_SANDBOX=0 runs thumbnailers without one.
+    pub fn bwrap() -> Option<&'static Path> {
+        static BWRAP: OnceLock<Option<PathBuf>> = OnceLock::new();
+        BWRAP
+            .get_or_init(|| {
+                if std::env::var("ARKHA_THUMBNAIL_SANDBOX").is_ok_and(|v| v == "0") {
+                    return None;
+                }
+                let Some(b) = glib::find_program_in_path("bwrap") else {
+                    glib::g_message!("arkha", "thumbnails: no bwrap (bubblewrap) installed: thumbnailers run without a sandbox");
+                    return None;
+                };
+                let tried = Cell::new().map_err(|e| format!("no folder for it: {e}")).and_then(|cell| {
+                    std::process::Command::new(&b)
+                        .args(args(Path::new("/dev/null"), &cell.dir))
+                        .args(["--", "true"])
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::piped())
+                        .output()
+                        .map_err(|e| e.to_string())
+                });
+                match tried {
+                    Ok(o) if o.status.success() => Some(b),
+                    r => {
+                        let why = r.map_or_else(|e| e, |o| String::from_utf8_lossy(&o.stderr).trim().to_string());
+                        glib::g_message!("arkha", "thumbnails: bwrap can't make a sandbox here ({why}): thumbnailers run without one");
+                        None
+                    }
+                }
+            })
+            .as_deref()
+    }
+
+    /// bwrap's arguments (before "--" and the command) for a thumbnailer
+    /// reading `input` and writing into `out_dir`.
+    pub fn args(input: &Path, out_dir: &Path) -> Vec<std::ffi::OsString> {
+        let mut a: Vec<std::ffi::OsString> = vec![];
+        let mut add = |words: &[&std::ffi::OsStr]| a.extend(words.iter().map(|w| w.to_os_string()));
+        let s = |x: &'static str| std::ffi::OsStr::new(x);
+        add(&[s("--unshare-all"), s("--die-with-parent"), s("--new-session"), s("--clearenv")]);
+        let lang = std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into());
+        for (k, v) in [("PATH", "/usr/local/bin:/usr/bin:/bin"), ("HOME", "/tmp"), ("TMPDIR", "/tmp"), ("GIO_USE_VFS", "local"), ("LANG", lang.as_str())] {
+            add(&[s("--setenv"), std::ffi::OsStr::new(k), std::ffi::OsStr::new(v)]);
+        }
+        add(&[s("--ro-bind"), s("/usr"), s("/usr")]);
+        // /bin, /lib… are links into /usr on most systems now, folders on others.
+        for d in ["/bin", "/sbin", "/lib", "/lib32", "/lib64"] {
+            match std::fs::read_link(d) {
+                Ok(target) => add(&[s("--symlink"), target.as_os_str(), std::ffi::OsStr::new(d)]),
+                Err(_) if Path::new(d).is_dir() => add(&[s("--ro-bind"), std::ffi::OsStr::new(d), std::ffi::OsStr::new(d)]),
+                Err(_) => {}
+            }
+        }
+        add(&[s("--ro-bind-try"), s("/etc"), s("/etc"), s("--ro-bind-try"), s("/var/cache/fontconfig"), s("/var/cache/fontconfig")]);
+        add(&[s("--proc"), s("/proc"), s("--dev"), s("/dev"), s("--tmpfs"), s("/tmp")]);
+        add(&[s("--ro-bind"), input.as_os_str(), input.as_os_str(), s("--bind"), out_dir.as_os_str(), out_dir.as_os_str()]);
+        a
+    }
+
+    /// A folder of its own for one thumbnailer to write into (removed again
+    /// when dropped), only the user's: in the runtime folder, or in the
+    /// cache folder where that can't be written to (seen where
+    /// XDG_RUNTIME_DIR was another user's).
+    pub struct Cell {
+        pub dir: PathBuf,
+    }
+
+    impl Cell {
+        pub fn new() -> std::io::Result<Cell> {
+            use std::os::unix::fs::DirBuilderExt;
+            static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let name = format!("arkha-thumbnail-{}-{n}", std::process::id());
+            let in_runtime = glib::user_runtime_dir().join(&name);
+            if std::fs::DirBuilder::new().mode(0o700).create(&in_runtime).is_ok() {
+                return Ok(Cell { dir: in_runtime });
+            }
+            let cache = glib::user_cache_dir().join("arkha");
+            std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cache)?;
+            let dir = cache.join(&name);
+            std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
+            Ok(Cell { dir })
+        }
+    }
+
+    impl Drop for Cell {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
 }
@@ -286,6 +429,46 @@ mod tests {
         let t = Thumbnailer { name: "cp".into(), types: "*".into(), command: "cp %i %o".into(), system: true };
         assert!(run(&t, &input, &out, 128).is_ok());
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "data");
+    }
+
+    #[test]
+    fn sandboxed_thumbnailers_see_only_their_file() {
+        let Some(_) = sandbox::bwrap() else {
+            eprintln!("no sandbox possible here (bwrap missing or not allowed): not tested");
+            return;
+        };
+        let dir = crate::testutil::TestDir::new("sandbox");
+        let (input, out, secret, planted) = (dir.0.join("clip.mp4"), dir.0.join("o.png"), dir.0.join("secret.txt"), dir.0.join("planted"));
+        std::fs::write(&input, "picture").unwrap();
+        std::fs::write(&secret, "key").unwrap();
+        let sys = |cmd: String| Thumbnailer { name: "t".into(), types: "*".into(), command: cmd, system: true };
+        // Its own file it reads, its image it writes.
+        assert_eq!(run(&sys("cp %i %o".into()), &input, &out, 128), Ok(()));
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "picture");
+        std::fs::remove_file(&out).unwrap();
+        // Another file there it can't read, nothing it can write there:
+        // each command works as the user's own (no sandbox), not in it.
+        let p = |x: &Path| {
+            let x = x.to_string_lossy().to_string();
+            assert!(!x.contains(['"', '\'', ' ', '$', '\\']), "{x}");
+            x
+        };
+        let read = format!("cat {} > %o", p(&secret));
+        let own = |cmd: &str| Thumbnailer { system: false, ..sys(cmd.into()) };
+        assert_eq!(run(&own(&read), &input, &out, 128), Ok(()));
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "key");
+        std::fs::remove_file(&out).unwrap();
+        assert!(run(&sys(format!("sh -c \"{read}\"")), &input, &out, 128).is_err());
+        assert!(!out.exists());
+        let plant = format!("touch {}; cp %i %o", p(&planted));
+        assert_eq!(run(&own(&plant), &input, &out, 128), Ok(()));
+        assert!(planted.exists());
+        std::fs::remove_file(&planted).unwrap();
+        assert_eq!(run(&sys(format!("sh -c \"{plant}\"")), &input, &out, 128), Ok(()));
+        assert!(!planted.exists());
+        // Arkha's own video thumbnailers run in it too; the user's own don't.
+        assert!(defaults().iter().all(sandboxed));
+        assert!(!sandboxed(&Thumbnailer { system: false, ..sys("my-script %i %o".into()) }));
     }
 
     #[test]
