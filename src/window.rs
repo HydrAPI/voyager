@@ -2779,7 +2779,8 @@ impl AppWindow {
     }
 
     fn ask_run(self: &Rc<Self>, f: &gio::File, is_script: bool) {
-        let name = util::display_name(f);
+        // Direction marks shown, not obeyed: "gpj.exe" can't pass for "exe.jpg".
+        let name = util::visible_controls(&util::display_name(f));
         let d = gtk::MessageDialog::new(
             Some(&self.window),
             gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
@@ -2797,7 +2798,9 @@ impl AppWindow {
         }
         d.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
         d.add_button(&tr("_Run"), gtk::ResponseType::Other(3));
-        d.set_default_response(gtk::ResponseType::Other(3));
+        // Enter doesn't run it: on FAT-formatted drives every file is
+        // executable, a "text file" among them too.
+        d.set_default_response(gtk::ResponseType::Cancel);
         let w = Rc::downgrade(self);
         let f = f.clone();
         d.connect_response(move |d, r| {
@@ -3057,7 +3060,7 @@ impl AppWindow {
         if !can_trash {
             let sel = p.selected();
             let q = if sel.len() == 1 {
-                fill(&tr("“{name}” can’t be moved to the Trash. Delete it permanently?"), &[("name", &sel[0].name)])
+                fill(&tr("“{name}” can’t be moved to the Trash. Delete it permanently?"), &[("name", &util::visible_controls(&sel[0].name))])
             } else {
                 fill(&trn("This item can’t be moved to the Trash. Delete it permanently?", "These {n} items can’t be moved to the Trash. Delete them permanently?", sel.len() as u64), &[("n", &sel.len())])
             };
@@ -3069,7 +3072,7 @@ impl AppWindow {
         if config::with(|s| s.confirm_trash) {
             let sel = p.selected();
             let q = if sel.len() == 1 {
-                fill(&tr("Move “{name}” to the Trash?"), &[("name", &sel[0].name)])
+                fill(&tr("Move “{name}” to the Trash?"), &[("name", &util::visible_controls(&sel[0].name))])
             } else {
                 fill(&trn("Move {n} item to the Trash?", "Move {n} items to the Trash?", sel.len() as u64), &[("n", &sel.len())])
             };
@@ -3087,7 +3090,7 @@ impl AppWindow {
             return;
         }
         let q = if sel.len() == 1 {
-            fill(&tr("Are you sure you want to permanently delete “{name}”?"), &[("name", &sel[0].name)])
+            fill(&tr("Are you sure you want to permanently delete “{name}”?"), &[("name", &util::visible_controls(&sel[0].name))])
         } else {
             fill(
                 &trn("Are you sure you want to permanently delete the {n} selected item?", "Are you sure you want to permanently delete the {n} selected items?", sel.len() as u64),

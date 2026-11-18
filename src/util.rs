@@ -815,6 +815,18 @@ pub fn numbered_groups(kf: &glib::KeyFile, prefix: &str) -> Vec<String> {
     groups.into_iter().map(|(_, g)| g).collect()
 }
 
+/// `name` with the characters that change the direction of the text after
+/// them shown as "<U+202E>" instead of obeyed: with one, "gpj.exe" shows as
+/// "exe.jpg". For the questions about running and deleting files.
+pub fn visible_controls(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            '\u{200e}' | '\u{200f}' | '\u{061c}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' => format!("<U+{:04X}>", c as u32),
+            c => c.to_string(),
+        })
+        .collect()
+}
+
 /// `command`, a shell command, with each %x replaced by the words `value`
 /// gives for x, each shell-quoted (joined by spaces): "%%" is a % sign,
 /// and a %x it has nothing for stays as it is. A placeholder within quotes
@@ -1072,6 +1084,14 @@ mod tests {
             let glibs = glib::DateTime::from_unix_local(t).unwrap().format(f).unwrap();
             assert_eq!(ours, glibs, "{t}");
         }
+    }
+
+    #[test]
+    fn direction_marks_shown() {
+        assert_eq!(visible_controls("photo\u{202e}gpj.exe"), "photo<U+202E>gpj.exe");
+        assert_eq!(visible_controls("a\u{2066}b\u{2069}"), "a<U+2066>b<U+2069>");
+        // Other text as it is, right-to-left scripts too.
+        assert_eq!(visible_controls("שלום.txt"), "שלום.txt");
     }
 
     #[test]
