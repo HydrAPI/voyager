@@ -117,6 +117,14 @@ impl IconLabel {
         self.imp().drop_target.set(on);
     }
 
+    /// The item is being renamed: its name is measured as always but not
+    /// drawn (the edit field over it would show it through). Emptied
+    /// instead, the item was laid out anew without a name, and its picture
+    /// went behind the field. Set for each item before it's drawn.
+    pub fn set_hidden(&self, on: bool) {
+        self.imp().hidden.set(on);
+    }
+
     fn draw_over(&self, widget: &gtk::Widget, cr: &gtk::cairo::Context, area: &gdk::Rectangle, text: &str, selected: bool) {
         let Some((bx, by, bw, bh)) = self.text_box(widget, area, text, selected) else { return };
         let ctx = widget.style_context();
@@ -338,6 +346,7 @@ mod imp {
         pub style: Cell<(i32, i32)>,
         pub x_shift: Cell<i32>,
         pub drop_target: Cell<bool>,
+        pub hidden: Cell<bool>,
     }
 
     impl Default for IconLabel {
@@ -350,6 +359,7 @@ mod imp {
                 style: Cell::new((0, 0)),
                 x_shift: Cell::new(0),
                 drop_target: Cell::new(false),
+                hidden: Cell::new(false),
             }
         }
     }
@@ -572,6 +582,9 @@ mod imp {
             cell_area: &gdk::Rectangle,
             flags: gtk::CellRendererState,
         ) {
+            if self.hidden.get() {
+                return;
+            }
             if !self.below() {
                 return self.parent_render(cr, widget, background_area, cell_area, flags);
             }

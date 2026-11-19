@@ -662,8 +662,9 @@ impl Pane {
         let drop_path: Rc<RefCell<Option<gtk::TreePath>>> = Rc::default();
         icon_view.pack_start(&icon_pix, false);
         CellLayoutExt::pack_start(&icon_view, &icon_text, false);
-        // The item being renamed doesn't draw its name: the edit field over
-        // it would show it through (see inline rename in setup_signals).
+        // The item being renamed doesn't draw its name, which is still
+        // measured: the edit field over it would show it through (see
+        // inline rename in setup_signals, IconLabel::set_hidden).
         let edit_hidden: Rc<RefCell<Option<String>>> = Rc::default();
         let (text_fill, pix_fill): (CellFill, CellFill);
         {
@@ -675,10 +676,7 @@ impl Pane {
             let fill: CellFill = Rc::new(move |cell, m, it| {
                     cell.set_visible(shown.get() && !hit_off.get());
                     label.set_drop_target(drop_path.borrow().as_ref().is_some_and(|d| m.path(it).as_ref() == Some(d)));
-                    if hidden.borrow().as_deref().is_some_and(|u| m.gv::<String>(it, COL_URI as i32) == u) {
-                        label.set_label_text("");
-                        return;
-                    }
+                    label.set_hidden(hidden.borrow().as_deref().is_some_and(|u| m.gv::<String>(it, COL_URI as i32) == u));
                     if iv.item_orientation() == gtk::Orientation::Horizontal {
                         label.set_label_text(value_str(&m.value(it, COL_NAME as i32)));
                         return;
