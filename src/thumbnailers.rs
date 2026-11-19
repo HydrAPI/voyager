@@ -144,25 +144,25 @@ fn parse_system(path: &Path) -> Option<Thumbnailer> {
 }
 
 /// The value of placeholder `c`: %i (input file), %u (its URI), %o
-/// (output image), %s (size in pixels).
-fn value(c: char, input: &Path, output: &Path, size: u32) -> Option<String> {
+/// (output image), %s (size in pixels). As bytes: a name needn't be UTF-8.
+fn value(c: char, input: &Path, output: &Path, size: u32) -> Option<std::ffi::OsString> {
     match c {
-        'i' => Some(input.to_string_lossy().to_string()),
-        'u' => Some(gio::prelude::FileExt::uri(&gio::File::for_path(input)).to_string()),
-        'o' => Some(output.to_string_lossy().to_string()),
-        's' => Some(size.to_string()),
+        'i' => Some(input.as_os_str().to_os_string()),
+        'u' => Some(gio::prelude::FileExt::uri(&gio::File::for_path(input)).to_string().into()),
+        'o' => Some(output.as_os_str().to_os_string()),
+        's' => Some(size.to_string().into()),
         _ => None,
     }
 }
 
 /// Fills in the placeholders shell-quoted (also within quotes in the
 /// command: see util::expand_shell); %% is a literal %.
-pub fn expand(command: &str, input: &Path, output: &Path, size: u32) -> String {
+pub fn expand(command: &str, input: &Path, output: &Path, size: u32) -> std::ffi::OsString {
     crate::util::expand_shell(command, |c| value(c, input, output, size).map(|v| vec![v]))
 }
 
 /// `expand` for one argument of a command run directly (not quoted).
-fn expand_arg(arg: &str, input: &Path, output: &Path, size: u32) -> String {
+fn expand_arg(arg: &str, input: &Path, output: &Path, size: u32) -> std::ffi::OsString {
     crate::util::expand_placeholders(arg, |c| value(c, input, output, size))
 }
 
@@ -178,7 +178,7 @@ pub fn run(t: &Thumbnailer, input: &Path, output: &Path, size: u32) -> Result<()
         None => None,
     };
     let written = cell.as_ref().map_or_else(|| output.to_path_buf(), |c| c.dir.join(output.file_name().unwrap_or_default()));
-    let argv: Vec<String> = if t.system {
+    let argv: Vec<std::ffi::OsString> = if t.system {
         // A program and its arguments (split as GLib splits them).
         let argv = glib::shell_parse_argv(&t.command).map_err(|e| format!("bad command: {e}"))?;
         argv.iter().map(|a| expand_arg(&a.to_string_lossy(), input, &written, size)).collect()
@@ -413,7 +413,7 @@ mod tests {
         assert!(parse_system(&bad).is_none());
         // %u is the input's URI.
         let input = dir.0.join("a b.pdf");
-        assert_eq!(expand_arg("%u", &input, Path::new("/o.png"), 128), gio::prelude::FileExt::uri(&gio::File::for_path(&input)).to_string());
+        assert_eq!(expand_arg("%u", &input, Path::new("/o.png"), 128), std::ffi::OsString::from(gio::prelude::FileExt::uri(&gio::File::for_path(&input)).to_string()));
     }
 
     #[test]
@@ -466,6 +466,21 @@ mod tests {
         // Arkha's own video thumbnailers run in it too; the user's own don't.
         assert!(defaults().iter().all(sandboxed));
         assert!(!sandboxed(&Thumbnailer { system: false, ..sys("my-script %i %o".into()) }));
+    }
+
+    #[test]
+    fn thumbnailers_get_names_that_arent_utf8() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = crate::testutil::TestDir::new("latin1thumb");
+        let input = dir.0.join(std::ffi::OsStr::from_bytes(b"caf\xe9.png"));
+        std::fs::write(&input, "picture").unwrap();
+        let out = dir.0.join("o.png");
+        for system in [true, false] {
+            let t = Thumbnailer { name: "cp".into(), types: "*".into(), command: "cp %i %o".into(), system };
+            assert_eq!(run(&t, &input, &out, 128), Ok(()), "system: {system}");
+            assert_eq!(std::fs::read_to_string(&out).unwrap(), "picture");
+            std::fs::remove_file(&out).unwrap();
+        }
     }
 
     #[test]

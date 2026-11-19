@@ -531,8 +531,11 @@ pub fn find_program(cands: &[&str]) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-pub fn spawn_in_dir(argv: &[String], dir: Option<&std::path::Path>) -> Result<(), String> {
-    let mut cmd = std::process::Command::new(&argv[0]);
+/// Runs `argv` in `dir`. Its words as bytes (OsStr): a file's name needn't
+/// be UTF-8, and made into text it was another name.
+pub fn spawn_in_dir<S: AsRef<std::ffi::OsStr>>(argv: &[S], dir: Option<&std::path::Path>) -> Result<(), String> {
+    let Some(program) = argv.first() else { return Err("nothing to run".into()) };
+    let mut cmd = std::process::Command::new(program);
     cmd.args(&argv[1..]);
     if let Some(d) = dir {
         cmd.current_dir(d);
@@ -546,19 +549,19 @@ pub fn spawn_in_dir(argv: &[String], dir: Option<&std::path::Path>) -> Result<()
 }
 
 /// argv to run `program` in a new window of `term`, keeping the path as one argument.
-pub fn terminal_run_argv(term: &str, program: &str) -> Vec<String> {
+pub fn terminal_run_argv(term: &str, program: &std::ffi::OsStr) -> Vec<std::ffi::OsString> {
     let name = std::path::Path::new(term)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
-    let mut argv = vec![term.to_string()];
+    let mut argv: Vec<std::ffi::OsString> = vec![term.into()];
     match name.as_str() {
         "gnome-terminal" => argv.push("--".into()),
         "mate-terminal" | "xfce4-terminal" => argv.push("-x".into()),
         "kitty" => {}
         _ => argv.push("-e".into()),
     }
-    argv.push(program.to_string());
+    argv.push(program.into());
     argv
 }
 
@@ -893,7 +896,8 @@ pub fn visible_controls(name: &str) -> String {
 /// written in the command ("%f", '%f', "%f.bak") gets the quotes closed
 /// around it and opened again after it: quoted twice, a name with $(…) in
 /// it ran that inside double quotes.
-pub fn expand_shell(command: &str, value: impl Fn(char) -> Option<Vec<String>>) -> String {
+pub fn expand_shell(command: &str, value: impl Fn(char) -> Option<Vec<std::ffi::OsString>>) -> std::ffi::OsString {
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
     #[derive(PartialEq, Clone, Copy)]
     enum In {
         Plain,
@@ -901,79 +905,109 @@ pub fn expand_shell(command: &str, value: impl Fn(char) -> Option<Vec<String>>) 
         Double,
     }
     let mut at = In::Plain;
-    let mut out = String::new();
+    let mut out: Vec<u8> = vec![];
+    let push = |out: &mut Vec<u8>, c: char| out.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
     let mut chars = command.chars();
     while let Some(c) = chars.next() {
         match (at, c) {
             (_, '%') => match chars.next() {
-                Some('%') => out.push('%'),
+                Some('%') => out.push(b'%'),
                 Some(x) => match value(x) {
                     Some(words) => {
-                        // Words of only harmless characters (a size) as they are.
-                        let plain = |w: &str| !w.is_empty() && w.chars().all(|c| c.is_ascii_alphanumeric() || "_./+,:=@-".contains(c));
-                        let quoted = words.iter().map(|w| if plain(w) { w.clone() } else { glib::shell_quote(w).to_string_lossy().to_string() }).collect::<Vec<_>>().join(" ");
+                        // Words as bytes: a name needn't be UTF-8.
+                        let quoted: Vec<Vec<u8>> = words.iter().map(|w| shell_word(w.as_bytes())).collect();
+                        let quoted = quoted.join(&b' ');
                         match at {
-                            In::Plain => out.push_str(&quoted),
-                            In::Single => out.push_str(&format!("'{quoted}'")),
-                            In::Double => out.push_str(&format!("\"{quoted}\"")),
+                            In::Plain => out.extend(quoted),
+                            In::Single => {
+                                out.push(b'\'');
+                                out.extend(quoted);
+                                out.push(b'\'');
+                            }
+                            In::Double => {
+                                out.push(b'"');
+                                out.extend(quoted);
+                                out.push(b'"');
+                            }
                         }
                     }
                     None => {
-                        out.push('%');
-                        out.push(x);
+                        out.push(b'%');
+                        push(&mut out, x);
                     }
                 },
-                None => out.push('%'),
+                None => out.push(b'%'),
             },
             // A backslash keeps the next character as it is (outside
             // quotes and in double quotes, not in single ones).
             (In::Plain | In::Double, '\\') => {
-                out.push(c);
+                push(&mut out, c);
                 if let Some(n) = chars.next() {
-                    out.push(n);
+                    push(&mut out, n);
                 }
             }
             (In::Plain, '\'') => {
                 at = In::Single;
-                out.push(c);
+                push(&mut out, c);
             }
             (In::Plain, '"') => {
                 at = In::Double;
-                out.push(c);
+                push(&mut out, c);
             }
             (In::Single, '\'') | (In::Double, '"') => {
                 at = In::Plain;
-                out.push(c);
+                push(&mut out, c);
             }
-            _ => out.push(c),
+            _ => push(&mut out, c),
         }
     }
+    std::ffi::OsString::from_vec(out)
+}
+
+/// `w` as one word for sh: as it is if it's only harmless characters (a
+/// size), else in single quotes ("'" as '\''), as GLib quotes; bytes, as
+/// names needn't be UTF-8.
+fn shell_word(w: &[u8]) -> Vec<u8> {
+    if !w.is_empty() && w.iter().all(|c| c.is_ascii_alphanumeric() || b"_./+,:=@-".contains(c)) {
+        return w.to_vec();
+    }
+    let mut out = vec![b'\''];
+    for &c in w {
+        if c == b'\'' {
+            out.extend_from_slice(b"'\\''");
+        } else {
+            out.push(c);
+        }
+    }
+    out.push(b'\'');
     out
 }
 
 /// `command` with each %x replaced by what `value` gives for x: "%%" is a
 /// % sign, and a %x it has nothing for stays as it is.
-pub fn expand_placeholders(command: &str, value: impl Fn(char) -> Option<String>) -> String {
-    let mut out = String::new();
+pub fn expand_placeholders(command: &str, value: impl Fn(char) -> Option<std::ffi::OsString>) -> std::ffi::OsString {
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
+    let mut out: Vec<u8> = vec![];
+    let push = |out: &mut Vec<u8>, c: char| out.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
     let mut chars = command.chars();
     while let Some(c) = chars.next() {
         if c != '%' {
-            out.push(c);
+            push(&mut out, c);
             continue;
         }
         match chars.next() {
-            Some('%') => out.push('%'),
+            Some('%') => out.push(b'%'),
             Some(x) => match value(x) {
-                Some(v) => out.push_str(&v),
+                Some(v) => out.extend_from_slice(v.as_bytes()),
                 None => {
-                    out.push('%');
-                    out.push(x);
+                    out.push(b'%');
+                    push(&mut out, x);
                 }
             },
-            None => out.push('%'),
+            None => out.push(b'%'),
         }
     }
-    out
+    std::ffi::OsString::from_vec(out)
 }
 
 /// Whether a preview set to `mode` ("always", "local", "never", as Caja's
@@ -1022,7 +1056,7 @@ mod tests {
 
     #[test]
     fn placeholders_expanded() {
-        let v = |c| (c == 'a').then(|| "A".to_string());
+        let v = |c| (c == 'a').then(|| std::ffi::OsString::from("A"));
         assert_eq!(expand_placeholders("x %a %% %b 100%", v), "x A % %b 100%");
         assert_eq!(expand_placeholders("%%a%a", v), "%aA");
     }
@@ -1194,11 +1228,12 @@ mod tests {
 
     #[test]
     fn terminals() {
-        assert_eq!(terminal_run_argv("gnome-terminal", "/a b/run"), ["gnome-terminal", "--", "/a b/run"]);
-        assert_eq!(terminal_run_argv("/usr/bin/xfce4-terminal", "x"), ["/usr/bin/xfce4-terminal", "-x", "x"]);
-        assert_eq!(terminal_run_argv("mate-terminal", "x"), ["mate-terminal", "-x", "x"]);
-        assert_eq!(terminal_run_argv("kitty", "x"), ["kitty", "x"]);
-        assert_eq!(terminal_run_argv("xterm", "x"), ["xterm", "-e", "x"]);
+        let t = |term: &str, p: &str| terminal_run_argv(term, std::ffi::OsStr::new(p)).iter().map(|a| a.to_string_lossy().to_string()).collect::<Vec<_>>();
+        assert_eq!(t("gnome-terminal", "/a b/run"), ["gnome-terminal", "--", "/a b/run"]);
+        assert_eq!(t("/usr/bin/xfce4-terminal", "x"), ["/usr/bin/xfce4-terminal", "-x", "x"]);
+        assert_eq!(t("mate-terminal", "x"), ["mate-terminal", "-x", "x"]);
+        assert_eq!(t("kitty", "x"), ["kitty", "x"]);
+        assert_eq!(t("xterm", "x"), ["xterm", "-e", "x"]);
     }
 
     #[test]

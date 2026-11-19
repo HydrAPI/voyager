@@ -277,11 +277,13 @@ pub fn applies(a: &CustomAction, sel: &[(String, bool, String)]) -> bool {
 /// With nothing selected, %f and %F stand for the current folder. A name
 /// starting with "-" is given as "./-name", so a program doesn't take it
 /// for an option.
-pub fn expand(command: &str, sel: &[PathBuf], dir: &Path) -> String {
-    let s = |p: &Path| p.to_string_lossy().to_string();
+pub fn expand(command: &str, sel: &[PathBuf], dir: &Path) -> std::ffi::OsString {
+    use std::os::unix::ffi::OsStrExt;
+    // As bytes: a name needn't be UTF-8.
+    let s = |p: &Path| p.as_os_str().to_os_string();
     let name = |p: &PathBuf| {
-        let n = s(Path::new(p.file_name().unwrap_or(p.as_os_str())));
-        if n.starts_with('-') { format!("./{n}") } else { n }
+        let n = p.file_name().unwrap_or(p.as_os_str());
+        if n.as_bytes().starts_with(b"-") { Path::new(".").join(n).into_os_string() } else { n.to_os_string() }
     };
     let dir_only = [dir.to_path_buf()];
     let paths = if sel.is_empty() { &dir_only[..] } else { sel };
@@ -310,6 +312,20 @@ mod tests {
         assert_eq!(expand("open %f", &[], dir), "open '/home/u/My Dir'");
         // Names that look like options.
         assert_eq!(expand("rm %N", &[dir.join("-rf"), dir.join("a")], dir), "rm ./-rf a");
+    }
+
+    #[test]
+    fn names_that_arent_utf8() {
+        // "café.txt" in Latin-1: not UTF-8. Made into text it was another
+        // name, and the command didn't find the file.
+        use std::os::unix::ffi::OsStrExt;
+        let t = crate::testutil::TestDir::new("latin1");
+        let name = std::ffi::OsStr::from_bytes(b"caf\xe9.txt");
+        std::fs::write(t.0.join(name), "contents").unwrap();
+        for cmd in ["cat %f", "cat \"%f\"", "cat %n", "cat %F"] {
+            let o = std::process::Command::new("sh").arg("-c").arg(expand(cmd, &[t.0.join(name)], &t.0)).current_dir(&t.0).output().unwrap();
+            assert_eq!(String::from_utf8_lossy(&o.stdout), "contents", "{cmd}");
+        }
     }
 
     #[test]
@@ -406,7 +422,7 @@ mod tests {
             let sel: Vec<PathBuf> = (0..r.below(3)).map(|_| Path::new("/d").join(r.text(6))).collect();
             let out = expand(&cmd, &sel, Path::new("/d"));
             if !cmd.contains('%') {
-                assert_eq!(out, cmd);
+                assert_eq!(out, std::ffi::OsString::from(&cmd));
             }
             let _ = crate::thumbnailers::expand(&cmd, Path::new("/in"), Path::new("/out"), 128);
             // Every default entry once, whatever was saved.

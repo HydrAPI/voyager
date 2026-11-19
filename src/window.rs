@@ -2811,7 +2811,7 @@ impl AppWindow {
             let res = match r {
                 gtk::ResponseType::Other(1) => {
                     let t = term.clone().unwrap();
-                    let argv = util::terminal_run_argv(&t, &path.to_string_lossy());
+                    let argv = util::terminal_run_argv(&t, path.as_os_str());
                     util::spawn_in_dir(&argv, dir.as_deref())
                 }
                 gtk::ResponseType::Other(2) => {
@@ -2820,7 +2820,7 @@ impl AppWindow {
                     }
                     Ok(())
                 }
-                gtk::ResponseType::Other(3) => util::spawn_in_dir(&[path.to_string_lossy().to_string()], dir.as_deref()),
+                gtk::ResponseType::Other(3) => util::spawn_in_dir(&[path.as_os_str()], dir.as_deref()),
                 _ => Ok(()),
             };
             if let Err(e) = res {
@@ -3219,9 +3219,11 @@ impl AppWindow {
             util::error_dialog(Some(self.window.upcast_ref()), &tr("No terminal found"), &tr("Install mate-terminal or set $TERMINAL."));
             return;
         };
-        let mut argv = vec![term.clone()];
+        let mut argv: Vec<std::ffi::OsString> = vec![term.clone().into()];
         if term.ends_with("mate-terminal") || term.ends_with("gnome-terminal") || term.ends_with("xfce4-terminal") {
-            argv.push(format!("--working-directory={}", path.to_string_lossy()));
+            let mut flag = std::ffi::OsString::from("--working-directory=");
+            flag.push(path.as_os_str());
+            argv.push(flag);
         }
         if let Err(e) = util::spawn_in_dir(&argv, Some(&path)) {
             util::error_dialog(Some(self.window.upcast_ref()), &tr("Could not open a terminal"), &e);
@@ -3231,16 +3233,11 @@ impl AppWindow {
     fn archive(self: &Rc<Self>, extract: bool) {
         let Some(p) = self.current_pane() else { return };
         let Some(tool) = util::archiver_command() else { return };
-        let paths: Vec<String> = p
-            .selected_files()
-            .iter()
-            .filter_map(|f| f.path())
-            .map(|p| p.to_string_lossy().to_string())
-            .collect();
+        let paths: Vec<std::ffi::OsString> = p.selected_files().iter().filter_map(|f| f.path()).map(|p| p.into_os_string()).collect();
         if paths.is_empty() {
             return;
         }
-        let mut argv = vec![tool.clone()];
+        let mut argv: Vec<std::ffi::OsString> = vec![tool.clone().into()];
         if extract {
             argv.push("--extract-here".into());
         } else if tool.ends_with("xarchiver") {
