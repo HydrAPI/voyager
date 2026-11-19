@@ -18,10 +18,14 @@ gt_display
 gt_voyager "$V"; sleep 3; gt_quiet
 gt_shot half
 gt_check "the half-written video: no thumbnail, the failure noted" "$(thumbs) $(fails)" "0 1"
+# Only for their owner, as the thumbnail spec asks: the notes name files.
+mode() { stat -c %a "$1" 2>/dev/null; }
+gt_check "the cache and its failure notes private" "$(mode "$HOME/.cache/thumbnails") $(mode "$HOME/.cache/thumbnails/fail") $(mode "$(find "$HOME/.cache/thumbnails/fail" -name '*.png' | head -1)")" "700 700 600"
 # Complete now, with the time it had when it failed.
 t=$(stat -c %Y "$V/clip.mp4")
 cat "$HOME/clip.mp4" > "$V/clip.mp4"; touch -d "@$t" "$V/clip.mp4"
 sleep 2; gt_key F5; sleep 3; gt_quiet
 gt_shot complete
 gt_check "complete, with the same time: its thumbnail is made" "$(thumbs)" "1"
+gt_check "the thumbnail private too" "$(mode "$(find "$HOME/.cache/thumbnails" -name '*.png' -not -path '*/fail/*' | head -1)")" "600"
 gt_end

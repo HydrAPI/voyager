@@ -344,7 +344,7 @@ impl AppWindow {
         let Some(dir) = p.current().path() else { return };
         let sel: Vec<std::path::PathBuf> = if bg { vec![] } else { p.selected_files().iter().filter_map(|f| f.path()).collect() };
         let cmd = actions::expand(&a.command, &sel, &dir);
-        if let Err(e) = util::spawn_in_dir(&[actions::shell(), "-c".into(), cmd], Some(&dir)) {
+        if let Err(e) = util::spawn_in_dir(&[actions::shell().into(), std::ffi::OsString::from("-c"), cmd], Some(&dir)) {
             util::error_dialog(Some(self.window.upcast_ref()), &fill(&tr("Could not run “{name}”"), &[("name", &a.name)]), &e);
         }
     }

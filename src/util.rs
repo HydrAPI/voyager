@@ -194,6 +194,52 @@ pub fn format_size(n: u64) -> String {
 /// the old), but without waiting for the disk to have it, as
 /// KeyFile::save_to_file does. That takes a moment, longer while the disk
 /// is busy (with a copy, say), and settings are saved as they change.
+/// A settings file, read. GLib refuses a whole file over one line it
+/// can't read (typed by hand: a line without "=", a broken "[group"), and
+/// Voyager then started with its defaults and saved them over it: all
+/// settings gone. Such lines are now left out and the rest read; the file
+/// as it was is kept beside it as NAME.broken, which the output mentions.
+/// None if there's no file, or nothing in it can be read.
+pub fn load_settings(path: &std::path::Path) -> Option<glib::KeyFile> {
+    let data = std::fs::read(path).ok()?;
+    let text = String::from_utf8_lossy(&data);
+    let kf = glib::KeyFile::new();
+    if kf.load_from_data(&text, glib::KeyFileFlags::NONE).is_ok() {
+        return Some(kf);
+    }
+    let kf = glib::KeyFile::new();
+    kf.load_from_data(&readable_lines(&text), glib::KeyFileFlags::NONE).ok()?;
+    let mut broken = path.as_os_str().to_os_string();
+    broken.push(".broken");
+    let _ = std::fs::write(&broken, &data);
+    glib::g_message!("voyager", "settings: lines in {} couldn't be read and were left out; the file as it was is in {}", path.display(), std::path::Path::new(&broken).display());
+    Some(kf)
+}
+
+/// The lines of a settings file GLib can read: comments, empty lines,
+/// "[group]" lines, and "key=value" lines in a group.
+fn readable_lines(text: &str) -> String {
+    let mut out = String::new();
+    let mut in_group = false;
+    for line in text.lines() {
+        let t = line.trim();
+        let ok = if t.is_empty() || t.starts_with('#') {
+            true
+        } else if t.starts_with('[') {
+            let group = t.len() > 2 && t.ends_with(']') && !t[1..t.len() - 1].contains(['[', ']']);
+            in_group |= group;
+            group
+        } else {
+            in_group && t.split_once('=').is_some_and(|(k, _)| !k.trim().is_empty())
+        };
+        if ok {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
 pub fn save_settings(kf: &glib::KeyFile, path: &std::path::Path) {
     if let Some(d) = path.parent() {
         let _ = std::fs::create_dir_all(d);
@@ -377,6 +423,20 @@ pub fn split_ext(name: &str) -> (&str, &str) {
     }
 }
 
+/// The name `make` makes of `stem` (adding " (copy)", " (2)"…), with the
+/// stem cut short where the whole would be longer than names can be (255
+/// bytes): with a long name, a copy or a duplicate couldn't be made.
+fn fit_name(stem: &str, make: impl Fn(&str) -> String) -> String {
+    let mut stem = stem.to_string();
+    loop {
+        let name = make(&stem);
+        if name.len() <= 255 || stem.is_empty() {
+            return name;
+        }
+        stem.pop();
+    }
+}
+
 /// A name in `dir` that doesn't exist yet: "name", "name (2)", ...
 pub fn unique_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
     if !dir.child(name).query_exists(gio::Cancellable::NONE) {
@@ -385,7 +445,7 @@ pub fn unique_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
     let (stem, ext) = if is_dir { (name, "") } else { split_ext(name) };
     for i in 2.. {
         // TRANSLATORS: the name for another item of the same name: "photo (2).jpg".
-        let cand = fill(&tr("{name} ({number}){extension}"), &[("name", &stem), ("number", &i), ("extension", &ext)]);
+        let cand = fit_name(stem, |stem| fill(&tr("{name} ({number}){extension}"), &[("name", &stem), ("number", &i), ("extension", &ext)]));
         if !dir.child(&cand).query_exists(gio::Cancellable::NONE) {
             return cand;
         }
@@ -397,13 +457,13 @@ pub fn unique_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
 pub fn copy_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
     let (stem, ext) = if is_dir { (name, "") } else { split_ext(name) };
     // TRANSLATORS: the name of a copy pasted beside its original: "photo (copy).jpg".
-    let first = fill(&tr("{name} (copy){extension}"), &[("name", &stem), ("extension", &ext)]);
+    let first = fit_name(stem, |stem| fill(&tr("{name} (copy){extension}"), &[("name", &stem), ("extension", &ext)]));
     if !dir.child(&first).query_exists(gio::Cancellable::NONE) {
         return first;
     }
     for i in 2.. {
         // TRANSLATORS: the name of a further copy: "photo (copy 2).jpg".
-        let cand = fill(&tr("{name} (copy {number}){extension}"), &[("name", &stem), ("number", &i), ("extension", &ext)]);
+        let cand = fit_name(stem, |stem| fill(&tr("{name} (copy {number}){extension}"), &[("name", &stem), ("number", &i), ("extension", &ext)]));
         if !dir.child(&cand).query_exists(gio::Cancellable::NONE) {
             return cand;
         }
@@ -471,8 +531,11 @@ pub fn find_program(cands: &[&str]) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-pub fn spawn_in_dir(argv: &[String], dir: Option<&std::path::Path>) -> Result<(), String> {
-    let mut cmd = std::process::Command::new(&argv[0]);
+/// Runs `argv` in `dir`. Its words as bytes (OsStr): a file's name needn't
+/// be UTF-8, and made into text it was another name.
+pub fn spawn_in_dir<S: AsRef<std::ffi::OsStr>>(argv: &[S], dir: Option<&std::path::Path>) -> Result<(), String> {
+    let Some(program) = argv.first() else { return Err("nothing to run".into()) };
+    let mut cmd = std::process::Command::new(program);
     cmd.args(&argv[1..]);
     if let Some(d) = dir {
         cmd.current_dir(d);
@@ -486,19 +549,19 @@ pub fn spawn_in_dir(argv: &[String], dir: Option<&std::path::Path>) -> Result<()
 }
 
 /// argv to run `program` in a new window of `term`, keeping the path as one argument.
-pub fn terminal_run_argv(term: &str, program: &str) -> Vec<String> {
+pub fn terminal_run_argv(term: &str, program: &std::ffi::OsStr) -> Vec<std::ffi::OsString> {
     let name = std::path::Path::new(term)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
-    let mut argv = vec![term.to_string()];
+    let mut argv: Vec<std::ffi::OsString> = vec![term.into()];
     match name.as_str() {
         "gnome-terminal" => argv.push("--".into()),
         "mate-terminal" | "xfce4-terminal" => argv.push("-x".into()),
         "kitty" => {}
         _ => argv.push("-e".into()),
     }
-    argv.push(program.to_string());
+    argv.push(program.into());
     argv
 }
 
@@ -815,29 +878,136 @@ pub fn numbered_groups(kf: &glib::KeyFile, prefix: &str) -> Vec<String> {
     groups.into_iter().map(|(_, g)| g).collect()
 }
 
+/// `name` with the characters that change the direction of the text after
+/// them shown as "<U+202E>" instead of obeyed: with one, "gpj.exe" shows as
+/// "exe.jpg". For the questions about running and deleting files.
+pub fn visible_controls(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            '\u{200e}' | '\u{200f}' | '\u{061c}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' => format!("<U+{:04X}>", c as u32),
+            c => c.to_string(),
+        })
+        .collect()
+}
+
+/// `command`, a shell command, with each %x replaced by the words `value`
+/// gives for x, each shell-quoted (joined by spaces): "%%" is a % sign,
+/// and a %x it has nothing for stays as it is. A placeholder within quotes
+/// written in the command ("%f", '%f', "%f.bak") gets the quotes closed
+/// around it and opened again after it: quoted twice, a name with $(…) in
+/// it ran that inside double quotes.
+pub fn expand_shell(command: &str, value: impl Fn(char) -> Option<Vec<std::ffi::OsString>>) -> std::ffi::OsString {
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
+    #[derive(PartialEq, Clone, Copy)]
+    enum In {
+        Plain,
+        Single,
+        Double,
+    }
+    let mut at = In::Plain;
+    let mut out: Vec<u8> = vec![];
+    let push = |out: &mut Vec<u8>, c: char| out.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
+    let mut chars = command.chars();
+    while let Some(c) = chars.next() {
+        match (at, c) {
+            (_, '%') => match chars.next() {
+                Some('%') => out.push(b'%'),
+                Some(x) => match value(x) {
+                    Some(words) => {
+                        // Words as bytes: a name needn't be UTF-8.
+                        let quoted: Vec<Vec<u8>> = words.iter().map(|w| shell_word(w.as_bytes())).collect();
+                        let quoted = quoted.join(&b' ');
+                        match at {
+                            In::Plain => out.extend(quoted),
+                            In::Single => {
+                                out.push(b'\'');
+                                out.extend(quoted);
+                                out.push(b'\'');
+                            }
+                            In::Double => {
+                                out.push(b'"');
+                                out.extend(quoted);
+                                out.push(b'"');
+                            }
+                        }
+                    }
+                    None => {
+                        out.push(b'%');
+                        push(&mut out, x);
+                    }
+                },
+                None => out.push(b'%'),
+            },
+            // A backslash keeps the next character as it is (outside
+            // quotes and in double quotes, not in single ones).
+            (In::Plain | In::Double, '\\') => {
+                push(&mut out, c);
+                if let Some(n) = chars.next() {
+                    push(&mut out, n);
+                }
+            }
+            (In::Plain, '\'') => {
+                at = In::Single;
+                push(&mut out, c);
+            }
+            (In::Plain, '"') => {
+                at = In::Double;
+                push(&mut out, c);
+            }
+            (In::Single, '\'') | (In::Double, '"') => {
+                at = In::Plain;
+                push(&mut out, c);
+            }
+            _ => push(&mut out, c),
+        }
+    }
+    std::ffi::OsString::from_vec(out)
+}
+
+/// `w` as one word for sh: as it is if it's only harmless characters (a
+/// size), else in single quotes ("'" as '\''), as GLib quotes; bytes, as
+/// names needn't be UTF-8.
+fn shell_word(w: &[u8]) -> Vec<u8> {
+    if !w.is_empty() && w.iter().all(|c| c.is_ascii_alphanumeric() || b"_./+,:=@-".contains(c)) {
+        return w.to_vec();
+    }
+    let mut out = vec![b'\''];
+    for &c in w {
+        if c == b'\'' {
+            out.extend_from_slice(b"'\\''");
+        } else {
+            out.push(c);
+        }
+    }
+    out.push(b'\'');
+    out
+}
+
 /// `command` with each %x replaced by what `value` gives for x: "%%" is a
 /// % sign, and a %x it has nothing for stays as it is.
-pub fn expand_placeholders(command: &str, value: impl Fn(char) -> Option<String>) -> String {
-    let mut out = String::new();
+pub fn expand_placeholders(command: &str, value: impl Fn(char) -> Option<std::ffi::OsString>) -> std::ffi::OsString {
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
+    let mut out: Vec<u8> = vec![];
+    let push = |out: &mut Vec<u8>, c: char| out.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
     let mut chars = command.chars();
     while let Some(c) = chars.next() {
         if c != '%' {
-            out.push(c);
+            push(&mut out, c);
             continue;
         }
         match chars.next() {
-            Some('%') => out.push('%'),
+            Some('%') => out.push(b'%'),
             Some(x) => match value(x) {
-                Some(v) => out.push_str(&v),
+                Some(v) => out.extend_from_slice(v.as_bytes()),
                 None => {
-                    out.push('%');
-                    out.push(x);
+                    out.push(b'%');
+                    push(&mut out, x);
                 }
             },
-            None => out.push('%'),
+            None => out.push(b'%'),
         }
     }
-    out
+    std::ffi::OsString::from_vec(out)
 }
 
 /// Whether a preview set to `mode` ("always", "local", "never", as Caja's
@@ -886,7 +1056,7 @@ mod tests {
 
     #[test]
     fn placeholders_expanded() {
-        let v = |c| (c == 'a').then(|| "A".to_string());
+        let v = |c| (c == 'a').then(|| std::ffi::OsString::from("A"));
         assert_eq!(expand_placeholders("x %a %% %b 100%", v), "x A % %b 100%");
         assert_eq!(expand_placeholders("%%a%a", v), "%aA");
     }
@@ -1011,12 +1181,59 @@ mod tests {
     }
 
     #[test]
+    fn settings_with_bad_lines() {
+        let t = crate::testutil::TestDir::new("badconf");
+        let p = t.0.join("voyager.conf");
+        // One bad line among good ones: the rest is read, the file kept.
+        std::fs::write(&p, "[General]\nshow_hidden=true\noops, typed by hand\n[Broken\nsingle_click=true\n").unwrap();
+        let kf = load_settings(&p).unwrap();
+        assert!(kf.boolean("General", "show_hidden").unwrap());
+        assert!(kf.boolean("General", "single_click").unwrap());
+        assert!(t.0.join("voyager.conf.broken").exists());
+        // A key before any group is left out too.
+        std::fs::write(&p, "stray=1\n[General]\nshow_hidden=true\n").unwrap();
+        assert!(load_settings(&p).unwrap().boolean("General", "show_hidden").unwrap());
+        // A good file: read as it is, nothing kept beside it.
+        std::fs::remove_file(t.0.join("voyager.conf.broken")).unwrap();
+        std::fs::write(&p, "# note\n[General]\nshow_hidden=false\n").unwrap();
+        assert!(!load_settings(&p).unwrap().boolean("General", "show_hidden").unwrap());
+        assert!(!t.0.join("voyager.conf.broken").exists());
+        assert!(load_settings(&t.0.join("missing.conf")).is_none());
+    }
+
+    #[test]
+    fn long_names_stay_names() {
+        let t = crate::testutil::TestDir::new("longname");
+        let dir = gio::File::for_path(&t.0);
+        let long = format!("{}.txt", "ä".repeat(124)); // 252 bytes
+        std::fs::write(t.0.join(&long), "x").unwrap();
+        let copy = copy_name(&dir, &long, false);
+        assert!(copy.len() <= 255 && copy.ends_with(" (copy).txt"), "{copy}");
+        let other = unique_name(&dir, &long, false);
+        assert!(other.len() <= 255 && other.ends_with(" (2).txt"), "{other}");
+        // Usable: made, read back.
+        std::fs::write(t.0.join(&copy), "y").unwrap();
+        assert_eq!(std::fs::read_to_string(t.0.join(&copy)).unwrap(), "y");
+        // Short names as they were.
+        assert_eq!(copy_name(&dir, "a.txt", false), "a (copy).txt");
+    }
+
+    #[test]
+    fn direction_marks_shown() {
+        assert_eq!(visible_controls("photo\u{202e}gpj.exe"), "photo<U+202E>gpj.exe");
+        assert_eq!(visible_controls("a\u{2066}b\u{2069}"), "a<U+2066>b<U+2069>");
+        // Other text as it is, right-to-left scripts too.
+        assert_eq!(visible_controls("שלום.txt"), "שלום.txt");
+    }
+
+    #[test]
     fn terminals() {
-        assert_eq!(terminal_run_argv("gnome-terminal", "/a b/run"), ["gnome-terminal", "--", "/a b/run"]);
-        assert_eq!(terminal_run_argv("/usr/bin/xfce4-terminal", "x"), ["/usr/bin/xfce4-terminal", "-x", "x"]);
-        assert_eq!(terminal_run_argv("mate-terminal", "x"), ["mate-terminal", "-x", "x"]);
-        assert_eq!(terminal_run_argv("kitty", "x"), ["kitty", "x"]);
-        assert_eq!(terminal_run_argv("xterm", "x"), ["xterm", "-e", "x"]);
+        let t = |term: &str, p: &str| terminal_run_argv(term, std::ffi::OsStr::new(p)).iter().map(|a| a.to_string_lossy().to_string()).collect::<Vec<_>>();
+        assert_eq!(t("gnome-terminal", "/a b/run"), ["gnome-terminal", "--", "/a b/run"]);
+        assert_eq!(t("/usr/bin/xfce4-terminal", "x"), ["/usr/bin/xfce4-terminal", "-x", "x"]);
+        assert_eq!(t("mate-terminal", "x"), ["mate-terminal", "-x", "x"]);
+        assert_eq!(t("kitty", "x"), ["kitty", "x"]);
+        assert_eq!(t("xterm", "x"), ["xterm", "-e", "x"]);
     }
 
     #[test]

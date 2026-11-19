@@ -43,11 +43,13 @@ fn suggested_name(win: &gdk::Window) -> Option<String> {
     name_from(&data)
 }
 
-/// The file name in what a source suggests: its last part, if it's a name.
+/// The file name in what a source suggests: its last part, if it's a
+/// name, without leading dots: dragged in, a file isn't made hidden (a
+/// ".bash_profile" in the home folder would run at the next login).
 fn name_from(data: &[u8]) -> Option<String> {
     let raw = String::from_utf8_lossy(data).trim_end_matches('\0').to_string();
-    let name = raw.rsplit('/').next().unwrap_or("").to_string();
-    (!name.is_empty() && name != "." && name != "..").then_some(name)
+    let name = raw.rsplit('/').next().unwrap_or("").trim_start_matches('.').to_string();
+    (!name.is_empty()).then_some(name)
 }
 
 /// On the drop: tells the source to save into folder `dest` and asks for
@@ -59,7 +61,9 @@ pub fn start(widget: &impl IsA<gtk::Widget>, ctx: &gdk::DragContext, dest: &gio:
     }
     let win = ctx.source_window();
     let Some(name) = suggested_name(&win) else { return false };
-    let uri = dest.child(&name).uri();
+    // A name that's taken gets a free one: the source writes where it's
+    // told, and an existing file there would be replaced.
+    let uri = dest.child(crate::util::unique_name(dest, &name, false)).uri();
     gdk::property_change(&win, &atom(), &text(), 8, gdk::PropMode::Replace, gdk::ChangeData::UChars(uri.as_bytes()));
     widget.as_ref().drag_get_data(ctx, &atom(), time);
     true
@@ -81,7 +85,8 @@ mod tests {
     #[test]
     fn suggested_names_stay_in_the_folder() {
         assert_eq!(name_from(b"report.pdf\0").as_deref(), Some("report.pdf"));
-        assert_eq!(name_from(b"../../.bashrc").as_deref(), Some(".bashrc"));
+        assert_eq!(name_from(b"../../.bashrc").as_deref(), Some("bashrc"));
+        assert_eq!(name_from(b"...hidden.txt").as_deref(), Some("hidden.txt"));
         assert_eq!(name_from(b"/etc/passwd").as_deref(), Some("passwd"));
         for bad in [&b""[..], b"..", b".", b"a/", b"/", b"x/.."] {
             assert_eq!(name_from(bad), None, "{:?}", String::from_utf8_lossy(bad));

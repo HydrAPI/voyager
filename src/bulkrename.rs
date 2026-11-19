@@ -151,6 +151,12 @@ pub fn new_name_for(name: &str, is_dir: bool, row: usize, o: &Options) -> String
 
 const SMALL_WORDS: &[&str] = &["a", "an", "and", "as", "at", "but", "by", "en", "for", "if", "in", "of", "on", "or", "the", "to", "v", "v.", "via", "vs", "vs."];
 
+/// Whether `name` can be a new name: a name, not a path (a "/" from
+/// search and replace moved the file into another folder, even one up).
+fn name_ok(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.contains('/')
+}
+
 /// Title case after John Gruber's rules, as in caja-rename's titlecase.h:
 /// small words stay lower case except first and last (and after a colon),
 /// words with inner capitals or dots ("iPhone", "example.com") stay as they
@@ -574,7 +580,7 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
             let plan: Vec<(usize, String)> = entries.borrow().iter().enumerate().map(|(i, e)| (i, new_name_for(&e.old, e.is_dir, i, &o))).collect();
             let line = |i: usize, new: &str| format!("{} -> {}", entries.borrow()[i].old, new);
             // 1. Names that can't be used.
-            let bad: Vec<String> = plan.iter().filter(|(_, n)| n.is_empty() || n == "." || n == "..").map(|(i, n)| line(*i, n)).collect();
+            let bad: Vec<String> = plan.iter().filter(|(_, n)| !name_ok(n)).map(|(i, n)| line(*i, n)).collect();
             if !bad.is_empty() {
                 message(&d, gtk::MessageType::Warning, gtk::ButtonsType::Close, &tr("Invalid names"), &fill(&tr("The following names are not acceptable:\n\n{names}"), &[("names", &bad.join("\n"))]));
                 return;
@@ -596,7 +602,12 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                     let e = &entries.borrow()[*i];
                     (e.folder.clone(), e.old.clone())
                 };
-                match std::fs::rename(folder.join(&old), folder.join(n)) {
+                // Through GIO, which takes the item's notes, emblems and
+                // custom icon along (GVfs keeps them by path; renamed past
+                // it, they were lost). Replacing what's there was asked.
+                let (from, to) = (gio::File::for_path(folder.join(&old)), gio::File::for_path(folder.join(n)));
+                let flags = gio::FileCopyFlags::OVERWRITE | gio::FileCopyFlags::NOFOLLOW_SYMLINKS | gio::FileCopyFlags::NO_FALLBACK_FOR_MOVE;
+                match from.move_(&to, flags, gio::Cancellable::NONE, None) {
                     Ok(()) => {
                         done.push((gio::File::for_path(folder.join(&old)).uri().to_string(), gio::File::for_path(folder.join(n)).uri().to_string()));
                         entries.borrow_mut()[*i].old = n.clone();
@@ -638,6 +649,15 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_names_stay_names() {
+        assert!(name_ok("Holiday 01.jpg"));
+        for bad in ["", ".", "..", "a/b.jpg", "../up.jpg", "/abs"] {
+            assert!(!name_ok(bad), "{bad}");
+        }
+    }
+
 
     fn o() -> Options {
         Options::default()
