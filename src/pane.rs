@@ -3841,7 +3841,9 @@ impl Pane {
         if focus_here {
             self.icon_view.grab_focus();
         }
-        if commit && !text.is_empty() && text != ed.name {
+        // Unchanged as shown: a name with a line break (the field leaves
+        // those out) was renamed by F2 and Enter alone.
+        if commit && !text.is_empty() && text != ed.name.replace(['\n', '\r'], "") {
             self.emit(Event::Rename { uri: ed.uri.clone(), new_name: text });
         }
     }
