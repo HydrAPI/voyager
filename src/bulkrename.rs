@@ -602,7 +602,12 @@ pub fn show(parent: &gtk::Window, files: Vec<gio::File>) {
                     let e = &entries.borrow()[*i];
                     (e.folder.clone(), e.old.clone())
                 };
-                match std::fs::rename(folder.join(&old), folder.join(n)) {
+                // Through GIO, which takes the item's notes, emblems and
+                // custom icon along (GVfs keeps them by path; renamed past
+                // it, they were lost). Replacing what's there was asked.
+                let (from, to) = (gio::File::for_path(folder.join(&old)), gio::File::for_path(folder.join(n)));
+                let flags = gio::FileCopyFlags::OVERWRITE | gio::FileCopyFlags::NOFOLLOW_SYMLINKS | gio::FileCopyFlags::NO_FALLBACK_FOR_MOVE;
+                match from.move_(&to, flags, gio::Cancellable::NONE, None) {
                     Ok(()) => {
                         done.push((gio::File::for_path(folder.join(&old)).uri().to_string(), gio::File::for_path(folder.join(n)).uri().to_string()));
                         entries.borrow_mut()[*i].old = n.clone();
