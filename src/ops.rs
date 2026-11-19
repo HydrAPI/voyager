@@ -100,6 +100,11 @@ struct Worker {
     undo: Vec<Moved>,
     /// Where thumbnails are kept (see thumbcache).
     thumbs: std::path::PathBuf,
+    /// The destination keeps names as Windows does (FAT, exFAT, NTFS):
+    /// see windows_name.
+    windows_names: bool,
+    /// The destination is FAT32: no file of 4 GB or more.
+    fat32: bool,
     /// Originals whose copies got their thumbnails in a move between
     /// drives, theirs going once they're deleted (thumbnails_of_deleted).
     thumbs_of_copied: Vec<String>,
@@ -274,6 +279,8 @@ impl Worker {
             cancel,
             undo: vec![],
             thumbs: thumbcache::root(),
+            windows_names: false,
+            fat32: false,
             thumbs_of_copied: vec![],
             total_bytes: 0,
             done_bytes: 0,
@@ -688,7 +695,8 @@ impl Worker {
             };
             let mut none = None;
             for c in children {
-                self.copy_rec(&src.child(&c), &dst.child(&c), false, &mut none, record && merged)?;
+                let to = if self.windows_names { dst.child(windows_name(&c.to_string_lossy())) } else { dst.child(&c) };
+                self.copy_rec(&src.child(&c), &to, false, &mut none, record && merged)?;
             }
             // Re-read the mode: it may have changed since `info` (e.g. the user
             // fixed an unreadable folder and pressed Retry).
@@ -708,6 +716,14 @@ impl Worker {
         let size = info.size().max(0) as u64;
         let mut flags = gio::FileCopyFlags::NOFOLLOW_SYMLINKS | gio::FileCopyFlags::ALL_METADATA;
         let name = base_name(src);
+        // Said at once, not after writing 4 GB of it.
+        if self.fat32 && size > u64::from(u32::MAX) {
+            let e = glib::Error::new(gio::IOErrorEnum::FilenameTooLong, &tr("The drive is formatted as FAT32, which holds no file of 4 GB or more. Formatted as exFAT it could hold it."));
+            return match self.ask_error(fill(&tr("“{name}” is too big for the drive"), &[("name", &name)]), &e, false) {
+                ErrChoice::Cancel => Err(Cancelled),
+                _ => Ok(()),
+            };
+        }
         loop {
             let base = self.done_bytes;
             let total = self.total_bytes;
@@ -1022,6 +1038,17 @@ impl Worker {
                     }
                     let same_dir = src.parent().map(|p| p.equal(&dest_dir)).unwrap_or(false);
                     let name = it.name.clone().unwrap_or_else(|| base_name(&src));
+                    // Onto a USB stick or the like (FAT, exFAT, NTFS): names
+                    // as they can hold them, and FAT's limit of 4 GB a file.
+                    let fs = dest_dir
+                        .query_filesystem_info("filesystem::type", Some(&self.cancel))
+                        .ok()
+                        .and_then(|i| i.attribute_string("filesystem::type"))
+                        .map(|t| t.to_string())
+                        .unwrap_or_default();
+                    self.windows_names = windows_names_on(&fs);
+                    self.fat32 = matches!(fs.as_str(), "vfat" | "msdos" | "fat");
+                    let name = if self.windows_names && kind != Kind::Link { windows_name(&name) } else { name };
                     // Restoring from the trash: recreate the original folder if needed.
                     if it.name.is_some() && !dest_dir.query_exists(gio::Cancellable::NONE) {
                         let _ = dest_dir.make_directory_with_parents(gio::Cancellable::NONE);
@@ -1254,6 +1281,22 @@ pub fn open_window() {
 
 /// Told of items an operation took from where they were (see on_moved).
 type WentFn = dyn Fn(&[(String, Option<String>)]);
+
+/// Whether a file system of type `fs` (GIO's filesystem::type) keeps names
+/// as Windows does: USB sticks and drives formatted for Windows.
+fn windows_names_on(fs: &str) -> bool {
+    matches!(fs, "vfat" | "msdos" | "fat" | "exfat" | "ntfs" | "ntfs3" | "fuseblk")
+}
+
+/// `name` as a drive formatted for Windows can hold it, as Nautilus makes
+/// them: the characters it doesn't allow (" * : < > ? \ | and control
+/// characters) made "_", and no space or dot at the end. Such names failed
+/// one by one.
+fn windows_name(name: &str) -> String {
+    let n: String = name.chars().map(|c| if c < ' ' || "\"*:<>?\\|".contains(c) { '_' } else { c }).collect();
+    let n = n.trim_end_matches([' ', '.']);
+    if n.is_empty() { "_".into() } else { n.to_string() }
+}
 
 /// Whether `dest_dir` is `src` or inside it once links are followed (a
 /// link in the way, the addresses don't show it): a folder copied into a
@@ -2731,6 +2774,53 @@ mod tests {
         assert!(home.0.join("a.txt").exists(), "the spoilt one's original stays");
         assert!(!home.0.join("b.txt").exists(), "the one that matched is moved");
         assert_eq!(read(&other.0.join("b.txt")), "bbb");
+    }
+
+    /// Copies onto real drives formatted for Windows, if given (as they
+    /// need mounting): ARKHA_TEST_FAT, ARKHA_TEST_EXFAT, a folder on each.
+    #[test]
+    #[ignore = "needs ARKHA_TEST_FAT and/or ARKHA_TEST_EXFAT: folders on such drives"]
+    fn copies_onto_windows_drives() {
+        for (var, fat32) in [("ARKHA_TEST_FAT", true), ("ARKHA_TEST_EXFAT", false)] {
+            let Ok(dir) = std::env::var(var) else { continue };
+            let src = home_scratch(&format!("towindows-{fat32}"));
+            write(&src.0.join("Meeting: 10:30?.txt"), "minutes");
+            std::fs::create_dir_all(src.0.join("Q&A: notes")).unwrap();
+            write(&src.0.join("Q&A: notes/a|b.txt"), "inside");
+            let mut items = vec!["Meeting: 10:30?.txt", "Q&A: notes"];
+            if fat32 {
+                // 4 GB and a byte, sparse: nothing written for it here.
+                std::fs::File::create(src.0.join("big.bin")).unwrap().set_len(u64::from(u32::MAX) + 2).unwrap();
+                items.push("big.bin");
+            }
+            let dest = std::path::Path::new(&dir).join(format!("arkha-test-{}", std::process::id()));
+            std::fs::create_dir_all(&dest).unwrap();
+            let job = Job::Transfer { kind: Kind::Copy, items: items.iter().map(|n| Item { src: uri(&src.0.join(n)), dest_dir: uri(&dest), name: None }).collect(), check: false };
+            let (_, asked) = run_job(job, &[]);
+            let got = |p: &str| std::fs::read_to_string(dest.join(p)).unwrap_or_else(|e| format!("({e})"));
+            assert_eq!(got("Meeting_ 10_30_.txt"), "minutes", "{var}");
+            assert_eq!(got("Q&A_ notes/a_b.txt"), "inside", "{var}");
+            if fat32 {
+                assert_eq!(asked, ["error:“big.bin” is too big for the drive"], "{var}");
+                assert!(!dest.join("big.bin").exists());
+            } else {
+                assert!(asked.is_empty(), "{var}: {asked:?}");
+            }
+            std::fs::remove_dir_all(&dest).unwrap();
+        }
+    }
+
+    #[test]
+    fn names_for_windows_drives() {
+        assert_eq!(windows_name("Meeting: 10:30 \"draft\"?.txt"), "Meeting_ 10_30 _draft__.txt");
+        assert_eq!(windows_name("a<b>c|d*e\\f"), "a_b_c_d_e_f");
+        assert_eq!(windows_name("trailing dots..."), "trailing dots");
+        assert_eq!(windows_name("ends with space "), "ends with space");
+        assert_eq!(windows_name("tab\there"), "tab_here");
+        assert_eq!(windows_name("..."), "_");
+        assert_eq!(windows_name("ordinary – name (2).jpg"), "ordinary – name (2).jpg");
+        assert!(windows_names_on("vfat") && windows_names_on("exfat") && windows_names_on("ntfs3"));
+        assert!(!windows_names_on("ext4") && !windows_names_on("btrfs") && !windows_names_on(""));
     }
 
     #[test]
