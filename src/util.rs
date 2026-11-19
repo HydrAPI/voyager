@@ -423,6 +423,20 @@ pub fn split_ext(name: &str) -> (&str, &str) {
     }
 }
 
+/// The name `make` makes of `stem` (adding " (copy)", " (2)"…), with the
+/// stem cut short where the whole would be longer than names can be (255
+/// bytes): with a long name, a copy or a duplicate couldn't be made.
+fn fit_name(stem: &str, make: impl Fn(&str) -> String) -> String {
+    let mut stem = stem.to_string();
+    loop {
+        let name = make(&stem);
+        if name.len() <= 255 || stem.is_empty() {
+            return name;
+        }
+        stem.pop();
+    }
+}
+
 /// A name in `dir` that doesn't exist yet: "name", "name (2)", ...
 pub fn unique_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
     if !dir.child(name).query_exists(gio::Cancellable::NONE) {
@@ -431,7 +445,7 @@ pub fn unique_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
     let (stem, ext) = if is_dir { (name, "") } else { split_ext(name) };
     for i in 2.. {
         // TRANSLATORS: the name for another item of the same name: "photo (2).jpg".
-        let cand = fill(&tr("{name} ({number}){extension}"), &[("name", &stem), ("number", &i), ("extension", &ext)]);
+        let cand = fit_name(stem, |stem| fill(&tr("{name} ({number}){extension}"), &[("name", &stem), ("number", &i), ("extension", &ext)]));
         if !dir.child(&cand).query_exists(gio::Cancellable::NONE) {
             return cand;
         }
@@ -443,13 +457,13 @@ pub fn unique_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
 pub fn copy_name(dir: &gio::File, name: &str, is_dir: bool) -> String {
     let (stem, ext) = if is_dir { (name, "") } else { split_ext(name) };
     // TRANSLATORS: the name of a copy pasted beside its original: "photo (copy).jpg".
-    let first = fill(&tr("{name} (copy){extension}"), &[("name", &stem), ("extension", &ext)]);
+    let first = fit_name(stem, |stem| fill(&tr("{name} (copy){extension}"), &[("name", &stem), ("extension", &ext)]));
     if !dir.child(&first).query_exists(gio::Cancellable::NONE) {
         return first;
     }
     for i in 2.. {
         // TRANSLATORS: the name of a further copy: "photo (copy 2).jpg".
-        let cand = fill(&tr("{name} (copy {number}){extension}"), &[("name", &stem), ("number", &i), ("extension", &ext)]);
+        let cand = fit_name(stem, |stem| fill(&tr("{name} (copy {number}){extension}"), &[("name", &stem), ("number", &i), ("extension", &ext)]));
         if !dir.child(&cand).query_exists(gio::Cancellable::NONE) {
             return cand;
         }
@@ -1151,6 +1165,23 @@ mod tests {
         assert!(!load_settings(&p).unwrap().boolean("General", "show_hidden").unwrap());
         assert!(!t.0.join("arkha.conf.broken").exists());
         assert!(load_settings(&t.0.join("missing.conf")).is_none());
+    }
+
+    #[test]
+    fn long_names_stay_names() {
+        let t = crate::testutil::TestDir::new("longname");
+        let dir = gio::File::for_path(&t.0);
+        let long = format!("{}.txt", "ä".repeat(124)); // 252 bytes
+        std::fs::write(t.0.join(&long), "x").unwrap();
+        let copy = copy_name(&dir, &long, false);
+        assert!(copy.len() <= 255 && copy.ends_with(" (copy).txt"), "{copy}");
+        let other = unique_name(&dir, &long, false);
+        assert!(other.len() <= 255 && other.ends_with(" (2).txt"), "{other}");
+        // Usable: made, read back.
+        std::fs::write(t.0.join(&copy), "y").unwrap();
+        assert_eq!(std::fs::read_to_string(t.0.join(&copy)).unwrap(), "y");
+        // Short names as they were.
+        assert_eq!(copy_name(&dir, "a.txt", false), "a (copy).txt");
     }
 
     #[test]
