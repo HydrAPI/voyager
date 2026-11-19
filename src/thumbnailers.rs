@@ -62,10 +62,7 @@ pub fn installed(t: &Thumbnailer) -> bool {
 
 /// The saved list, or `defaults()` if it was never saved.
 pub fn load() -> Vec<Thumbnailer> {
-    let kf = glib::KeyFile::new();
-    if kf.load_from_file(path(), glib::KeyFileFlags::NONE).is_err() {
-        return defaults();
-    }
+    let Some(kf) = crate::util::load_settings(&path()) else { return defaults() };
     crate::util::numbered_groups(&kf, "Thumbnailer ")
         .into_iter()
         .filter_map(|g| {

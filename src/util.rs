@@ -194,6 +194,52 @@ pub fn format_size(n: u64) -> String {
 /// the old), but without waiting for the disk to have it, as
 /// KeyFile::save_to_file does. That takes a moment, longer while the disk
 /// is busy (with a copy, say), and settings are saved as they change.
+/// A settings file, read. GLib refuses a whole file over one line it
+/// can't read (typed by hand: a line without "=", a broken "[group"), and
+/// Arkha then started with its defaults and saved them over it: all
+/// settings gone. Such lines are now left out and the rest read; the file
+/// as it was is kept beside it as NAME.broken, which the output mentions.
+/// None if there's no file, or nothing in it can be read.
+pub fn load_settings(path: &std::path::Path) -> Option<glib::KeyFile> {
+    let data = std::fs::read(path).ok()?;
+    let text = String::from_utf8_lossy(&data);
+    let kf = glib::KeyFile::new();
+    if kf.load_from_data(&text, glib::KeyFileFlags::NONE).is_ok() {
+        return Some(kf);
+    }
+    let kf = glib::KeyFile::new();
+    kf.load_from_data(&readable_lines(&text), glib::KeyFileFlags::NONE).ok()?;
+    let mut broken = path.as_os_str().to_os_string();
+    broken.push(".broken");
+    let _ = std::fs::write(&broken, &data);
+    glib::g_message!("arkha", "settings: lines in {} couldn't be read and were left out; the file as it was is in {}", path.display(), std::path::Path::new(&broken).display());
+    Some(kf)
+}
+
+/// The lines of a settings file GLib can read: comments, empty lines,
+/// "[group]" lines, and "key=value" lines in a group.
+fn readable_lines(text: &str) -> String {
+    let mut out = String::new();
+    let mut in_group = false;
+    for line in text.lines() {
+        let t = line.trim();
+        let ok = if t.is_empty() || t.starts_with('#') {
+            true
+        } else if t.starts_with('[') {
+            let group = t.len() > 2 && t.ends_with(']') && !t[1..t.len() - 1].contains(['[', ']']);
+            in_group |= group;
+            group
+        } else {
+            in_group && t.split_once('=').is_some_and(|(k, _)| !k.trim().is_empty())
+        };
+        if ok {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
 pub fn save_settings(kf: &glib::KeyFile, path: &std::path::Path) {
     if let Some(d) = path.parent() {
         let _ = std::fs::create_dir_all(d);
@@ -1084,6 +1130,27 @@ mod tests {
             let glibs = glib::DateTime::from_unix_local(t).unwrap().format(f).unwrap();
             assert_eq!(ours, glibs, "{t}");
         }
+    }
+
+    #[test]
+    fn settings_with_bad_lines() {
+        let t = crate::testutil::TestDir::new("badconf");
+        let p = t.0.join("arkha.conf");
+        // One bad line among good ones: the rest is read, the file kept.
+        std::fs::write(&p, "[General]\nshow_hidden=true\noops, typed by hand\n[Broken\nsingle_click=true\n").unwrap();
+        let kf = load_settings(&p).unwrap();
+        assert!(kf.boolean("General", "show_hidden").unwrap());
+        assert!(kf.boolean("General", "single_click").unwrap());
+        assert!(t.0.join("arkha.conf.broken").exists());
+        // A key before any group is left out too.
+        std::fs::write(&p, "stray=1\n[General]\nshow_hidden=true\n").unwrap();
+        assert!(load_settings(&p).unwrap().boolean("General", "show_hidden").unwrap());
+        // A good file: read as it is, nothing kept beside it.
+        std::fs::remove_file(t.0.join("arkha.conf.broken")).unwrap();
+        std::fs::write(&p, "# note\n[General]\nshow_hidden=false\n").unwrap();
+        assert!(!load_settings(&p).unwrap().boolean("General", "show_hidden").unwrap());
+        assert!(!t.0.join("arkha.conf.broken").exists());
+        assert!(load_settings(&t.0.join("missing.conf")).is_none());
     }
 
     #[test]

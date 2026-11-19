@@ -357,13 +357,7 @@ fn path() -> std::path::PathBuf {
 }
 
 fn load() -> Settings {
-    let kf = glib::KeyFile::new();
-    if kf
-        .load_from_file(path(), glib::KeyFileFlags::NONE)
-        .is_err()
-    {
-        return Settings::default();
-    }
+    let Some(kf) = crate::util::load_settings(&path()) else { return Settings::default() };
     from_keyfile(&kf)
 }
 

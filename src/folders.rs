@@ -25,11 +25,7 @@ fn path() -> std::path::PathBuf {
 fn with_store<R>(f: impl FnOnce(&glib::KeyFile) -> R) -> R {
     STORE.with(|s| {
         let mut s = s.borrow_mut();
-        let kf = s.get_or_insert_with(|| {
-            let kf = glib::KeyFile::new();
-            let _ = kf.load_from_file(path(), glib::KeyFileFlags::NONE);
-            kf
-        });
+        let kf = s.get_or_insert_with(|| crate::util::load_settings(&path()).unwrap_or_default());
         f(kf)
     })
 }

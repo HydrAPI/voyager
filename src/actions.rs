@@ -159,10 +159,7 @@ fn path() -> PathBuf {
 }
 
 pub fn load() -> Vec<CustomAction> {
-    let kf = glib::KeyFile::new();
-    if kf.load_from_file(path(), glib::KeyFileFlags::NONE).is_err() {
-        return vec![];
-    }
+    let Some(kf) = crate::util::load_settings(&path()) else { return vec![] };
     crate::util::numbered_groups(&kf, "Action ")
         .into_iter()
         .filter_map(|g| {
