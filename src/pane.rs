@@ -1613,6 +1613,33 @@ impl Pane {
 
     fn on_monitor(self: &Rc<Self>, f: &gio::File, other: Option<&gio::File>, ev: gio::FileMonitorEvent) {
         use gio::FileMonitorEvent as E;
+        // The open folder itself went (deleted, moved or renamed by another
+        // program): to where it went, if that's known, else to the nearest
+        // folder above that's still there. (The tab stayed at a place that
+        // was gone, and making or pasting anything there failed.)
+        if matches!(ev, E::Deleted | E::MovedOut | E::Renamed) && f.equal(&self.current()) && !self.is_searching() {
+            let w = Rc::downgrade(self);
+            let to = other.cloned();
+            // Once the events about its contents are through.
+            glib::timeout_add_local_once(Duration::from_millis(300), move || {
+                let Some(p) = w.upgrade() else { return };
+                let cur = p.current();
+                if cur.query_exists(gio::Cancellable::NONE) {
+                    return;
+                }
+                let mut target = to.filter(|t| t.query_exists(gio::Cancellable::NONE)).or_else(|| cur.parent());
+                while let Some(t) = target.clone() {
+                    if t.query_exists(gio::Cancellable::NONE) {
+                        break;
+                    }
+                    target = t.parent();
+                }
+                if let Some(t) = target {
+                    p.navigate(&t);
+                }
+            });
+            return;
+        }
         match ev {
             E::Created | E::MovedIn => {
                 self.refresh_file(f);
