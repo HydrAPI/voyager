@@ -889,6 +889,18 @@ fn makers() -> Arc<Pool<ThumbJob>> {
     q
 }
 
+/// Thumbnail files changed outside the makers (moved, copied or removed
+/// with their files, see thumbcache): what's loaded of them is forgotten,
+/// and the views told of the ones written (`uri`, path).
+pub fn thumbnails_changed(written: &[(String, String)], removed: &[String]) {
+    for p in removed.iter().chain(written.iter().map(|(_, p)| p)) {
+        forget_thumb(p);
+    }
+    for (uri, p) in written {
+        thumbnail_ready(uri, p);
+    }
+}
+
 /// Tells the views that `uri`'s thumbnail is at `path`.
 fn thumbnail_ready(uri: &str, path: &str) {
     LISTENERS.with(|l| {

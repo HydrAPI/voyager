@@ -100,6 +100,9 @@ struct Worker {
     undo: Vec<Moved>,
     /// Where thumbnails are kept (see thumbcache).
     thumbs: std::path::PathBuf,
+    /// Originals whose copies got their thumbnails in a move between
+    /// drives, theirs going once they're deleted (thumbnails_of_deleted).
+    thumbs_of_copied: Vec<String>,
     total_bytes: u64,
     done_bytes: u64,
     total_items: u64,
@@ -271,6 +274,7 @@ impl Worker {
             cancel,
             undo: vec![],
             thumbs: thumbcache::root(),
+            thumbs_of_copied: vec![],
             total_bytes: 0,
             done_bytes: 0,
             total_items: 0,
@@ -569,10 +573,38 @@ impl Worker {
     /// Notes for Edit → Undo that `src` went to `dst`.
     /// In a move, `src`'s thumbnails go with it to `dst` (a folder's: those
     /// of all in it), as soon as it's there: before the folder shown asks
-    /// for them, which would make them again.
+    /// for them, which would make them again. A folder's on a thread of
+    /// their own: going through a big one took the move a while.
     fn thumbnails_moved(&self, src: &gio::File, dst: &gio::File) {
+        if self.kind != Kind::Move {
+            return;
+        }
+        let (root, items) = (self.thumbs.clone(), vec![(src.uri().to_string(), dst.uri().to_string())]);
+        if kind_of(dst) == Some(gio::FileType::Directory) {
+            std::thread::spawn(move || thumbcache::moved(&root, &items));
+        } else {
+            thumbcache::moved(&root, &items);
+        }
+    }
+
+    /// In a move between drives (copied file by file, the originals deleted
+    /// at the end): the copy of `src` gets its thumbnails at once, the
+    /// original keeps them until it's deleted (thumbnails_of_deleted).
+    fn thumbnails_copied(&mut self, src: &gio::File, dst: &gio::File) {
         if self.kind == Kind::Move {
-            thumbcache::moved(&self.thumbs, &[(src.uri().to_string(), dst.uri().to_string())]);
+            let src = src.uri().to_string();
+            thumbcache::copied(&self.thumbs, &[(src.clone(), dst.uri().to_string())]);
+            self.thumbs_of_copied.push(src);
+        }
+    }
+
+    /// The originals' thumbnails, once a move between drives deleted them
+    /// (those still there, kept by a skip, keep theirs).
+    fn thumbnails_of_deleted(&mut self) {
+        for uri in std::mem::take(&mut self.thumbs_of_copied) {
+            if !gio::File::for_uri(&uri).query_exists(gio::Cancellable::NONE) {
+                thumbcache::forget(&self.thumbs, &uri);
+            }
         }
     }
 
@@ -773,7 +805,7 @@ impl Worker {
                         self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
                     }
                     // A move across drives copies file by file.
-                    self.thumbnails_moved(src, &dst);
+                    self.thumbnails_copied(src, &dst);
                     self.progress(&doing(self.copy_kind(), &name), false);
                     return Ok(());
                 }
@@ -933,9 +965,11 @@ impl Worker {
                     self.count_move_bytes();
                     let before = self.skipped;
                     let overwrite = flags.contains(gio::FileCopyFlags::OVERWRITE);
+                    self.thumbs_of_copied.clear();
                     self.copy_rec(src, &dst, overwrite, created, true)?;
                     if self.skipped == before {
                         self.delete_rec(src, false, None)?;
+                        self.thumbnails_of_deleted();
                     }
                     return Ok(());
                 }
@@ -2582,8 +2616,16 @@ mod tests {
     /// read back. (questions asked, files that matched, those that didn't,
     /// items noted for Undo, (bytes counted done, bytes in all)).
     fn run_checked(job: Job, answers: Vec<ErrChoice>, corrupt: bool) -> (Vec<String>, u64, Vec<String>, usize, (u64, u64)) {
+        run_checked_in(job, answers, corrupt, None)
+    }
+
+    /// run_checked with thumbnails kept in `thumbs` (instead of the cache).
+    fn run_checked_in(job: Job, answers: Vec<ErrChoice>, corrupt: bool, thumbs: Option<PathBuf>) -> (Vec<String>, u64, Vec<String>, usize, (u64, u64)) {
         let (tx, rx) = async_channel::unbounded::<Msg>();
         let mut w = Worker::new(tx, gio::Cancellable::new(), Arc::new(AtomicBool::new(false)));
+        if let Some(t) = thumbs {
+            w.thumbs = t;
+        }
         let ui = std::thread::spawn(move || {
             let (mut asked, mut last) = (vec![], 0.0);
             let mut answers = answers.into_iter();
@@ -2670,6 +2712,41 @@ mod tests {
         assert!(home.0.join("a.txt").exists(), "the spoilt one's original stays");
         assert!(!home.0.join("b.txt").exists(), "the one that matched is moved");
         assert_eq!(read(&other.0.join("b.txt")), "bbb");
+    }
+
+    #[test]
+    fn thumbnails_in_a_move_between_drives() {
+        // The copies get their thumbnails as they arrive; an original goes
+        // on with its own until it's deleted. A folder with a spoilt copy
+        // in it stays where it was: its files keep their thumbnails (a
+        // matched one's went with its copy, and the original stayed
+        // without). A file moved whole: its thumbnail goes with it.
+        let home = home_scratch("thumbmove");
+        let other = scratch("/dev/shm", "thumbmove");
+        let cache = home.0.join("cache");
+        std::fs::create_dir_all(home.0.join("dir")).unwrap();
+        write(&home.0.join("dir/1-spoilt.txt"), "111");
+        write(&home.0.join("dir/2-good.txt"), "222");
+        write(&home.0.join("b.txt"), "bbb");
+        std::fs::create_dir_all(cache.join("large")).unwrap();
+        let thumb = |p: &Path| cache.join("large").join(thumbcache::name(&uri(p)));
+        for n in ["dir/1-spoilt.txt", "dir/2-good.txt", "b.txt"] {
+            let p = home.0.join(n);
+            std::fs::write(thumb(&p), thumbcache::tests::thumb(&uri(&p))).unwrap();
+        }
+        let job = Job::Transfer {
+            kind: Kind::Move,
+            items: ["dir", "b.txt"].iter().map(|n| Item { src: uri(&home.0.join(n)), dest_dir: uri(&other.0), name: None }).collect(),
+            check: true,
+        };
+        // The first copy checked (1-spoilt.txt, by name order) is spoilt.
+        run_checked_in(job, vec![ErrChoice::Skip], true, Some(cache.clone()));
+        assert!(home.0.join("dir/2-good.txt").exists(), "the folder stays");
+        assert!(thumb(&home.0.join("dir/1-spoilt.txt")).exists() && thumb(&home.0.join("dir/2-good.txt")).exists(), "its files keep their thumbnails");
+        assert!(!thumb(&other.0.join("dir/1-spoilt.txt")).exists(), "the spoilt copy gets none");
+        assert!(thumb(&other.0.join("dir/2-good.txt")).exists(), "the good copy has one");
+        assert!(thumb(&other.0.join("b.txt")).exists() && !home.0.join("b.txt").exists(), "the moved file has its thumbnail");
+        assert!(!thumb(&home.0.join("b.txt")).exists(), "its original's is gone with it");
     }
 
     /// (dst relative to `root`, replaced) for each noted item, sorted.

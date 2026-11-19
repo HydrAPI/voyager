@@ -18,7 +18,7 @@ pub fn root() -> PathBuf {
 }
 
 /// A thumbnail's file name: the MD5 of the file's URI.
-fn name(uri: &str) -> String {
+pub(crate) fn name(uri: &str) -> String {
     let md5 = glib::compute_checksum_for_data(glib::ChecksumType::Md5, uri.as_bytes()).unwrap_or_default();
     format!("{md5}.png")
 }
@@ -33,17 +33,60 @@ fn local(uri: &str) -> bool {
     uri.starts_with("file:///")
 }
 
+/// Tells Arkha's views which thumbnail files changed: `written` (the URI
+/// of the file they're for, their path), `removed` (paths). They keep
+/// loaded thumbnails in memory by path, and a file's thumbnail has the
+/// same path as the next file's of that name: a folder.jpg deleted and
+/// another moved in under that name showed the old picture. On the main
+/// thread (these run on others).
+fn tell(written: Vec<(String, PathBuf)>, removed: Vec<PathBuf>) {
+    if written.is_empty() && removed.is_empty() {
+        return;
+    }
+    let s = |p: &Path| p.to_string_lossy().to_string();
+    let written: Vec<(String, String)> = written.iter().map(|(u, p)| (u.clone(), s(p))).collect();
+    let removed: Vec<String> = removed.iter().map(|p| s(p)).collect();
+    glib::MainContext::default().invoke(move || crate::icons::thumbnails_changed(&written, &removed));
+}
+
 /// The thumbnails (each size) and failure note of `uri` removed: the file
 /// was deleted.
 pub fn forget(root: &Path, uri: &str) {
+    tell(vec![], remove(root, uri));
+}
+
+/// `forget` without telling the views: the paths removed.
+fn remove(root: &Path, uri: &str) -> Vec<PathBuf> {
     if !local(uri) {
-        return;
+        return vec![];
     }
     let n = name(uri);
-    for s in SIZES {
-        let _ = std::fs::remove_file(root.join(s).join(&n));
+    let mut gone: Vec<PathBuf> = SIZES.iter().map(|s| root.join(s).join(&n)).filter(|p| std::fs::remove_file(p).is_ok()).collect();
+    if std::fs::remove_file(fail_note(root, uri)).is_ok() {
+        gone.push(fail_note(root, uri));
     }
-    let _ = std::fs::remove_file(fail_note(root, uri));
+    gone
+}
+
+/// The thumbnails of copied items (URI of the original, URI of the copy)
+/// given to the copies, the originals keeping theirs: in a move between
+/// drives, which copies file by file and deletes the originals at the end
+/// (cancelled, or a copy found spoilt, an original stays), the copies get
+/// them as they arrive; the originals' go once they're deleted (forget).
+pub fn copied(root: &Path, items: &[(String, String)]) {
+    let mut written = vec![];
+    let mut removed = vec![];
+    for (old, new) in items.iter().filter(|(o, n)| local(o) && local(n) && o != n) {
+        removed.extend(remove(root, new));
+        for s in SIZES {
+            if let Some(png) = std::fs::read(root.join(s).join(name(old))).ok().and_then(|b| with_uri(&b, old, new)) {
+                let path = root.join(s).join(name(new));
+                write(&path, &png);
+                written.push((new.clone(), path));
+            }
+        }
+    }
+    tell(written, removed);
 }
 
 /// The thumbnails of moved or renamed items (URI before, URI now) moved
@@ -55,27 +98,35 @@ pub fn forget(root: &Path, uri: &str) {
 /// (of items the move replaced).
 pub fn moved(root: &Path, items: &[(String, String)]) {
     let mut all = vec![];
+    let mut removed = vec![];
     for (old, new) in items {
         if local(old) && local(new) && old != new {
             all.push((old.clone(), new.clone()));
             below(old, new, &mut all);
+        } else if local(old) && !local(new) {
+            // To a network place, a phone…: none are made there, the old
+            // one would only stay behind.
+            removed.extend(remove(root, old));
         }
     }
     let mut keep = vec![];
     for (old, new) in &all {
         for s in SIZES {
             if let Some(png) = std::fs::read(root.join(s).join(name(old))).ok().and_then(|b| with_uri(&b, old, new)) {
-                keep.push((root.join(s).join(name(new)), png));
+                keep.push((root.join(s).join(name(new)), png, new.clone()));
             }
         }
     }
     for (old, new) in &all {
-        forget(root, old);
-        forget(root, new);
+        removed.extend(remove(root, old));
+        removed.extend(remove(root, new));
     }
-    for (path, png) in keep {
+    let mut written = vec![];
+    for (path, png, new) in keep {
         write(&path, &png);
+        written.push((new, path));
     }
+    tell(written, removed);
 }
 
 /// (URI before, URI now) of everything in the folder `new` (moved there
@@ -156,7 +207,7 @@ fn with_uri(png: &[u8], old: &str, new: &str) -> Option<Vec<u8>> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::testutil::TestDir;
 
@@ -172,7 +223,7 @@ mod tests {
     }
 
     /// A thumbnail PNG (as far as the chunks go) for `uri`.
-    fn thumb(uri: &str) -> Vec<u8> {
+    pub fn thumb(uri: &str) -> Vec<u8> {
         let mut p = b"\x89PNG\r\n\x1a\n".to_vec();
         p.extend(chunk(b"IHDR", &[0; 13]));
         p.extend(chunk(b"tEXt", format!("Thumb::URI\0{uri}").as_bytes()));
@@ -190,6 +241,16 @@ mod tests {
     /// Whether the thumbnail kept for `uri` in `size` is one for it.
     fn has(root: &Path, size: &str, uri: &str) -> bool {
         std::fs::read(root.join(size).join(name(uri))).is_ok_and(|b| b == thumb(uri))
+    }
+
+    #[test]
+    fn copies_get_their_own() {
+        let t = TestDir::new("thumbcopy");
+        let root = t.0.join("cache");
+        let (a, b) = ("file:///d/a.mp4".to_string(), "file:///e/a.mp4".to_string());
+        put(&root, "large", &a);
+        copied(&root, &[(a.clone(), b.clone())]);
+        assert!(has(&root, "large", &a) && has(&root, "large", &b));
     }
 
     #[test]
