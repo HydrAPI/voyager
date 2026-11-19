@@ -7,7 +7,7 @@ same on X11 and Wayland, where window titles can't be read otherwise.
     a11y.py dialogs     its open dialogs' titles
     a11y.py headers     the column headers of its first window's list
     a11y.py cells       the texts of that list's cells, a line each
-    a11y.py press NAME  presses the button or check box called NAME in its
+    a11y.py press NAME  presses the button, check box or radio button called NAME in its
                         dialogs or message boxes (as a screen reader would)
     a11y.py tab NAME    shows the dialog's tab called NAME
     a11y.py where TEXT  "x y", the middle of the shown button in its first
@@ -110,7 +110,7 @@ def main():
                     print(name)
     elif what == "press":
         for d in windows(app, ("dialog", "alert", "file chooser")):
-            for role in ("check box", "button", "push button", "toggle button"):
+            for role in ("check box", "radio button", "button", "push button", "toggle button"):
                 for b in find(d, role, []):
                     if b.get_name().replace("_", "") == sys.argv[2]:
                         b.get_action_iface().do_action(0)

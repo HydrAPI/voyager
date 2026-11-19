@@ -22,6 +22,8 @@ BuildRequires:  gettext
 
 # Trash, network places, metadata (notes, emblems).
 Recommends:     gvfs
+# Thumbnailers run in a sandbox (without it, as they are).
+Recommends:     bubblewrap
 Suggests:       gvfs-smb
 Suggests:       gvfs-mtp
 Suggests:       gvfs-gphoto2

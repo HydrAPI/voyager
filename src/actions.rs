@@ -159,10 +159,7 @@ fn path() -> PathBuf {
 }
 
 pub fn load() -> Vec<CustomAction> {
-    let kf = glib::KeyFile::new();
-    if kf.load_from_file(path(), glib::KeyFileFlags::NONE).is_err() {
-        return vec![];
-    }
+    let Some(kf) = crate::util::load_settings(&path()) else { return vec![] };
     crate::util::numbered_groups(&kf, "Action ")
         .into_iter()
         .filter_map(|g| {
@@ -273,21 +270,29 @@ pub fn applies(a: &CustomAction, sel: &[(String, bool, String)]) -> bool {
     })
 }
 
-/// Fills in the placeholders, each shell-quoted:
+/// Fills in the placeholders, each shell-quoted (also within quotes in the
+/// command: see util::expand_shell):
 /// %f first selected path, %F all selected paths, %n first selected name,
 /// %N all selected names, %d the current folder, %% a literal %.
-/// With nothing selected, %f and %F stand for the current folder.
-pub fn expand(command: &str, sel: &[PathBuf], dir: &Path) -> String {
-    let q = |p: &Path| glib::shell_quote(p).to_string_lossy().to_string();
-    let name = |p: &PathBuf| q(Path::new(p.file_name().unwrap_or(p.as_os_str())));
+/// With nothing selected, %f and %F stand for the current folder. A name
+/// starting with "-" is given as "./-name", so a program doesn't take it
+/// for an option.
+pub fn expand(command: &str, sel: &[PathBuf], dir: &Path) -> std::ffi::OsString {
+    use std::os::unix::ffi::OsStrExt;
+    // As bytes: a name needn't be UTF-8.
+    let s = |p: &Path| p.as_os_str().to_os_string();
+    let name = |p: &PathBuf| {
+        let n = p.file_name().unwrap_or(p.as_os_str());
+        if n.as_bytes().starts_with(b"-") { Path::new(".").join(n).into_os_string() } else { n.to_os_string() }
+    };
     let dir_only = [dir.to_path_buf()];
     let paths = if sel.is_empty() { &dir_only[..] } else { sel };
-    crate::util::expand_placeholders(command, |c| match c {
-        'f' => Some(q(&paths[0])),
-        'F' => Some(paths.iter().map(|p| q(p)).collect::<Vec<_>>().join(" ")),
-        'n' => Some(name(&paths[0])),
-        'N' => Some(paths.iter().map(name).collect::<Vec<_>>().join(" ")),
-        'd' => Some(q(dir)),
+    crate::util::expand_shell(command, |c| match c {
+        'f' => Some(vec![s(&paths[0])]),
+        'F' => Some(paths.iter().map(|p| s(p)).collect()),
+        'n' => Some(vec![name(&paths[0])]),
+        'N' => Some(paths.iter().map(name).collect()),
+        'd' => Some(vec![s(dir)]),
         _ => None,
     })
 }
@@ -302,9 +307,49 @@ mod tests {
         let sel = [dir.join("a b.txt"), dir.join("c.txt")];
         assert_eq!(expand("echo %f", &sel, dir), "echo '/home/u/My Dir/a b.txt'");
         assert_eq!(expand("x %F", &sel, dir), "x '/home/u/My Dir/a b.txt' '/home/u/My Dir/c.txt'");
-        assert_eq!(expand("%n|%N", &sel, dir), "'a b.txt'|'a b.txt' 'c.txt'");
+        assert_eq!(expand("%n|%N", &sel, dir), "'a b.txt'|'a b.txt' c.txt");
         assert_eq!(expand("cd %d && 100%% %x", &sel, dir), "cd '/home/u/My Dir' && 100% %x");
         assert_eq!(expand("open %f", &[], dir), "open '/home/u/My Dir'");
+        // Names that look like options.
+        assert_eq!(expand("rm %N", &[dir.join("-rf"), dir.join("a")], dir), "rm ./-rf a");
+    }
+
+    #[test]
+    fn names_that_arent_utf8() {
+        // "café.txt" in Latin-1: not UTF-8. Made into text it was another
+        // name, and the command didn't find the file.
+        use std::os::unix::ffi::OsStrExt;
+        let t = crate::testutil::TestDir::new("latin1");
+        let name = std::ffi::OsStr::from_bytes(b"caf\xe9.txt");
+        std::fs::write(t.0.join(name), "contents").unwrap();
+        for cmd in ["cat %f", "cat \"%f\"", "cat %n", "cat %F"] {
+            let o = std::process::Command::new("sh").arg("-c").arg(expand(cmd, &[t.0.join(name)], &t.0)).current_dir(&t.0).output().unwrap();
+            assert_eq!(String::from_utf8_lossy(&o.stdout), "contents", "{cmd}");
+        }
+    }
+
+    #[test]
+    fn placeholders_in_quotes_stay_quoted() {
+        // A name with $(…) in it, put in double quotes by the command: it
+        // ran that command.
+        let dir = Path::new("/d");
+        let evil = [dir.join("song$(touch x)'.mp3")];
+        let ran = |cmd: &str| {
+            let t = crate::testutil::TestDir::new("quoted");
+            std::process::Command::new("sh").arg("-c").arg(expand(cmd, &evil, dir)).current_dir(&t.0).output().unwrap();
+            t.0.join("x").exists()
+        };
+        for cmd in ["echo %f", "echo \"%f\"", "echo '%f'", "echo \"%f.bak\"", "echo \"[%F]\"", "echo 'a %n b'"] {
+            assert!(!ran(cmd), "{cmd}");
+        }
+        // And the command gets the name whole.
+        let out = |cmd: &str| {
+            let o = std::process::Command::new("sh").arg("-c").arg(expand(cmd, &evil, dir)).output().unwrap();
+            String::from_utf8_lossy(&o.stdout).trim().to_string()
+        };
+        assert_eq!(out("echo \"%f.bak\""), "/d/song$(touch x)'.mp3.bak");
+        assert_eq!(out("echo '<%n>'"), "<song$(touch x)'.mp3>");
+        assert_eq!(out("printf '%%s|' %F"), "/d/song$(touch x)'.mp3|");
     }
 
     #[test]
@@ -377,7 +422,7 @@ mod tests {
             let sel: Vec<PathBuf> = (0..r.below(3)).map(|_| Path::new("/d").join(r.text(6))).collect();
             let out = expand(&cmd, &sel, Path::new("/d"));
             if !cmd.contains('%') {
-                assert_eq!(out, cmd);
+                assert_eq!(out, std::ffi::OsString::from(&cmd));
             }
             let _ = crate::thumbnailers::expand(&cmd, Path::new("/in"), Path::new("/out"), 128);
             // Every default entry once, whatever was saved.

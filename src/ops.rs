@@ -100,6 +100,14 @@ struct Worker {
     undo: Vec<Moved>,
     /// Where thumbnails are kept (see thumbcache).
     thumbs: std::path::PathBuf,
+    /// The destination keeps names as Windows does (FAT, exFAT, NTFS):
+    /// see windows_name.
+    windows_names: bool,
+    /// The destination is FAT32: no file of 4 GB or more.
+    fat32: bool,
+    /// Originals whose copies got their thumbnails in a move between
+    /// drives, theirs going once they're deleted (thumbnails_of_deleted).
+    thumbs_of_copied: Vec<String>,
     total_bytes: u64,
     done_bytes: u64,
     total_items: u64,
@@ -271,6 +279,9 @@ impl Worker {
             cancel,
             undo: vec![],
             thumbs: thumbcache::root(),
+            windows_names: false,
+            fat32: false,
+            thumbs_of_copied: vec![],
             total_bytes: 0,
             done_bytes: 0,
             total_items: 0,
@@ -569,10 +580,38 @@ impl Worker {
     /// Notes for Edit → Undo that `src` went to `dst`.
     /// In a move, `src`'s thumbnails go with it to `dst` (a folder's: those
     /// of all in it), as soon as it's there: before the folder shown asks
-    /// for them, which would make them again.
+    /// for them, which would make them again. A folder's on a thread of
+    /// their own: going through a big one took the move a while.
     fn thumbnails_moved(&self, src: &gio::File, dst: &gio::File) {
+        if self.kind != Kind::Move {
+            return;
+        }
+        let (root, items) = (self.thumbs.clone(), vec![(src.uri().to_string(), dst.uri().to_string())]);
+        if kind_of(dst) == Some(gio::FileType::Directory) {
+            std::thread::spawn(move || thumbcache::moved(&root, &items));
+        } else {
+            thumbcache::moved(&root, &items);
+        }
+    }
+
+    /// In a move between drives (copied file by file, the originals deleted
+    /// at the end): the copy of `src` gets its thumbnails at once, the
+    /// original keeps them until it's deleted (thumbnails_of_deleted).
+    fn thumbnails_copied(&mut self, src: &gio::File, dst: &gio::File) {
         if self.kind == Kind::Move {
-            thumbcache::moved(&self.thumbs, &[(src.uri().to_string(), dst.uri().to_string())]);
+            let src = src.uri().to_string();
+            thumbcache::copied(&self.thumbs, &[(src.clone(), dst.uri().to_string())]);
+            self.thumbs_of_copied.push(src);
+        }
+    }
+
+    /// The originals' thumbnails, once a move between drives deleted them
+    /// (those still there, kept by a skip, keep theirs).
+    fn thumbnails_of_deleted(&mut self) {
+        for uri in std::mem::take(&mut self.thumbs_of_copied) {
+            if !gio::File::for_uri(&uri).query_exists(gio::Cancellable::NONE) {
+                thumbcache::forget(&self.thumbs, &uri);
+            }
         }
     }
 
@@ -656,7 +695,8 @@ impl Worker {
             };
             let mut none = None;
             for c in children {
-                self.copy_rec(&src.child(&c), &dst.child(&c), false, &mut none, record && merged)?;
+                let to = if self.windows_names { dst.child(windows_name(&c.to_string_lossy())) } else { dst.child(&c) };
+                self.copy_rec(&src.child(&c), &to, false, &mut none, record && merged)?;
             }
             // Re-read the mode: it may have changed since `info` (e.g. the user
             // fixed an unreadable folder and pressed Retry).
@@ -676,6 +716,14 @@ impl Worker {
         let size = info.size().max(0) as u64;
         let mut flags = gio::FileCopyFlags::NOFOLLOW_SYMLINKS | gio::FileCopyFlags::ALL_METADATA;
         let name = base_name(src);
+        // Said at once, not after writing 4 GB of it.
+        if self.fat32 && size > u64::from(u32::MAX) {
+            let e = glib::Error::new(gio::IOErrorEnum::FilenameTooLong, &tr("The drive is formatted as FAT32, which holds no file of 4 GB or more. Formatted as exFAT it could hold it."));
+            return match self.ask_error(fill(&tr("“{name}” is too big for the drive"), &[("name", &name)]), &e, false) {
+                ErrChoice::Cancel => Err(Cancelled),
+                _ => Ok(()),
+            };
+        }
         loop {
             let base = self.done_bytes;
             let total = self.total_bytes;
@@ -773,7 +821,7 @@ impl Worker {
                         self.record(src, &dst, replaced || flags.contains(gio::FileCopyFlags::OVERWRITE));
                     }
                     // A move across drives copies file by file.
-                    self.thumbnails_moved(src, &dst);
+                    self.thumbnails_copied(src, &dst);
                     self.progress(&doing(self.copy_kind(), &name), false);
                     return Ok(());
                 }
@@ -933,9 +981,11 @@ impl Worker {
                     self.count_move_bytes();
                     let before = self.skipped;
                     let overwrite = flags.contains(gio::FileCopyFlags::OVERWRITE);
+                    self.thumbs_of_copied.clear();
                     self.copy_rec(src, &dst, overwrite, created, true)?;
                     if self.skipped == before {
                         self.delete_rec(src, false, None)?;
+                        self.thumbnails_of_deleted();
                     }
                     return Ok(());
                 }
@@ -974,7 +1024,7 @@ impl Worker {
                     let src = gio::File::for_uri(&it.src);
                     let dest_dir = gio::File::for_uri(&it.dest_dir);
                     let src_is_dir = kind_of(&src) == Some(gio::FileType::Directory);
-                    if kind != Kind::Link && (dest_dir.has_prefix(&src) || src.equal(&dest_dir)) {
+                    if kind != Kind::Link && (dest_dir.has_prefix(&src) || src.equal(&dest_dir) || inside_through_links(&dest_dir, &src)) {
                         let e = glib::Error::new(
                             gio::IOErrorEnum::InvalidArgument,
                             &tr("The destination is inside the source folder."),
@@ -988,6 +1038,17 @@ impl Worker {
                     }
                     let same_dir = src.parent().map(|p| p.equal(&dest_dir)).unwrap_or(false);
                     let name = it.name.clone().unwrap_or_else(|| base_name(&src));
+                    // Onto a USB stick or the like (FAT, exFAT, NTFS): names
+                    // as they can hold them, and FAT's limit of 4 GB a file.
+                    let fs = dest_dir
+                        .query_filesystem_info("filesystem::type", Some(&self.cancel))
+                        .ok()
+                        .and_then(|i| i.attribute_string("filesystem::type"))
+                        .map(|t| t.to_string())
+                        .unwrap_or_default();
+                    self.windows_names = windows_names_on(&fs);
+                    self.fat32 = matches!(fs.as_str(), "vfat" | "msdos" | "fat");
+                    let name = if self.windows_names && kind != Kind::Link { windows_name(&name) } else { name };
                     // Restoring from the trash: recreate the original folder if needed.
                     if it.name.is_some() && !dest_dir.query_exists(gio::Cancellable::NONE) {
                         let _ = dest_dir.make_directory_with_parents(gio::Cancellable::NONE);
@@ -1220,6 +1281,34 @@ pub fn open_window() {
 
 /// Told of items an operation took from where they were (see on_moved).
 type WentFn = dyn Fn(&[(String, Option<String>)]);
+
+/// Whether a file system of type `fs` (GIO's filesystem::type) keeps names
+/// as Windows does: USB sticks and drives formatted for Windows.
+fn windows_names_on(fs: &str) -> bool {
+    matches!(fs, "vfat" | "msdos" | "fat" | "exfat" | "ntfs" | "ntfs3" | "fuseblk")
+}
+
+/// `name` as a drive formatted for Windows can hold it, as Nautilus makes
+/// them: the characters it doesn't allow (" * : < > ? \ | and control
+/// characters) made "_", and no space or dot at the end. Such names failed
+/// one by one.
+fn windows_name(name: &str) -> String {
+    let n: String = name.chars().map(|c| if c < ' ' || "\"*:<>?\\|".contains(c) { '_' } else { c }).collect();
+    let n = n.trim_end_matches([' ', '.']);
+    if n.is_empty() { "_".into() } else { n.to_string() }
+}
+
+/// Whether `dest_dir` is `src` or inside it once links are followed (a
+/// link in the way, the addresses don't show it): a folder copied into a
+/// link to its own subfolder copied itself into itself, some 2,000 levels
+/// deep, until the path was too long.
+fn inside_through_links(dest_dir: &gio::File, src: &gio::File) -> bool {
+    let real = |f: &gio::File| f.path().and_then(|p| std::fs::canonicalize(p).ok());
+    match (real(dest_dir), real(src)) {
+        (Some(d), Some(s)) => d.starts_with(&s),
+        _ => false,
+    }
+}
 
 /// The URI `f`'s thumbnails are kept under: for an item in the trash,
 /// where it came from (trashed, it kept them).
@@ -1601,6 +1690,8 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
     let (tx, rx) = async_channel::unbounded::<Msg>();
     let shape = shape_of(&job);
     let (taken, moves) = taken_by(&job);
+    // Trashed folders keep their remembered views (for a restore).
+    let trashing = matches!(job, Job::Trash(_));
     let op = Rc::new(Op {
         id: next_id(),
         title: title_for(&job),
@@ -1697,6 +1788,9 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
                     // Also hides the window if this was the last operation.
                     remove_op(op.id);
                     on_done(created);
+                    if !went.is_empty() && !trashing {
+                        crate::folders::follow(&went);
+                    }
                     if !went.is_empty() {
                         MOVE_LISTENERS.with(|l| {
                             for f in l.borrow().iter() {
@@ -1847,8 +1941,10 @@ pub fn note_renames(items: Vec<(String, String)>) {
 }
 
 /// Renamed items' thumbnails renamed too, in a thread of their own (a
-/// renamed folder's are those of everything in it).
+/// renamed folder's are those of everything in it), and a renamed folder's
+/// remembered view goes with it.
 fn thumbnails_renamed(items: Vec<(String, String)>) {
+    crate::folders::follow(&items.iter().map(|(a, b)| (a.clone(), Some(b.clone()))).collect::<Vec<_>>());
     std::thread::spawn(move || thumbcache::moved(&thumbcache::root(), &items));
 }
 
@@ -2582,8 +2678,16 @@ mod tests {
     /// read back. (questions asked, files that matched, those that didn't,
     /// items noted for Undo, (bytes counted done, bytes in all)).
     fn run_checked(job: Job, answers: Vec<ErrChoice>, corrupt: bool) -> (Vec<String>, u64, Vec<String>, usize, (u64, u64)) {
+        run_checked_in(job, answers, corrupt, None)
+    }
+
+    /// run_checked with thumbnails kept in `thumbs` (instead of the cache).
+    fn run_checked_in(job: Job, answers: Vec<ErrChoice>, corrupt: bool, thumbs: Option<PathBuf>) -> (Vec<String>, u64, Vec<String>, usize, (u64, u64)) {
         let (tx, rx) = async_channel::unbounded::<Msg>();
         let mut w = Worker::new(tx, gio::Cancellable::new(), Arc::new(AtomicBool::new(false)));
+        if let Some(t) = thumbs {
+            w.thumbs = t;
+        }
         let ui = std::thread::spawn(move || {
             let (mut asked, mut last) = (vec![], 0.0);
             let mut answers = answers.into_iter();
@@ -2670,6 +2774,111 @@ mod tests {
         assert!(home.0.join("a.txt").exists(), "the spoilt one's original stays");
         assert!(!home.0.join("b.txt").exists(), "the one that matched is moved");
         assert_eq!(read(&other.0.join("b.txt")), "bbb");
+    }
+
+    /// Copies onto real drives formatted for Windows, if given (as they
+    /// need mounting): VOYAGER_TEST_FAT, VOYAGER_TEST_EXFAT, a folder on each.
+    #[test]
+    #[ignore = "needs VOYAGER_TEST_FAT and/or VOYAGER_TEST_EXFAT: folders on such drives"]
+    fn copies_onto_windows_drives() {
+        for (var, fat32) in [("VOYAGER_TEST_FAT", true), ("VOYAGER_TEST_EXFAT", false)] {
+            let Ok(dir) = std::env::var(var) else { continue };
+            let src = home_scratch(&format!("towindows-{fat32}"));
+            write(&src.0.join("Meeting: 10:30?.txt"), "minutes");
+            std::fs::create_dir_all(src.0.join("Q&A: notes")).unwrap();
+            write(&src.0.join("Q&A: notes/a|b.txt"), "inside");
+            let mut items = vec!["Meeting: 10:30?.txt", "Q&A: notes"];
+            if fat32 {
+                // 4 GB and a byte, sparse: nothing written for it here.
+                std::fs::File::create(src.0.join("big.bin")).unwrap().set_len(u64::from(u32::MAX) + 2).unwrap();
+                items.push("big.bin");
+            }
+            let dest = std::path::Path::new(&dir).join(format!("voyager-test-{}", std::process::id()));
+            std::fs::create_dir_all(&dest).unwrap();
+            let job = Job::Transfer { kind: Kind::Copy, items: items.iter().map(|n| Item { src: uri(&src.0.join(n)), dest_dir: uri(&dest), name: None }).collect(), check: false };
+            let (_, asked) = run_job(job, &[]);
+            let got = |p: &str| std::fs::read_to_string(dest.join(p)).unwrap_or_else(|e| format!("({e})"));
+            assert_eq!(got("Meeting_ 10_30_.txt"), "minutes", "{var}");
+            assert_eq!(got("Q&A_ notes/a_b.txt"), "inside", "{var}");
+            if fat32 {
+                assert_eq!(asked, ["error:“big.bin” is too big for the drive"], "{var}");
+                assert!(!dest.join("big.bin").exists());
+            } else {
+                assert!(asked.is_empty(), "{var}: {asked:?}");
+            }
+            std::fs::remove_dir_all(&dest).unwrap();
+        }
+    }
+
+    #[test]
+    fn names_for_windows_drives() {
+        assert_eq!(windows_name("Meeting: 10:30 \"draft\"?.txt"), "Meeting_ 10_30 _draft__.txt");
+        assert_eq!(windows_name("a<b>c|d*e\\f"), "a_b_c_d_e_f");
+        assert_eq!(windows_name("trailing dots..."), "trailing dots");
+        assert_eq!(windows_name("ends with space "), "ends with space");
+        assert_eq!(windows_name("tab\there"), "tab_here");
+        assert_eq!(windows_name("..."), "_");
+        assert_eq!(windows_name("ordinary – name (2).jpg"), "ordinary – name (2).jpg");
+        assert!(windows_names_on("vfat") && windows_names_on("exfat") && windows_names_on("ntfs3"));
+        assert!(!windows_names_on("ext4") && !windows_names_on("btrfs") && !windows_names_on(""));
+    }
+
+    #[test]
+    fn no_copy_into_itself_through_a_link() {
+        // A link to the folder's own subfolder as the destination: asked
+        // about (and skipped) instead of copied into itself.
+        let s = home_scratch("intoself");
+        std::fs::create_dir_all(s.0.join("a/b")).unwrap();
+        write(&s.0.join("a/file.txt"), "x");
+        std::os::unix::fs::symlink(s.0.join("a/b"), s.0.join("link")).unwrap();
+        let job = Job::Transfer { kind: Kind::Copy, items: vec![Item { src: uri(&s.0.join("a")), dest_dir: uri(&s.0.join("link")), name: None }], check: false };
+        let (_, asked) = run_job(job, &[]);
+        assert_eq!(asked, ["error:Cannot copy “a” into itself"]);
+        assert_eq!(std::fs::read_dir(s.0.join("a/b")).unwrap().count(), 0, "nothing copied into it");
+        // A link elsewhere is fine.
+        std::fs::create_dir_all(s.0.join("other")).unwrap();
+        std::os::unix::fs::symlink(s.0.join("other"), s.0.join("link2")).unwrap();
+        let job = Job::Transfer { kind: Kind::Copy, items: vec![Item { src: uri(&s.0.join("a")), dest_dir: uri(&s.0.join("link2")), name: None }], check: false };
+        assert!(run_job(job, &[]).1.is_empty());
+        assert!(s.0.join("other/a/file.txt").exists());
+    }
+
+    #[test]
+    fn thumbnails_in_a_move_between_drives() {
+        // The copies get their thumbnails as they arrive; an original goes
+        // on with its own until it's deleted. A folder with a spoilt copy
+        // in it stays where it was: its files keep their thumbnails (a
+        // matched one's went with its copy, and the original stayed
+        // without). A file moved whole: its thumbnail goes with it.
+        let home = home_scratch("thumbmove");
+        let other = scratch("/dev/shm", "thumbmove");
+        let cache = home.0.join("cache");
+        std::fs::create_dir_all(home.0.join("dir")).unwrap();
+        write(&home.0.join("dir/1-spoilt.txt"), "111");
+        write(&home.0.join("dir/2-good.txt"), "222");
+        write(&home.0.join("b.txt"), "bbb");
+        std::fs::create_dir_all(cache.join("large")).unwrap();
+        let thumb = |p: &Path| cache.join("large").join(thumbcache::name(&uri(p)));
+        for n in ["dir/1-spoilt.txt", "dir/2-good.txt", "b.txt"] {
+            let p = home.0.join(n);
+            std::fs::write(thumb(&p), thumbcache::tests::thumb(&uri(&p))).unwrap();
+        }
+        let job = Job::Transfer {
+            kind: Kind::Move,
+            items: ["dir", "b.txt"].iter().map(|n| Item { src: uri(&home.0.join(n)), dest_dir: uri(&other.0), name: None }).collect(),
+            check: true,
+        };
+        // The first copy checked is spoilt: which one that is depends on
+        // the order the folder lists them in.
+        let (_, _, failed, _, _) = run_checked_in(job, vec![ErrChoice::Skip], true, Some(cache.clone()));
+        assert_eq!(failed.len(), 1);
+        let (spoilt, good) = if failed[0] == "1-spoilt.txt" { ("dir/1-spoilt.txt", "dir/2-good.txt") } else { ("dir/2-good.txt", "dir/1-spoilt.txt") };
+        assert!(home.0.join(good).exists(), "the folder stays");
+        assert!(thumb(&home.0.join(spoilt)).exists() && thumb(&home.0.join(good)).exists(), "its files keep their thumbnails");
+        assert!(!thumb(&other.0.join(spoilt)).exists(), "the spoilt copy gets none");
+        assert!(thumb(&other.0.join(good)).exists(), "the good copy has one");
+        assert!(thumb(&other.0.join("b.txt")).exists() && !home.0.join("b.txt").exists(), "the moved file has its thumbnail");
+        assert!(!thumb(&home.0.join("b.txt")).exists(), "its original's is gone with it");
     }
 
     /// (dst relative to `root`, replaced) for each noted item, sorted.

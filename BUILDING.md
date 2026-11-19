@@ -76,6 +76,8 @@ A release: set the version in `Cargo.toml` (`1.0.0`), add the release to `data/i
 
 ## Optional dependencies
 
+Bubblewrap (`bwrap`) is recommended: with it, thumbnailers run in a sandbox, which only sees the system read-only and the file being thumbnailed, so a file made to exploit a thumbnailer can't reach the user's files. Without it, or where the system doesn't allow sandboxes, thumbnailers run without one (Voyager says so once in its output; `VOYAGER_THUMBNAIL_SANDBOX=0` turns the sandbox off).
+
 Video thumbnails (`ffmpegthumbnailer` or `ffmpeg`), the Media Info tab (`mediainfo`), phones (`gvfs-mtp`), cameras (`gvfs-gphoto2`), network shares (`gvfs-smb`) and archives (`engrampa`, `file-roller` or `xarchiver`) are optional dependencies.
 
 Trash, network locations and mounting use GVfs, which every MATE install already has. Mounting drives also needs udisks2 (`gvfs` pulls it in on most distributions); Android phones need the GVfs MTP backend (`gvfs-mtp` on Arch, Debian and Fedora).

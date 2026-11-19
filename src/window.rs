@@ -2910,7 +2910,8 @@ impl AppWindow {
     }
 
     fn ask_run(self: &Rc<Self>, f: &gio::File, is_script: bool) {
-        let name = util::display_name(f);
+        // Direction marks shown, not obeyed: "gpj.exe" can't pass for "exe.jpg".
+        let name = util::visible_controls(&util::display_name(f));
         let d = gtk::MessageDialog::new(
             Some(&self.window),
             gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
@@ -2928,7 +2929,9 @@ impl AppWindow {
         }
         d.add_button(&tr("_Cancel"), gtk::ResponseType::Cancel);
         d.add_button(&tr("_Run"), gtk::ResponseType::Other(3));
-        d.set_default_response(gtk::ResponseType::Other(3));
+        // Enter doesn't run it: on FAT-formatted drives every file is
+        // executable, a "text file" among them too.
+        d.set_default_response(gtk::ResponseType::Cancel);
         let w = Rc::downgrade(self);
         let f = f.clone();
         d.connect_response(move |d, r| {
@@ -2939,7 +2942,7 @@ impl AppWindow {
             let res = match r {
                 gtk::ResponseType::Other(1) => {
                     let t = term.clone().unwrap();
-                    let argv = util::terminal_run_argv(&t, &path.to_string_lossy());
+                    let argv = util::terminal_run_argv(&t, path.as_os_str());
                     util::spawn_in_dir(&argv, dir.as_deref())
                 }
                 gtk::ResponseType::Other(2) => {
@@ -2948,7 +2951,7 @@ impl AppWindow {
                     }
                     Ok(())
                 }
-                gtk::ResponseType::Other(3) => util::spawn_in_dir(&[path.to_string_lossy().to_string()], dir.as_deref()),
+                gtk::ResponseType::Other(3) => util::spawn_in_dir(&[path.as_os_str()], dir.as_deref()),
                 _ => Ok(()),
             };
             if let Err(e) = res {
@@ -3188,7 +3191,7 @@ impl AppWindow {
         if !can_trash {
             let sel = p.selected();
             let q = if sel.len() == 1 {
-                fill(&tr("“{name}” can’t be moved to the Trash. Delete it permanently?"), &[("name", &sel[0].name)])
+                fill(&tr("“{name}” can’t be moved to the Trash. Delete it permanently?"), &[("name", &util::visible_controls(&sel[0].name))])
             } else {
                 fill(&trn("This item can’t be moved to the Trash. Delete it permanently?", "These {n} items can’t be moved to the Trash. Delete them permanently?", sel.len() as u64), &[("n", &sel.len())])
             };
@@ -3200,7 +3203,7 @@ impl AppWindow {
         if config::with(|s| s.confirm_trash) {
             let sel = p.selected();
             let q = if sel.len() == 1 {
-                fill(&tr("Move “{name}” to the Trash?"), &[("name", &sel[0].name)])
+                fill(&tr("Move “{name}” to the Trash?"), &[("name", &util::visible_controls(&sel[0].name))])
             } else {
                 fill(&trn("Move {n} item to the Trash?", "Move {n} items to the Trash?", sel.len() as u64), &[("n", &sel.len())])
             };
@@ -3218,7 +3221,7 @@ impl AppWindow {
             return;
         }
         let q = if sel.len() == 1 {
-            fill(&tr("Are you sure you want to permanently delete “{name}”?"), &[("name", &sel[0].name)])
+            fill(&tr("Are you sure you want to permanently delete “{name}”?"), &[("name", &util::visible_controls(&sel[0].name))])
         } else {
             fill(
                 &trn("Are you sure you want to permanently delete the {n} selected item?", "Are you sure you want to permanently delete the {n} selected items?", sel.len() as u64),
@@ -3393,9 +3396,11 @@ impl AppWindow {
             util::error_dialog(Some(self.window.upcast_ref()), &tr("No terminal found"), &tr("Install mate-terminal or set $TERMINAL."));
             return;
         };
-        let mut argv = vec![term.clone()];
+        let mut argv: Vec<std::ffi::OsString> = vec![term.clone().into()];
         if term.ends_with("mate-terminal") || term.ends_with("gnome-terminal") || term.ends_with("xfce4-terminal") {
-            argv.push(format!("--working-directory={}", path.to_string_lossy()));
+            let mut flag = std::ffi::OsString::from("--working-directory=");
+            flag.push(path.as_os_str());
+            argv.push(flag);
         }
         if let Err(e) = util::spawn_in_dir(&argv, Some(path)) {
             util::error_dialog(Some(self.window.upcast_ref()), &tr("Could not open a terminal"), &e);
@@ -3405,16 +3410,11 @@ impl AppWindow {
     fn archive(self: &Rc<Self>, extract: bool) {
         let Some(p) = self.current_pane() else { return };
         let Some(tool) = util::archiver_command() else { return };
-        let paths: Vec<String> = p
-            .selected_files()
-            .iter()
-            .filter_map(|f| f.path())
-            .map(|p| p.to_string_lossy().to_string())
-            .collect();
+        let paths: Vec<std::ffi::OsString> = p.selected_files().iter().filter_map(|f| f.path()).map(|p| p.into_os_string()).collect();
         if paths.is_empty() {
             return;
         }
-        let mut argv = vec![tool.clone()];
+        let mut argv: Vec<std::ffi::OsString> = vec![tool.clone().into()];
         if extract {
             argv.push("--extract-here".into());
         } else if tool.ends_with("xarchiver") {

@@ -889,6 +889,18 @@ fn makers() -> Arc<Pool<ThumbJob>> {
     q
 }
 
+/// Thumbnail files changed outside the makers (moved, copied or removed
+/// with their files, see thumbcache): what's loaded of them is forgotten,
+/// and the views told of the ones written (`uri`, path).
+pub fn thumbnails_changed(written: &[(String, String)], removed: &[String]) {
+    for p in removed.iter().chain(written.iter().map(|(_, p)| p)) {
+        forget_thumb(p);
+    }
+    for (uri, p) in written {
+        thumbnail_ready(uri, p);
+    }
+}
+
 /// Tells the views that `uri`'s thumbnail is at `path`.
 fn thumbnail_ready(uri: &str, path: &str) {
     LISTENERS.with(|l| {
@@ -921,10 +933,16 @@ fn record_failure(job: &ThumbJob) {
     if std::fs::create_dir_all(fail_dir()).is_err() {
         return;
     }
+    // The notes name files: only for their owner, as the thumbnails.
+    let fail = fail_dir();
+    for d in [Some(fail.as_path()), fail.parent(), fail.parent().and_then(|p| p.parent())].into_iter().flatten() {
+        private(d, 0o700);
+    }
     let (mtime, size) = (job.mtime.to_string(), job.size.to_string());
     if let Err(e) = pb.savev(&out, "png", &[("tEXt::Thumb::URI", job.uri.as_str()), ("tEXt::Thumb::MTime", mtime.as_str()), ("tEXt::Thumb::Size", size.as_str()), ("tEXt::Software", "Voyager")]) {
         glib::g_debug!("voyager", "thumbnail: couldn't note the failure in {}: {e}", out.display());
     }
+    private(&out, 0o600);
 }
 
 fn make_thumbnail(job: &ThumbJob) -> Option<String> {
@@ -934,10 +952,11 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
             glib::g_debug!("voyager", "thumbnail: couldn't make {}: {e}", d.display());
             return None;
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o700));
+        // As the thumbnail spec asks: the folders only for their owner
+        // (thumbnails/ itself too), and the pictures (below).
+        private(d, 0o700);
+        if let Some(root) = d.parent() {
+            private(root, 0o700);
         }
     }
     let pb = match &job.custom {
@@ -987,13 +1006,23 @@ fn make_thumbnail(job: &ThumbJob) -> Option<String> {
             ],
         )
         .map_err(|e| e.to_string())
-        .and_then(|()| std::fs::rename(&tmp, &job.out).map_err(|e| e.to_string()));
+        .and_then(|()| {
+            private(&tmp, 0o600);
+            std::fs::rename(&tmp, &job.out).map_err(|e| e.to_string())
+        });
     if let Err(e) = saved {
         glib::g_debug!("voyager", "thumbnail: couldn't save {}: {e} ({})", job.out.display(), job.uri);
         return None;
     }
     glib::g_debug!("voyager", "thumbnail: made {} ({})", job.out.display(), job.uri);
     Some(job.out.to_string_lossy().to_string())
+}
+
+/// Sets `path`'s permissions to `mode` (0o700 for the thumbnail folders,
+/// 0o600 for the files in them).
+fn private(path: &std::path::Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode));
 }
 
 /// Memory for the pictures being decoded for thumbnails at once. Decoding

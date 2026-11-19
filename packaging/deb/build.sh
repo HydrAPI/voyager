@@ -65,7 +65,7 @@ Architecture: ${arch}
 Maintainer: ${DEB_MAINTAINER:-HydrAPI <245955427+HydrAPI@users.noreply.github.com>}
 Installed-Size: $(du -sk --exclude=DEBIAN "$stage" | cut -f1)
 Depends: ${depends}
-Recommends: gvfs
+Recommends: gvfs, bubblewrap
 Suggests: gvfs-backends, ffmpegthumbnailer | ffmpeg, mediainfo, engrampa | file-roller | xarchiver
 Section: utils
 Priority: optional

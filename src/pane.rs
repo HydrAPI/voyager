@@ -664,8 +664,9 @@ impl Pane {
         let drop_path: Rc<RefCell<Option<gtk::TreePath>>> = Rc::default();
         icon_view.pack_start(&icon_pix, false);
         CellLayoutExt::pack_start(&icon_view, &icon_text, false);
-        // The item being renamed doesn't draw its name: the edit field over
-        // it would show it through (see inline rename in setup_signals).
+        // The item being renamed doesn't draw its name, which is still
+        // measured: the edit field over it would show it through (see
+        // inline rename in setup_signals, IconLabel::set_hidden).
         let edit_hidden: Rc<RefCell<Option<String>>> = Rc::default();
         let (text_fill, pix_fill): (CellFill, CellFill);
         {
@@ -677,10 +678,7 @@ impl Pane {
             let fill: CellFill = Rc::new(move |cell, m, it| {
                     cell.set_visible(shown.get() && !hit_off.get());
                     label.set_drop_target(drop_path.borrow().as_ref().is_some_and(|d| m.path(it).as_ref() == Some(d)));
-                    if hidden.borrow().as_deref().is_some_and(|u| m.gv::<String>(it, COL_URI as i32) == u) {
-                        label.set_label_text("");
-                        return;
-                    }
+                    label.set_hidden(hidden.borrow().as_deref().is_some_and(|u| m.gv::<String>(it, COL_URI as i32) == u));
                     if iv.item_orientation() == gtk::Orientation::Horizontal {
                         label.set_label_text(value_str(&m.value(it, COL_NAME as i32)));
                         return;
@@ -1680,6 +1678,33 @@ impl Pane {
 
     fn on_monitor(self: &Rc<Self>, f: &gio::File, other: Option<&gio::File>, ev: gio::FileMonitorEvent) {
         use gio::FileMonitorEvent as E;
+        // The open folder itself went (deleted, moved or renamed by another
+        // program): to where it went, if that's known, else to the nearest
+        // folder above that's still there. (The tab stayed at a place that
+        // was gone, and making or pasting anything there failed.)
+        if matches!(ev, E::Deleted | E::MovedOut | E::Renamed) && f.equal(&self.current()) && !self.is_searching() {
+            let w = Rc::downgrade(self);
+            let to = other.cloned();
+            // Once the events about its contents are through.
+            glib::timeout_add_local_once(Duration::from_millis(300), move || {
+                let Some(p) = w.upgrade() else { return };
+                let cur = p.current();
+                if cur.query_exists(gio::Cancellable::NONE) {
+                    return;
+                }
+                let mut target = to.filter(|t| t.query_exists(gio::Cancellable::NONE)).or_else(|| cur.parent());
+                while let Some(t) = target.clone() {
+                    if t.query_exists(gio::Cancellable::NONE) {
+                        break;
+                    }
+                    target = t.parent();
+                }
+                if let Some(t) = target {
+                    p.navigate(&t);
+                }
+            });
+            return;
+        }
         match ev {
             E::Created | E::MovedIn => {
                 self.refresh_file(f);
@@ -3878,7 +3903,9 @@ impl Pane {
         if focus_here {
             self.icon_view.grab_focus();
         }
-        if commit && !text.is_empty() && text != ed.name {
+        // Unchanged as shown: a name with a line break (the field leaves
+        // those out) was renamed by F2 and Enter alone.
+        if commit && !text.is_empty() && text != ed.name.replace(['\n', '\r'], "") {
             self.emit(Event::Rename { uri: ed.uri.clone(), new_name: text });
         }
     }
