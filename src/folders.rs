@@ -102,6 +102,35 @@ pub fn forget(uri: &str) {
     })
 }
 
+/// Remembered settings follow their folders, as moved, renamed or
+/// deleted in Arkha: (URI before, URI now, None if deleted). Moved, a
+/// folder's settings and those of the folders in it go along; deleted,
+/// they go (kept by its URI, a renamed folder lost them, and a deleted
+/// one's stayed in the file for good).
+pub fn follow(went: &[(String, Option<String>)]) {
+    with_store(|kf| {
+        let mut changed = false;
+        for g in kf.groups().iter().map(|g| g.to_string()) {
+            let hit = went.iter().find_map(|(old, new)| {
+                let rest = if g == *old { Some(String::new()) } else { g.strip_prefix(&format!("{old}/")).map(|r| format!("/{r}")) };
+                rest.map(|r| new.as_ref().map(|n| format!("{n}{r}")))
+            });
+            let Some(to) = hit else { continue };
+            if let Some(to) = to {
+                for k in kf.keys(&g).map(|k| k.iter().map(|k| k.to_string()).collect::<Vec<_>>()).unwrap_or_default() {
+                    if let Ok(v) = kf.value(&g, &k) {
+                        kf.set_value(&to, &k, &v);
+                    }
+                }
+            }
+            changed |= kf.remove_group(&g).is_ok();
+        }
+        if changed {
+            save(kf);
+        }
+    })
+}
+
 /// Number of folders with remembered settings.
 pub fn count() -> usize {
     with_store(|kf| kf.groups().len())
@@ -169,6 +198,21 @@ mod tests {
         assert!(!kf.has_group("file:///a") && kf.has_group("file:///b"));
         forget_all();
         assert_eq!(count(), 0);
+        // They follow their folders (in this test: it shares the file).
+        // (A view that isn't the default, or it wouldn't be kept.)
+        let other = |v: &'static str| -> &'static str { if v == view { other_view } else { v } };
+        set_view("file:///p/photos", other("list"));
+        set_view("file:///p/photos/2026", other("compact"));
+        set_view("file:///p/photos2", other("list"));
+        set_view("file:///p/old", other("list"));
+        follow(&[("file:///p/photos".into(), Some("file:///q/pictures".into())), ("file:///p/old".into(), None)]);
+        assert_eq!(get("file:///q/pictures").view.as_deref(), Some(other("list")));
+        assert_eq!(get("file:///q/pictures/2026").view.as_deref(), Some(other("compact")));
+        assert_eq!(get("file:///p/photos").view, None);
+        // Only that folder and those in it: not one that only starts alike.
+        assert_eq!(get("file:///p/photos2").view.as_deref(), Some(other("list")));
+        assert_eq!(get("file:///p/old").view, None);
+        forget_all();
         let _ = std::fs::remove_file(path());
     }
 }

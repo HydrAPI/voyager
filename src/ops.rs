@@ -1647,6 +1647,8 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
     let (tx, rx) = async_channel::unbounded::<Msg>();
     let shape = shape_of(&job);
     let (taken, moves) = taken_by(&job);
+    // Trashed folders keep their remembered views (for a restore).
+    let trashing = matches!(job, Job::Trash(_));
     let op = Rc::new(Op {
         id: next_id(),
         title: title_for(&job),
@@ -1743,6 +1745,9 @@ fn start(parent: Option<gtk::Window>, job: Job, record: Record, on_done: Box<dyn
                     // Also hides the window if this was the last operation.
                     remove_op(op.id);
                     on_done(created);
+                    if !went.is_empty() && !trashing {
+                        crate::folders::follow(&went);
+                    }
                     if !went.is_empty() {
                         MOVE_LISTENERS.with(|l| {
                             for f in l.borrow().iter() {
@@ -1893,8 +1898,10 @@ pub fn note_renames(items: Vec<(String, String)>) {
 }
 
 /// Renamed items' thumbnails renamed too, in a thread of their own (a
-/// renamed folder's are those of everything in it).
+/// renamed folder's are those of everything in it), and a renamed folder's
+/// remembered view goes with it.
 fn thumbnails_renamed(items: Vec<(String, String)>) {
+    crate::folders::follow(&items.iter().map(|(a, b)| (a.clone(), Some(b.clone()))).collect::<Vec<_>>());
     std::thread::spawn(move || thumbcache::moved(&thumbcache::root(), &items));
 }
 
