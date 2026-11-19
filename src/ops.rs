@@ -2739,12 +2739,15 @@ mod tests {
             items: ["dir", "b.txt"].iter().map(|n| Item { src: uri(&home.0.join(n)), dest_dir: uri(&other.0), name: None }).collect(),
             check: true,
         };
-        // The first copy checked (1-spoilt.txt, by name order) is spoilt.
-        run_checked_in(job, vec![ErrChoice::Skip], true, Some(cache.clone()));
-        assert!(home.0.join("dir/2-good.txt").exists(), "the folder stays");
-        assert!(thumb(&home.0.join("dir/1-spoilt.txt")).exists() && thumb(&home.0.join("dir/2-good.txt")).exists(), "its files keep their thumbnails");
-        assert!(!thumb(&other.0.join("dir/1-spoilt.txt")).exists(), "the spoilt copy gets none");
-        assert!(thumb(&other.0.join("dir/2-good.txt")).exists(), "the good copy has one");
+        // The first copy checked is spoilt: which one that is depends on
+        // the order the folder lists them in.
+        let (_, _, failed, _, _) = run_checked_in(job, vec![ErrChoice::Skip], true, Some(cache.clone()));
+        assert_eq!(failed.len(), 1);
+        let (spoilt, good) = if failed[0] == "1-spoilt.txt" { ("dir/1-spoilt.txt", "dir/2-good.txt") } else { ("dir/2-good.txt", "dir/1-spoilt.txt") };
+        assert!(home.0.join(good).exists(), "the folder stays");
+        assert!(thumb(&home.0.join(spoilt)).exists() && thumb(&home.0.join(good)).exists(), "its files keep their thumbnails");
+        assert!(!thumb(&other.0.join(spoilt)).exists(), "the spoilt copy gets none");
+        assert!(thumb(&other.0.join(good)).exists(), "the good copy has one");
         assert!(thumb(&other.0.join("b.txt")).exists() && !home.0.join("b.txt").exists(), "the moved file has its thumbnail");
         assert!(!thumb(&home.0.join("b.txt")).exists(), "its original's is gone with it");
     }
