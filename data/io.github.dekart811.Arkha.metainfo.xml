@@ -74,6 +74,21 @@
 
   <!-- Each release gets a line, newest first (see BUILDING.md). -->
   <releases>
+    <release version="1.1.0" date="2026-11-19">
+      <description>
+        <p>Safer, with thumbnails that keep up with your files:</p>
+        <ul>
+          <li>Thumbnailers run in a sandbox (with bubblewrap installed): a file made to exploit one can't reach your files.</li>
+          <li>Thumbnails move with files moved or renamed in Arkha, go when files are deleted or the trash is emptied, and are made again for files whose first try failed while they were still arriving.</li>
+          <li>Custom actions with "%f" in quotes are safe from file names with commands in them; files dragged in from other programs neither replace nor hide anything; Enter in the "run or display" question no longer runs the file.</li>
+          <li>Files copied to USB sticks and drives formatted for Windows get names those can hold, and a file too big for FAT32 is said to be at once.</li>
+          <li>Search results follow files moved, trashed or deleted, and files cut from them paste with Ctrl+V in another tab.</li>
+          <li>File operations can be shown in their own window instead of the popup (Preferences, Behavior), and the popup stays open while a queued job takes over.</li>
+          <li>Rename All keeps notes, emblems and custom icons; a settings file with a faulty line no longer resets all settings; remembered folder views follow their folders.</li>
+          <li>About has buttons for the license and the source code.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.3" date="2026-11-15">
       <description>
         <p>Folders with many files open a little faster: their dates no longer look up the time zone once for each file.</p>
