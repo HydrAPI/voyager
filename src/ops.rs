@@ -1008,7 +1008,7 @@ impl Worker {
                     let src = gio::File::for_uri(&it.src);
                     let dest_dir = gio::File::for_uri(&it.dest_dir);
                     let src_is_dir = kind_of(&src) == Some(gio::FileType::Directory);
-                    if kind != Kind::Link && (dest_dir.has_prefix(&src) || src.equal(&dest_dir)) {
+                    if kind != Kind::Link && (dest_dir.has_prefix(&src) || src.equal(&dest_dir) || inside_through_links(&dest_dir, &src)) {
                         let e = glib::Error::new(
                             gio::IOErrorEnum::InvalidArgument,
                             &tr("The destination is inside the source folder."),
@@ -1254,6 +1254,18 @@ pub fn open_window() {
 
 /// Told of items an operation took from where they were (see on_moved).
 type WentFn = dyn Fn(&[(String, Option<String>)]);
+
+/// Whether `dest_dir` is `src` or inside it once links are followed (a
+/// link in the way, the addresses don't show it): a folder copied into a
+/// link to its own subfolder copied itself into itself, some 2,000 levels
+/// deep, until the path was too long.
+fn inside_through_links(dest_dir: &gio::File, src: &gio::File) -> bool {
+    let real = |f: &gio::File| f.path().and_then(|p| std::fs::canonicalize(p).ok());
+    match (real(dest_dir), real(src)) {
+        (Some(d), Some(s)) => d.starts_with(&s),
+        _ => false,
+    }
+}
 
 /// The URI `f`'s thumbnails are kept under: for an item in the trash,
 /// where it came from (trashed, it kept them).
@@ -2712,6 +2724,26 @@ mod tests {
         assert!(home.0.join("a.txt").exists(), "the spoilt one's original stays");
         assert!(!home.0.join("b.txt").exists(), "the one that matched is moved");
         assert_eq!(read(&other.0.join("b.txt")), "bbb");
+    }
+
+    #[test]
+    fn no_copy_into_itself_through_a_link() {
+        // A link to the folder's own subfolder as the destination: asked
+        // about (and skipped) instead of copied into itself.
+        let s = home_scratch("intoself");
+        std::fs::create_dir_all(s.0.join("a/b")).unwrap();
+        write(&s.0.join("a/file.txt"), "x");
+        std::os::unix::fs::symlink(s.0.join("a/b"), s.0.join("link")).unwrap();
+        let job = Job::Transfer { kind: Kind::Copy, items: vec![Item { src: uri(&s.0.join("a")), dest_dir: uri(&s.0.join("link")), name: None }], check: false };
+        let (_, asked) = run_job(job, &[]);
+        assert_eq!(asked, ["error:Cannot copy “a” into itself"]);
+        assert_eq!(std::fs::read_dir(s.0.join("a/b")).unwrap().count(), 0, "nothing copied into it");
+        // A link elsewhere is fine.
+        std::fs::create_dir_all(s.0.join("other")).unwrap();
+        std::os::unix::fs::symlink(s.0.join("other"), s.0.join("link2")).unwrap();
+        let job = Job::Transfer { kind: Kind::Copy, items: vec![Item { src: uri(&s.0.join("a")), dest_dir: uri(&s.0.join("link2")), name: None }], check: false };
+        assert!(run_job(job, &[]).1.is_empty());
+        assert!(s.0.join("other/a/file.txt").exists());
     }
 
     #[test]
