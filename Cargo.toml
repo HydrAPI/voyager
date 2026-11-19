@@ -1,6 +1,6 @@
 [package]
 name = "voyager"
-version = "1.1.4"
+version = "1.2.0"
 edition = "2021"
 # Debian 13's; checked by clippy (incompatible_msrv).
 rust-version = "1.85"

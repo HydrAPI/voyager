@@ -78,6 +78,12 @@
 
   <!-- Each release gets a line, newest first (see BUILDING.md). -->
   <releases>
+    <release version="1.2.0" date="2026-11-19">
+      <description>
+        <p>Takes over Arkha 1.1.0: thumbnailers run in a sandbox (with bubblewrap installed), custom actions with quoted file names are safe, files dragged in from other programs no longer replace files or arrive hidden, and the question to run or display a file defaults to Cancel.</p>
+        <p>Thumbnails move with their files, search results follow moved files, Rename All keeps notes, emblems and custom icons, copies to Windows drives get names those drives can hold, a settings file with a faulty line no longer resets all settings, and remembered folder views follow their folders.</p>
+      </description>
+    </release>
     <release version="1.1.4" date="2026-11-18">
       <description>
         <p>Takes over Arkha's newer fixes: file operations can have a window of their own (a setting), and the operations window stays open while a queued job takes over.</p>
